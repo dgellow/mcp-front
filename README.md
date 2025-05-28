@@ -208,6 +208,3 @@ Claude.ai → HTTPS → Load Balancer → MCP Auth Proxy
                                     └── /external/* → HTTP MCP Server
 ```
 
-## License
-
-MIT License
