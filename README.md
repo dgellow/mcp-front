@@ -1,210 +1,155 @@
 # mcp-front
 
-Simple OAuth 2.1 + GCP IAM authentication for multiple MCP servers on GCP. Built to make MCP deployment effortless.
+Simple OAuth 2.1 + GCP IAM authentication for multiple MCP servers on GCP. Makes MCP deployment effortless.
 
-## Features
+```
+Claude.ai
+    │
+    │ HTTPS
+    ▼
+┌─────────────────────────────┐
+│             GCP             │
+│                             │
+│       Cloud Armor           │
+│            │                │
+│            ▼                │
+│      Load Balancer          │
+│            │                │
+│            ▼                │
+│        mcp-front            │
+│    (OAuth + Routing)        │
+│            │                │
+│            ▼                │
+│     ┌─────────────┐         │
+│     │ mcp-notion  │         │
+│     └─────────────┘         │
+│     ┌─────────────┐         │
+│     │mcp-postgres │         │
+│     └─────────────┘         │
+│     ┌─────────────┐         │
+│     │  mcp-git    │         │
+│     └─────────────┘         │
+│                             │
+└─────────────────────────────┘
+```
 
-- **OAuth 2.1 Authorization Server** with PKCE support
-- **GCP IAM Integration** for domain-based user validation
-- **Multiple MCP Server Support** via stdio and HTTP transports  
-- **Docker Integration** for containerized MCP servers
-- **SSE Streaming** compatible with Claude.ai
-- **Dynamic Client Registration** (RFC 7591)
-- **Path-based Routing** (`/notion/*` → notion-mcp-server)
+## How it works
 
-## Quick Start
+mcp-front sits between Claude.ai and your MCP servers, handling OAuth 2.1 authentication with PKCE and GCP IAM domain validation. Claude.ai connects to multiple MCP servers through a single authenticated endpoint.
 
-1. **Clone and build:**
-   ```bash
-   git clone https://github.com/dgellow/mcp-front.git
-   cd mcp-front
-   go build .
-   ```
-
-2. **Configure OAuth:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Google OAuth credentials
-   ```
-
-3. **Set up Google OAuth:**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create OAuth 2.0 client ID
-   - Add redirect URI: `https://your-domain.com/oauth/callback`
-
-4. **Run with Docker:**
-   ```bash
-   docker-compose up -d
-   ```
+When Claude.ai first connects, users authenticate via Google OAuth. mcp-front validates their domain against your allowed list and issues tokens for accessing MCP servers. Subsequent requests use bearer tokens, eliminating repeated authentication.
 
 ## Configuration
 
-### OAuth Settings
+Create `config.json` based on `config-oauth.json`:
 
 ```json
 {
+  "mcpProxy": {
+    "baseURL": "https://mcp.yourcompany.com", 
+    "addr": ":8080",
+    "name": "Company MCP Front",
+    "version": "1.0.0"
+  },
   "oauth": {
-    "issuer": "https://mcp-internal.yourcompany.org",
-    "gcp_project": "your-gcp-project-id", 
+    "issuer": "https://mcp.yourcompany.com",
+    "gcp_project": "your-gcp-project",
     "allowed_domains": ["yourcompany.com"],
-    "token_ttl": "3600s",
-    "storage": "memory",
+    "token_ttl": "1h",
     "google_client_id": "${GOOGLE_CLIENT_ID}",
-    "google_client_secret": "${GOOGLE_CLIENT_SECRET}",
-    "google_redirect_uri": "https://mcp-internal.yourcompany.org/oauth/callback"
-  }
-}
-```
-
-### MCP Server Configuration
-
-**Stdio-based (Docker containers):**
-```json
-{
-  "notion": {
-    "command": "docker",
-    "args": ["run", "--rm", "-i", "mcp/notion:latest"],
-    "env": {
-      "NOTION_TOKEN": "${NOTION_TOKEN}"
+    "google_client_secret": "${GOOGLE_CLIENT_SECRET}", 
+    "google_redirect_uri": "https://mcp.yourcompany.com/oauth/callback"
+  },
+  "mcpServers": {
+    "notion": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "mcp/notion:latest"],
+      "env": {"NOTION_TOKEN": "${NOTION_TOKEN}"}
+    },
+    "postgres": {
+      "command": "docker", 
+      "args": ["run", "--rm", "-i", "mcp/postgres:latest"],
+      "env": {"DATABASE_URL": "${DATABASE_URL}"}
+    },
+    "external": {
+      "url": "https://api.example.com/mcp",
+      "headers": {"Authorization": "Bearer ${API_TOKEN}"}
     }
   }
 }
 ```
 
-**HTTP-based (External servers):**
-```json
-{
-  "external-api": {
-    "url": "https://external-mcp-server.example.com/sse",
-    "headers": {
-      "Authorization": "Bearer ${EXTERNAL_API_TOKEN}"
-    }
-  }
-}
+## Environment setup
+
+Set these environment variables:
+
+```bash
+export GOOGLE_CLIENT_ID="your-oauth-client-id"
+export GOOGLE_CLIENT_SECRET="your-oauth-client-secret"
+export NOTION_TOKEN="your-notion-token"
+export DATABASE_URL="postgresql://..."
 ```
 
-## OAuth 2.1 Endpoints
+## Google OAuth setup
 
-- `/.well-known/oauth-authorization-server` - Server metadata
-- `/authorize` - Authorization endpoint (with PKCE)
-- `/token` - Token endpoint  
-- `/register` - Dynamic client registration
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add authorized redirect URI: `https://mcp.yourcompany.com/oauth/callback`
+4. Note the Client ID and Secret for your environment variables
+
+## Running
+
+Local development:
+```bash
+git clone https://github.com/dgellow/mcp-front.git
+cd mcp-front
+go build .
+./mcp-front -config config.json
+```
+
+Docker:
+```bash
+docker-compose up -d
+```
+
+## Claude.ai integration
+
+Add these MCP server URLs to Claude.ai:
+```
+https://mcp.yourcompany.com/notion/sse
+https://mcp.yourcompany.com/postgres/sse
+https://mcp.yourcompany.com/external/sse
+```
+
+Claude.ai will discover the OAuth endpoints automatically and prompt for authentication on first use.
+
+## GCP deployment
+
+Build and deploy to Google Cloud Run or Compute Engine:
+
+```bash
+# Build image
+docker build -t gcr.io/${PROJECT_ID}/mcp-front .
+docker push gcr.io/${PROJECT_ID}/mcp-front
+
+# Deploy to Cloud Run
+gcloud run deploy mcp-front \
+  --image gcr.io/${PROJECT_ID}/mcp-front \
+  --platform managed \
+  --allow-unauthenticated \
+  --port 8080
+```
+
+For production, use a load balancer with HTTPS termination and mount Docker socket for stdio-based MCP servers.
+
+## OAuth endpoints
+
+- `/.well-known/oauth-authorization-server` - Server metadata discovery
+- `/authorize` - Authorization code flow with PKCE
+- `/token` - Token exchange and refresh
 - `/oauth/callback` - Google OAuth callback
-
-## Claude.ai Integration
-
-1. **Add MCP servers to Claude.ai:**
-   ```
-   https://mcp-internal.yourcompany.org/notion/sse
-   https://mcp-internal.yourcompany.org/postgres/sse
-   https://mcp-internal.yourcompany.org/git/sse
-   ```
-
-2. **Authentication flow:**
-   - Claude.ai discovers OAuth server metadata
-   - Initiates OAuth 2.1 with PKCE
-   - User redirected to Google sign-in
-   - Domain validated against allowed list
-   - Token issued for all MCP endpoints
-
-## Deployment
-
-### GCE Deployment
-
-```bash
-# Build and push
-docker build -t gcr.io/${PROJECT_ID}/mcp-front:latest .
-docker push gcr.io/${PROJECT_ID}/mcp-front:latest
-
-# Deploy instance template
-gcloud compute instance-templates create mcp-proxy-template \\
-    --machine-type=e2-standard-2 \\
-    --image-family=cos-stable \\
-    --image-project=cos-cloud \\
-    --container-image=gcr.io/${PROJECT_ID}/mcp-front:latest \\
-    --tags=mcp-proxy
-
-# Create managed instance group
-gcloud compute instance-groups managed create mcp-proxy-group \\
-    --template=mcp-proxy-template \\
-    --size=2 \\
-    --zone=us-central1-a
-```
-
-### Load Balancer Setup
-
-```bash
-# Create health check
-gcloud compute health-checks create http mcp-proxy-health \\
-    --port=8080 \\
-    --request-path="/.well-known/oauth-authorization-server"
-
-# Create backend service
-gcloud compute backend-services create mcp-proxy-backend \\
-    --protocol=HTTP \\
-    --health-checks=mcp-proxy-health \\
-    --global
-
-# Add instance group to backend
-gcloud compute backend-services add-backend mcp-proxy-backend \\
-    --instance-group=mcp-proxy-group \\
-    --instance-group-zone=us-central1-a \\
-    --global
-```
+- `/register` - Dynamic client registration
 
 ## Security
 
-- **PKCE Required**: All authorization code flows must use PKCE
-- **Domain Validation**: Users must belong to configured Google Workspace domains
-- **TLS Required**: All production deployments should use HTTPS
-- **Token Scoping**: Tokens are scoped to specific MCP endpoints
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID | Yes |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Yes |
-| `GCP_PROJECT_ID` | GCP project for IAM validation | Yes |
-| `NOTION_TOKEN` | Notion integration token | Optional |
-| `DATABASE_URL` | PostgreSQL connection string | Optional |
-
-## Troubleshooting
-
-### Common Issues
-
-1. **OAuth callback mismatch:**
-   - Ensure redirect URI in Google Console matches `google_redirect_uri` in config
-
-2. **Domain validation failing:**
-   - Check that users belong to Google Workspace with configured domain
-   - Verify `allowed_domains` configuration
-
-3. **Docker permission denied:**
-   - Ensure proxy has access to Docker socket: `/var/run/docker.sock`
-
-### Debugging
-
-Enable debug logging:
-```json
-{
-  "mcpServers": {
-    "server-name": {
-      "options": {
-        "logEnabled": true
-      }
-    }
-  }
-}
-```
-
-## Architecture
-
-```
-Claude.ai → HTTPS → Load Balancer → MCP Auth Proxy
-                                    ├── OAuth 2.1 Server
-                                    ├── /notion/* → Docker Container
-                                    ├── /postgres/* → Docker Container  
-                                    └── /external/* → HTTP MCP Server
-```
-
+All authorization flows require PKCE. Users must belong to Google Workspace domains in the `allowed_domains` list. Tokens are scoped to MCP endpoints and expire based on `token_ttl` configuration.
