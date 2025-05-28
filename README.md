@@ -16,7 +16,7 @@ Simple OAuth 2.1 + GCP IAM authentication for multiple MCP servers on GCP. Built
 
 1. **Clone and build:**
    ```bash
-   git clone <repository>
+   git clone https://github.com/dgellow/mcp-front.git
    cd mcp-front
    go build .
    ```
@@ -208,10 +208,6 @@ Claude.ai → HTTPS → Load Balancer → MCP Auth Proxy
                                     └── /external/* → HTTP MCP Server
 ```
 
-## Contributing
-
-This project is built on top of [TBXark/mcp-proxy](https://github.com/TBXark/mcp-proxy). 
-
 ## License
 
-MIT License - see original mcp-proxy license.
+MIT License

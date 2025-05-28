@@ -1,4 +1,4 @@
-module github.com/your-org/mcp-front
+module github.com/dgellow/mcp-front
 
 go 1.23.0
 
