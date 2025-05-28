@@ -1,0 +1,70 @@
+{
+  "mcpProxy": {
+    "baseURL": "https://mcp-internal.yourcompany.org",
+    "addr": ":8080",
+    "name": "MCP OAuth Proxy",
+    "version": "1.0.0",
+    "options": {
+      "panicIfInvalid": false,
+      "logEnabled": true
+    }
+  },
+  "oauth": {
+    "issuer": "https://mcp-internal.yourcompany.org",
+    "gcp_project": "your-gcp-project-id",
+    "allowed_domains": ["yourcompany.com"],
+    "token_ttl": "1h",
+    "storage": "memory",
+    "google_client_id": "${GOOGLE_CLIENT_ID}",
+    "google_client_secret": "${GOOGLE_CLIENT_SECRET}",
+    "google_redirect_uri": "https://mcp-internal.yourcompany.org/oauth/callback"
+  },
+  "mcpServers": {
+    "notion": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "mcp/notion:latest"
+      ],
+      "env": {
+        "NOTION_TOKEN": "${NOTION_TOKEN}"
+      },
+      "options": {
+        "logEnabled": true
+      }
+    },
+    "postgres": {
+      "command": "docker", 
+      "args": [
+        "run", "--rm", "-i",
+        "mcp/postgres:latest"
+      ],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}"
+      },
+      "options": {
+        "logEnabled": true
+      }
+    },
+    "git": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", 
+        "-v", "/repos:/repos:ro",
+        "mcp/git:latest"
+      ],
+      "options": {
+        "logEnabled": true
+      }
+    },
+    "external-api": {
+      "url": "https://external-mcp-server.example.com/sse",
+      "headers": {
+        "Authorization": "Bearer ${EXTERNAL_API_TOKEN}"
+      },
+      "options": {
+        "logEnabled": true
+      }
+    }
+  }
+}
