@@ -40,80 +40,68 @@ for i in {1..30}; do
 done
 echo ""
 
-# Start mock OAuth server
-echo -e "${YELLOW}🔐 Starting mock OAuth server...${NC}"
-# Run a simple OAuth mock server
-cat > /tmp/mock_oauth.py << 'EOF'
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import json
-import urllib.parse
+# Check for Google OAuth credentials
+if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+    echo -e "${YELLOW}⚠️  No Google OAuth credentials found in environment${NC}"
+    echo "   Using simple token authentication instead"
+    echo "   To enable OAuth, set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
+    USE_OAUTH=false
+else
+    echo -e "${YELLOW}🔐 Google OAuth configured${NC}"
+    echo "   Client ID: ${GOOGLE_CLIENT_ID:0:20}..."
+    USE_OAUTH=true
+fi
 
-class OAuthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path.startswith('/auth'):
-            # OAuth authorization endpoint
-            query = urllib.parse.urlparse(self.path).query
-            params = urllib.parse.parse_qs(query)
-            redirect_uri = params.get('redirect_uri', [''])[0]
-            state = params.get('state', [''])[0]
-            
-            # Redirect back with auth code
-            redirect_url = f"{redirect_uri}?code=test-auth-code&state={state}"
-            self.send_response(302)
-            self.send_header('Location', redirect_url)
-            self.end_headers()
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def do_POST(self):
-        if self.path == '/token':
-            # Token endpoint
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            response = {
-                "access_token": "test-access-token",
-                "token_type": "Bearer",
-                "expires_in": 3600
-            }
-            self.wfile.write(json.dumps(response).encode())
-        elif self.path == '/userinfo':
-            # Userinfo endpoint
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            response = {
-                "email": "demo@test.com",
-                "hd": "test.com"
-            }
-            self.wfile.write(json.dumps(response).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def log_message(self, format, *args):
-        # Suppress logs
-        pass
-
-print("Mock OAuth server running on http://localhost:9090")
-httpd = HTTPServer(('localhost', 9090), OAuthHandler)
-httpd.serve_forever()
-EOF
-
-python3 /tmp/mock_oauth.py &
-OAUTH_PID=$!
-echo "   OAuth endpoints: http://localhost:9090"
-sleep 2
-
-# Set up environment variables for OAuth
-export GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth
-export GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token
-export GOOGLE_USERINFO_URL=http://localhost:9090/userinfo
+# Build mcp-front
+echo -e "${YELLOW}🔨 Building mcp-front...${NC}"
+cd ..
+go build -o mcp-front .
+if [ $? -ne 0 ]; then
+    echo "❌ Build failed!"
+    exit 1
+fi
+cd integration
+echo "✅ Build successful"
 
 # Start mcp-front
 echo -e "${YELLOW}🚀 Starting mcp-front...${NC}"
-../mcp-front -config config/config.demo.json &
+if [ "$USE_OAUTH" = true ]; then
+    # Create temporary config with actual values
+    cat > /tmp/mcp-front-demo-config.json <<EOF
+{
+  "mcpProxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-demo"
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--network", "host", 
+        "mcp/postgres", "postgresql://testuser:testpass@localhost:15432/testdb"
+      ],
+      "options": {
+        "logEnabled": true
+      }
+    }
+  },
+  "oauth": {
+    "issuer": "http://localhost:8080",
+    "gcp_project": "mcp-front-demo", 
+    "allowed_domains": ["gmail.com", "test.com", "anthropic.com", "claude.ai"],
+    "token_ttl": "24h",
+    "storage": "memory",
+    "google_client_id": "$GOOGLE_CLIENT_ID",
+    "google_client_secret": "$GOOGLE_CLIENT_SECRET",
+    "google_redirect_uri": "http://localhost:8080/oauth/callback"
+  }
+}
+EOF
+    ../mcp-front -config /tmp/mcp-front-demo-config.json &
+else
+    ../mcp-front -config config/config.demo-token.json &
+fi
 MCP_PID=$!
 
 # Wait for mcp-front to be ready
@@ -137,20 +125,27 @@ echo ""
 echo "MCP Server URLs for Claude.ai:"
 echo -e "${YELLOW}  http://localhost:8080/postgres/sse${NC}"
 echo ""
-echo "Authentication:"
-echo "  Token: test-token"
+if [ "$USE_OAUTH" = true ]; then
+    echo "Authentication: Google OAuth"
+    echo "  OAuth discovery: http://localhost:8080/.well-known/oauth-authorization-server"
+    echo "  Allowed domains: gmail.com, test.com, anthropic.com, claude.ai"
+    echo ""
+    echo "To connect from MCP Inspector:"
+    echo "1. Add MCP server: http://localhost:8080/postgres/sse"
+    echo "2. The OAuth flow will start automatically"
+    echo "3. Sign in with a Google account from an allowed domain"
+else
+    echo "Authentication: Bearer Token"
+    echo "  Token: test-token (or demo-token)"
+    echo ""
+    echo "To connect from Claude.ai or MCP Inspector:"
+    echo "1. Add MCP server: http://localhost:8080/postgres/sse"
+    echo "2. Use Bearer token: test-token"
+fi
 echo ""
 echo "Database contains test data:"
 echo "  - users table (Alice, Bob, Charlie)"
 echo "  - orders table (sample orders)"
-echo ""
-echo "OAuth endpoints (mock):"
-echo "  Auth: http://localhost:9090/auth"
-echo "  Token: http://localhost:9090/token"
-echo ""
-echo "To connect from Claude.ai:"
-echo "1. Add MCP server: http://localhost:8080/postgres/sse"
-echo "2. It will use OAuth flow or you can use token: test-token"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop the demo environment${NC}"
 echo ""
@@ -160,9 +155,8 @@ cleanup() {
     echo ""
     echo "🛑 Shutting down demo environment..."
     kill $MCP_PID 2>/dev/null || true
-    kill $OAUTH_PID 2>/dev/null || true
     docker-compose -f config/docker-compose.test.yml down -v
-    rm -f /tmp/mock_oauth.py
+    rm -f /tmp/mcp-front-demo-config.json
     echo "✅ Demo environment stopped"
     exit 0
 }
