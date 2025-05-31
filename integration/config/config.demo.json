@@ -1,0 +1,35 @@
+{
+  "mcpProxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-demo"
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run", 
+        "--rm", 
+        "-i", 
+        "--network", 
+        "host", 
+        "mcp/postgres", 
+        "postgresql://testuser:testpass@localhost:15432/testdb"
+      ],
+      "options": {
+        "authTokens": ["test-token", "claude-test-token"],
+        "logEnabled": true
+      }
+    }
+  },
+  "oauth": {
+    "issuer": "http://localhost:8080",
+    "gcp_project": "test-project", 
+    "allowed_domains": ["test.com", "anthropic.com", "claude.ai"],
+    "token_ttl": "24h",
+    "storage": "memory",
+    "google_client_id": "test-client-id",
+    "google_client_secret": "test-client-secret",
+    "google_redirect_uri": "http://localhost:8080/oauth/callback"
+  }
+}

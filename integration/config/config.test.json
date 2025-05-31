@@ -1,0 +1,16 @@
+{
+  "mcpProxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-test"
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--network", "host", "mcp/postgres", "postgresql://testuser:testpass@localhost:15432/testdb"],
+      "options": {
+        "authTokens": ["test-token"]
+      }
+    }
+  }
+}
