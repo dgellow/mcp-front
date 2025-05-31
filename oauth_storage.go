@@ -18,10 +18,10 @@ import (
 // GCPIAMStorage implements fosite.Storage with GCP IAM integration
 type GCPIAMStorage struct {
 	*storage.MemoryStore
-	config         *OAuthConfig
-	googleOAuth    *oauth2.Config
-	stateCache     *sync.Map // map[string]*fosite.AuthorizeRequest
-	oauth2Service  *googleoauth2.Service
+	config        *OAuthConfig
+	googleOAuth   *oauth2.Config
+	stateCache    *sync.Map // map[string]*fosite.AuthorizeRequest
+	oauth2Service *googleoauth2.Service
 }
 
 // NewGCPIAMStorage creates a new storage instance with GCP IAM validation
@@ -76,7 +76,7 @@ func (s *GCPIAMStorage) ValidateGoogleToken(ctx context.Context, token *oauth2.T
 	if userInfo.VerifiedEmail != nil {
 		verifiedEmail = *userInfo.VerifiedEmail
 	}
-	
+
 	user := &UserInfo{
 		Email:         userInfo.Email,
 		HostedDomain:  userInfo.Hd,
@@ -131,7 +131,7 @@ func (s *GCPIAMStorage) GetAuthorizeRequest(state string) (fosite.AuthorizeReque
 // CreateClient creates a dynamic client for MCP
 func (s *GCPIAMStorage) CreateClient(ctx context.Context, clientMetadata map[string]interface{}) (*fosite.DefaultClient, error) {
 	clientID := s.GenerateState() // Reuse secure random generation
-	
+
 	// Extract client metadata
 	redirectURIs := []string{}
 	if uris, ok := clientMetadata["redirect_uris"].([]interface{}); ok {
@@ -159,7 +159,7 @@ func (s *GCPIAMStorage) CreateClient(ctx context.Context, clientMetadata map[str
 
 	// Store the client in memory store
 	s.MemoryStore.Clients[clientID] = client
-	
+
 	return client, nil
 }
 

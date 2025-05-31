@@ -28,13 +28,13 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 
 	// Generate RSA key for JWT signing
 	secret := []byte("32-byte-long-secret-for-signing!!")
-	
+
 	// Create fosite configuration
 	fositeConfig := &compose.Config{
-		AccessTokenLifespan:   config.TokenTTL.ToDuration(),
-		RefreshTokenLifespan:  24 * time.Hour,
-		AuthorizeCodeLifespan: 10 * time.Minute,
-		ScopeStrategy:         fosite.HierarchicScopeStrategy,
+		AccessTokenLifespan:      config.TokenTTL.ToDuration(),
+		RefreshTokenLifespan:     24 * time.Hour,
+		AuthorizeCodeLifespan:    10 * time.Minute,
+		ScopeStrategy:            fosite.HierarchicScopeStrategy,
 		AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
 	}
 
@@ -60,40 +60,40 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 
 // ServerMetadata represents OAuth 2.1 authorization server metadata
 type ServerMetadata struct {
-	Issuer                                     string   `json:"issuer"`
-	AuthorizationEndpoint                      string   `json:"authorization_endpoint"`
-	TokenEndpoint                              string   `json:"token_endpoint"`
-	RegistrationEndpoint                       string   `json:"registration_endpoint"`
-	ResponseTypesSupported                     []string `json:"response_types_supported"`
-	GrantTypesSupported                        []string `json:"grant_types_supported"`
-	SubjectTypesSupported                      []string `json:"subject_types_supported"`
-	ScopesSupported                            []string `json:"scopes_supported"`
-	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
-	CodeChallengeMethodsSupported              []string `json:"code_challenge_methods_supported"`
-	PKCERequired                               bool     `json:"pkce_required"`
+	Issuer                            string   `json:"issuer"`
+	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
+	TokenEndpoint                     string   `json:"token_endpoint"`
+	RegistrationEndpoint              string   `json:"registration_endpoint"`
+	ResponseTypesSupported            []string `json:"response_types_supported"`
+	GrantTypesSupported               []string `json:"grant_types_supported"`
+	SubjectTypesSupported             []string `json:"subject_types_supported"`
+	ScopesSupported                   []string `json:"scopes_supported"`
+	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
+	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
+	PKCERequired                      bool     `json:"pkce_required"`
 }
 
 // WellKnownHandler serves OAuth 2.1 authorization server metadata
 func (s *OAuthServer) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	metadata := ServerMetadata{
-		Issuer:                s.config.Issuer,
-		AuthorizationEndpoint: s.config.Issuer + "/authorize",
-		TokenEndpoint:         s.config.Issuer + "/token", 
-		RegistrationEndpoint:  s.config.Issuer + "/register",
+		Issuer:                 s.config.Issuer,
+		AuthorizationEndpoint:  s.config.Issuer + "/authorize",
+		TokenEndpoint:          s.config.Issuer + "/token",
+		RegistrationEndpoint:   s.config.Issuer + "/register",
 		ResponseTypesSupported: []string{"code"},
 		GrantTypesSupported: []string{
 			"authorization_code",
 			"refresh_token",
 		},
 		SubjectTypesSupported: []string{"public"},
-		ScopesSupported: []string{"read", "write"},
+		ScopesSupported:       []string{"read", "write"},
 		TokenEndpointAuthMethodsSupported: []string{
 			"client_secret_basic",
 			"client_secret_post",
 			"none", // For public clients with PKCE
 		},
 		CodeChallengeMethodsSupported: []string{"S256"},
-		PKCERequired: true,
+		PKCERequired:                  true,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -140,13 +140,13 @@ func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Reque
 	// Extract state and code from callback
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	
+
 	if state == "" {
 		logf("Missing state parameter in OAuth callback")
 		http.Error(w, "Missing state parameter", http.StatusBadRequest)
 		return
 	}
-	
+
 	if code == "" {
 		logf("Missing code parameter in OAuth callback")
 		http.Error(w, "Missing authorization code", http.StatusBadRequest)
@@ -164,7 +164,7 @@ func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Reque
 	// Exchange code for Google token with timeout
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	
+
 	token, err := s.storage.googleOAuth.Exchange(ctx, code)
 	if err != nil {
 		logf("Google token exchange error: %v", err)
@@ -247,12 +247,12 @@ func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Return client registration response
 	response := map[string]interface{}{
-		"client_id":     client.GetID(),
-		"client_secret": string(client.Secret),
-		"redirect_uris": client.GetRedirectURIs(),
-		"grant_types":   client.GetGrantTypes(),
-		"response_types": client.GetResponseTypes(),
-		"scope":         client.GetScopes(),
+		"client_id":                  client.GetID(),
+		"client_secret":              string(client.Secret),
+		"redirect_uris":              client.GetRedirectURIs(),
+		"grant_types":                client.GetGrantTypes(),
+		"response_types":             client.GetResponseTypes(),
+		"scope":                      client.GetScopes(),
 		"token_endpoint_auth_method": "client_secret_basic",
 	}
 

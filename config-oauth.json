@@ -3,7 +3,6 @@
     "baseURL": "https://mcp-internal.yourcompany.org",
     "addr": ":8080",
     "name": "MCP OAuth Proxy",
-    "version": "1.0.0",
     "options": {
       "panicIfInvalid": false,
       "logEnabled": true

@@ -33,12 +33,23 @@ func newAuthMiddleware(tokens []string) MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if len(tokens) != 0 {
-				token := r.Header.Get("Authorization")
-				token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
-				if token == "" {
+				authHeader := r.Header.Get("Authorization")
+
+				// RFC 6750: Bearer token must start with "Bearer " followed by exactly one space
+				if !strings.HasPrefix(authHeader, "Bearer ") {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
+
+				// Extract token after "Bearer " (7 characters)
+				token := authHeader[7:]
+
+				// Token must not be empty and must not contain leading/trailing spaces
+				if token == "" || strings.TrimSpace(token) != token {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
 				if _, ok := tokenSet[token]; !ok {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
@@ -90,7 +101,7 @@ func startHTTPServer(config *Config) error {
 	}
 	info := mcp.Implementation{
 		Name:    config.McpProxy.Name,
-		Version: config.McpProxy.Version,
+		Version: BuildVersion,
 	}
 
 	// Initialize OAuth server if OAuth config is provided
@@ -117,7 +128,7 @@ func startHTTPServer(config *Config) error {
 			logf("<%s> Failed to create client: %v", name, err)
 			os.Exit(1)
 		}
-		server := newMCPServer(name, config.McpProxy.Version, config.McpProxy.BaseURL, clientConfig)
+		server := newMCPServer(name, BuildVersion, config.McpProxy.BaseURL, clientConfig)
 		errorGroup.Go(func() error {
 			logf("<%s> Connecting", name)
 			addErr := mcpClient.addToMCPServer(ctx, info, server.mcpServer)
@@ -135,7 +146,7 @@ func startHTTPServer(config *Config) error {
 			if boolOrDefault(clientConfig.Options.LogEnabled, false) {
 				middlewares = append(middlewares, loggerMiddleware(name))
 			}
-			
+
 			// Use OAuth authentication if configured, otherwise fall back to simple tokens
 			if oauthServer != nil {
 				middlewares = append(middlewares, oauthServer.ValidateTokenMiddleware())

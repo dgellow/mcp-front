@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -22,10 +23,55 @@ func logf(format string, args ...interface{}) {
 	log.Printf("[%s] "+format, append([]interface{}{timestamp}, args...)...)
 }
 
+func generateDefaultConfig(path string) error {
+	defaultConfig := map[string]interface{}{
+		"mcpProxy": map[string]interface{}{
+			"baseURL": "http://localhost:8080",
+			"addr":    ":8080",
+			"name":    "mcp-front",
+		},
+		"mcpServers": map[string]interface{}{
+			"postgres": map[string]interface{}{
+				"command": "docker",
+				"args": []string{
+					"run", "--rm", "-i", "--network", "host",
+					"mcp/postgres", "postgresql://user:password@localhost:5432/database",
+				},
+				"options": map[string]interface{}{
+					"authTokens":  []string{"your-secret-token"},
+					"logEnabled": true,
+				},
+			},
+		},
+		"oauth": map[string]interface{}{
+			"issuer":             "https://your-domain.com",
+			"gcp_project":        "your-gcp-project",
+			"allowed_domains":    []string{"your-company.com"},
+			"token_ttl":          "24h",
+			"storage":            "memory",
+			"google_client_id":     "your-google-client-id",
+			"google_client_secret": "your-google-client-secret",
+			"google_redirect_uri":  "https://your-domain.com/oauth/callback",
+		},
+	}
+
+	data, err := json.MarshalIndent(defaultConfig, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
 func main() {
 	conf := flag.String("config", "config.json", "path to config file or a http(s) url")
 	version := flag.Bool("version", false, "print version and exit")
 	help := flag.Bool("help", false, "print help and exit")
+	configInit := flag.String("config-init", "", "generate default config file at specified path")
 	flag.Parse()
 	if *help {
 		flag.Usage()
@@ -33,6 +79,14 @@ func main() {
 	}
 	if *version {
 		fmt.Println(BuildVersion)
+		return
+	}
+	if *configInit != "" {
+		if err := generateDefaultConfig(*configInit); err != nil {
+			logf("Failed to generate config: %v", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Generated default config at: %s\n", *configInit)
 		return
 	}
 	config, err := load(*conf)

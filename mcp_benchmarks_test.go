@@ -11,14 +11,14 @@ import (
 )
 
 func BenchmarkMCPClientCreation(b *testing.B) {
-	configs := []*MCPClientConfigV2{
+	configs := []*MCPClientConfig{
 		// Stdio config
 		{
 			Command: "echo",
 			Args:    []string{"hello"},
 			Env:     map[string]string{"TEST": "value"},
 		},
-		// SSE config  
+		// SSE config
 		{
 			URL:     "https://example.com/sse",
 			Headers: map[string]string{"Authorization": "Bearer token"},
@@ -44,10 +44,10 @@ func BenchmarkMCPClientCreation(b *testing.B) {
 }
 
 func BenchmarkMCPServerCreation(b *testing.B) {
-	config := &MCPClientConfigV2{
+	config := &MCPClientConfig{
 		Command: "echo",
 		Args:    []string{"hello"},
-		Options: &OptionsV2{},
+		Options: &Options{},
 	}
 
 	b.ResetTimer()
@@ -66,17 +66,17 @@ func BenchmarkSSEServerResponse(b *testing.B) {
 		req := httptest.NewRequest("GET", "/test/sse", nil)
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("Cache-Control", "no-cache")
-		
+
 		w := httptest.NewRecorder()
-		
+
 		// Simulate SSE streaming (without actual MCP client connection)
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// Write test SSE data
 		w.Write([]byte("data: " + testData + "\n\n"))
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected 200, got %d", w.Code)
 		}
@@ -101,9 +101,9 @@ func BenchmarkMiddlewareChain(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		req := httptest.NewRequest("GET", "/test", nil)
 		w := httptest.NewRecorder()
-		
+
 		chainedHandler.ServeHTTP(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected 200, got %d", w.Code)
 		}
@@ -125,9 +125,9 @@ func BenchmarkAuthMiddleware(b *testing.B) {
 		req := httptest.NewRequest("GET", "/test", nil)
 		req.Header.Set("Authorization", "Bearer token1")
 		w := httptest.NewRecorder()
-		
+
 		authedHandler.ServeHTTP(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected 200, got %d", w.Code)
 		}
@@ -146,14 +146,14 @@ func BenchmarkJSONRPCParsing(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		msg := testMessages[i%len(testMessages)]
-		
+
 		// Simulate the JSON parsing that happens in real usage
 		var parsed map[string]interface{}
 		err := json.Unmarshal([]byte(msg), &parsed)
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		// Simulate basic validation
 		if _, ok := parsed["jsonrpc"]; !ok {
 			b.Fatal("Invalid JSON-RPC")
@@ -224,7 +224,7 @@ func BenchmarkHTTPRouting(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		name := serverNames[i%len(serverNames)]
-		
+
 		// Simulate the routing logic from http.go
 		mcpRoute := "/" + name + "/"
 		if !strings.HasPrefix(mcpRoute, "/") {
@@ -233,7 +233,7 @@ func BenchmarkHTTPRouting(b *testing.B) {
 		if !strings.HasSuffix(mcpRoute, "/") {
 			mcpRoute += "/"
 		}
-		
+
 		// Simulate URL construction
 		fullURL := baseURL + mcpRoute
 		_ = fullURL
@@ -243,22 +243,21 @@ func BenchmarkHTTPRouting(b *testing.B) {
 func BenchmarkStreamingData(b *testing.B) {
 	// Benchmark the streaming data handling that would happen in stdio bridge
 	testData := []byte(`{"jsonrpc": "2.0", "method": "tools/list", "params": {}}`)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Simulate reading from stdout and writing to SSE
 		reader := strings.NewReader(string(testData))
-		
+
 		// Read the data (simulating stdout read)
 		buffer := make([]byte, len(testData))
 		n, err := reader.Read(buffer)
 		if err != nil && err != io.EOF {
 			b.Fatal(err)
 		}
-		
+
 		// Simulate SSE formatting
 		sseData := "data: " + string(buffer[:n]) + "\n\n"
 		_ = sseData
 	}
 }
-

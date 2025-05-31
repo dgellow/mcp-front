@@ -140,16 +140,16 @@ func TestConfigWithoutOAuth(t *testing.T) {
 	}
 }
 
-func TestMCPClientConfigV2Parsing(t *testing.T) {
+func TestMCPClientConfigParsing(t *testing.T) {
 	tests := []struct {
 		name     string
-		config   *MCPClientConfigV2
+		config   *MCPClientConfig
 		expected interface{}
 		hasError bool
 	}{
 		{
 			name: "stdio config",
-			config: &MCPClientConfigV2{
+			config: &MCPClientConfig{
 				Command: "echo",
 				Args:    []string{"hello"},
 				Env:     map[string]string{"TEST": "value"},
@@ -163,7 +163,7 @@ func TestMCPClientConfigV2Parsing(t *testing.T) {
 		},
 		{
 			name: "SSE config",
-			config: &MCPClientConfigV2{
+			config: &MCPClientConfig{
 				URL:     "https://example.com/sse",
 				Headers: map[string]string{"Authorization": "Bearer token"},
 			},
@@ -175,7 +175,7 @@ func TestMCPClientConfigV2Parsing(t *testing.T) {
 		},
 		{
 			name: "streamable config",
-			config: &MCPClientConfigV2{
+			config: &MCPClientConfig{
 				TransportType: MCPClientTypeStreamable,
 				URL:           "https://example.com/stream",
 				Headers:       map[string]string{"Authorization": "Bearer token"},
@@ -189,8 +189,8 @@ func TestMCPClientConfigV2Parsing(t *testing.T) {
 			hasError: false,
 		},
 		{
-			name: "invalid config",
-			config: &MCPClientConfigV2{
+			name:   "invalid config",
+			config: &MCPClientConfig{
 				// No command, URL, or transport type
 			},
 			expected: nil,
@@ -200,7 +200,7 @@ func TestMCPClientConfigV2Parsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseMCPClientConfigV2(tt.config)
+			result, err := parseMCPClientConfig(tt.config)
 
 			if tt.hasError {
 				if err == nil {

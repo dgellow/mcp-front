@@ -83,7 +83,7 @@ func TestStoreAndGetAuthorizeRequest(t *testing.T) {
 	}
 
 	state := "test-state"
-	
+
 	// Store the request
 	storage.StoreAuthorizeRequest(state, mockRequest)
 

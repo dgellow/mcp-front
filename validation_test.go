@@ -15,23 +15,22 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "valid complete config",
 			config: &Config{
-				McpProxy: &MCPProxyConfigV2{
+				McpProxy: &MCPProxyConfig{
 					BaseURL: "https://example.com",
 					Addr:    ":8080",
 					Name:    "Test Proxy",
-					Version: "1.0.0",
 				},
 				OAuth: &OAuthConfig{
 					Issuer:             "https://example.com",
 					GCPProject:         "test-project",
 					AllowedDomains:     []string{"example.com"},
-					TokenTTL: Duration(time.Hour),
+					TokenTTL:           Duration(time.Hour),
 					Storage:            "memory",
 					GoogleClientID:     "test-client-id",
 					GoogleClientSecret: "test-secret",
 					GoogleRedirectURI:  "https://example.com/callback",
 				},
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {
 						Command: "echo",
 						Args:    []string{"hello"},
@@ -43,7 +42,7 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "missing mcpProxy",
 			config: &Config{
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {Command: "echo"},
 				},
 			},
@@ -53,13 +52,12 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid baseURL",
 			config: &Config{
-				McpProxy: &MCPProxyConfigV2{
+				McpProxy: &MCPProxyConfig{
 					BaseURL: "://invalid-url",
 					Addr:    ":8080",
 					Name:    "Test",
-					Version: "1.0.0",
 				},
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {Command: "echo"},
 				},
 			},
@@ -69,19 +67,18 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid OAuth issuer",
 			config: &Config{
-				McpProxy: &MCPProxyConfigV2{
+				McpProxy: &MCPProxyConfig{
 					BaseURL: "https://example.com",
 					Addr:    ":8080",
 					Name:    "Test",
-					Version: "1.0.0",
 				},
 				OAuth: &OAuthConfig{
 					Issuer:         "not-a-url",
 					GCPProject:     "test",
 					AllowedDomains: []string{"example.com"},
-					TokenTTL: Duration(time.Hour),
+					TokenTTL:       Duration(time.Hour),
 				},
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {Command: "echo"},
 				},
 			},
@@ -91,22 +88,21 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "empty allowed domains",
 			config: &Config{
-				McpProxy: &MCPProxyConfigV2{
+				McpProxy: &MCPProxyConfig{
 					BaseURL: "https://example.com",
 					Addr:    ":8080",
 					Name:    "Test",
-					Version: "1.0.0",
 				},
 				OAuth: &OAuthConfig{
 					Issuer:             "https://example.com",
 					GCPProject:         "test",
 					AllowedDomains:     []string{},
-					TokenTTL: Duration(time.Hour),
+					TokenTTL:           Duration(time.Hour),
 					GoogleClientID:     "test",
 					GoogleClientSecret: "test",
 					GoogleRedirectURI:  "https://example.com/callback",
 				},
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {Command: "echo"},
 				},
 			},
@@ -116,13 +112,12 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid server config - both command and URL",
 			config: &Config{
-				McpProxy: &MCPProxyConfigV2{
+				McpProxy: &MCPProxyConfig{
 					BaseURL: "https://example.com",
 					Addr:    ":8080",
 					Name:    "Test",
-					Version: "1.0.0",
 				},
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {
 						Command: "echo",
 						URL:     "https://example.com",
@@ -135,13 +130,12 @@ func TestValidateConfig(t *testing.T) {
 		{
 			name: "invalid server config - neither command nor URL",
 			config: &Config{
-				McpProxy: &MCPProxyConfigV2{
+				McpProxy: &MCPProxyConfig{
 					BaseURL: "https://example.com",
 					Addr:    ":8080",
 					Name:    "Test",
-					Version: "1.0.0",
 				},
-				McpServers: map[string]*MCPClientConfigV2{
+				McpServers: map[string]*MCPClientConfig{
 					"test": {},
 				},
 			},
@@ -153,7 +147,7 @@ func TestValidateConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateConfig(tt.config)
-			
+
 			if tt.expectErr {
 				if err == nil {
 					t.Error("Expected validation error but got none")
@@ -171,11 +165,10 @@ func TestValidateConfig(t *testing.T) {
 
 func TestSanitizeConfig(t *testing.T) {
 	config := &Config{
-		McpProxy: &MCPProxyConfigV2{
+		McpProxy: &MCPProxyConfig{
 			BaseURL: "  https://example.com/  ",
 			Addr:    "  :8080  ",
 			Name:    "  Test Proxy  ",
-			Version: "  1.0.0  ",
 		},
 		OAuth: &OAuthConfig{
 			Issuer:             "  https://example.com/  ",
@@ -185,7 +178,7 @@ func TestSanitizeConfig(t *testing.T) {
 			GoogleClientSecret: "  test-secret  ",
 			GoogleRedirectURI:  "  https://example.com/callback  ",
 		},
-		McpServers: map[string]*MCPClientConfigV2{
+		McpServers: map[string]*MCPClientConfig{
 			"test": {
 				Command: "  echo  ",
 				URL:     "  https://example.com  ",
@@ -255,8 +248,8 @@ func TestValidationErrors(t *testing.T) {
 
 // Helper function to check if a string contains a substring
 func containsSubstring(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || 
-		(len(s) > len(substr) && 
+	return len(s) >= len(substr) && (s == substr ||
+		(len(s) > len(substr) &&
 			(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
 				func() bool {
 					for i := 1; i < len(s)-len(substr)+1; i++ {

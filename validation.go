@@ -24,7 +24,7 @@ func (e ValidationErrors) Error() string {
 	if len(e) == 0 {
 		return "no validation errors"
 	}
-	
+
 	var messages []string
 	for _, err := range e {
 		messages = append(messages, err.Error())
@@ -72,7 +72,7 @@ func ValidateConfig(config *Config) error {
 }
 
 // validateMCPProxyConfig validates the MCP proxy configuration
-func validateMCPProxyConfig(config *MCPProxyConfigV2) error {
+func validateMCPProxyConfig(config *MCPProxyConfig) error {
 	var errors ValidationErrors
 
 	if config == nil {
@@ -100,11 +100,6 @@ func validateMCPProxyConfig(config *MCPProxyConfigV2) error {
 		errors = append(errors, ValidationError{Field: "mcpProxy.name", Message: "name is required"})
 	}
 
-	// Validate version
-	if config.Version == "" {
-		errors = append(errors, ValidationError{Field: "mcpProxy.version", Message: "version is required"})
-	}
-
 	if len(errors) > 0 {
 		return errors
 	}
@@ -119,10 +114,14 @@ func validateOAuthConfig(config *OAuthConfig) error {
 	if config.Issuer == "" {
 		errors = append(errors, ValidationError{Field: "oauth.issuer", Message: "issuer is required"})
 	} else {
-		if _, err := url.Parse(config.Issuer); err != nil {
+		parsedURL, err := url.Parse(config.Issuer)
+		if err != nil {
 			errors = append(errors, ValidationError{Field: "oauth.issuer", Message: fmt.Sprintf("invalid issuer URL: %v", err)})
 		} else if !strings.HasPrefix(config.Issuer, "https://") {
-			errors = append(errors, ValidationError{Field: "oauth.issuer", Message: "issuer must use HTTPS in production"})
+			// Allow HTTP for localhost development
+			if parsedURL.Hostname() != "localhost" && parsedURL.Hostname() != "127.0.0.1" {
+				errors = append(errors, ValidationError{Field: "oauth.issuer", Message: "issuer must use HTTPS in production"})
+			}
 		}
 	}
 
@@ -183,7 +182,7 @@ func validateOAuthConfig(config *OAuthConfig) error {
 }
 
 // validateMCPServersConfig validates the MCP servers configuration
-func validateMCPServersConfig(servers map[string]*MCPClientConfigV2) error {
+func validateMCPServersConfig(servers map[string]*MCPClientConfig) error {
 	var errors ValidationErrors
 
 	if len(servers) == 0 {
@@ -218,7 +217,7 @@ func validateMCPServersConfig(servers map[string]*MCPClientConfigV2) error {
 }
 
 // validateMCPClientConfig validates a single MCP client configuration
-func validateMCPClientConfig(name string, config *MCPClientConfigV2) error {
+func validateMCPClientConfig(name string, config *MCPClientConfig) error {
 	var errors ValidationErrors
 
 	if config == nil {
@@ -306,7 +305,6 @@ func SanitizeConfig(config *Config) {
 		config.McpProxy.BaseURL = strings.TrimSpace(config.McpProxy.BaseURL)
 		config.McpProxy.Addr = strings.TrimSpace(config.McpProxy.Addr)
 		config.McpProxy.Name = strings.TrimSpace(config.McpProxy.Name)
-		config.McpProxy.Version = strings.TrimSpace(config.McpProxy.Version)
 
 		// Ensure baseURL doesn't end with slash
 		config.McpProxy.BaseURL = strings.TrimSuffix(config.McpProxy.BaseURL, "/")
