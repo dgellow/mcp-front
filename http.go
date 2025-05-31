@@ -144,6 +144,9 @@ func startHTTPServer(config *Config) error {
 		httpMux.Handle("/oauth/callback", corsHandler(http.HandlerFunc(oauthServer.GoogleCallbackHandler)))
 		httpMux.Handle("/token", corsHandler(http.HandlerFunc(oauthServer.TokenHandler)))
 		httpMux.Handle("/register", corsHandler(http.HandlerFunc(oauthServer.RegisterHandler)))
+		
+		// Debug endpoint to see registered clients
+		httpMux.Handle("/debug/clients", corsHandler(http.HandlerFunc(oauthServer.DebugClientsHandler)))
 
 		logf("OAuth 2.1 server initialized with issuer: %s", config.OAuth.Issuer)
 	}

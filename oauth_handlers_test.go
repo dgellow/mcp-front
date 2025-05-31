@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -196,14 +195,10 @@ func TestAuthorizeHandler(t *testing.T) {
 	}
 
 	// First, create a client
-	metadata := map[string]interface{}{
-		"redirect_uris": []interface{}{"https://client.example.com/callback"},
-		"scope":         "read",
-	}
-	client, err := server.storage.CreateClient(context.Background(), metadata)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	redirectURIs := []string{"https://client.example.com/callback"}
+	scopes := []string{"read"}
+	clientID := "test-client-id"
+	client := server.storage.createClient(clientID, redirectURIs, scopes, server.config.Issuer)
 
 	tests := []struct {
 		name        string

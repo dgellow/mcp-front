@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,14 +41,14 @@ func BenchmarkStateGeneration(b *testing.B) {
 		GoogleRedirectURI:  "https://test.example.com/callback",
 	}
 
-	storage, err := NewGCPIAMStorage(config)
+	server, err := NewOAuthServer(config)
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		state := storage.GenerateState()
+		state := server.storage.generateState()
 		if len(state) == 0 {
 			b.Fatal("empty state generated")
 		}
@@ -230,14 +229,14 @@ func BenchmarkAuthorizeRequestStateStorage(b *testing.B) {
 		GoogleRedirectURI:  "https://test.example.com/callback",
 	}
 
-	storage, err := NewGCPIAMStorage(config)
+	server, err := NewOAuthServer(config)
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		state := storage.GenerateState()
+		state := server.storage.generateState()
 
 		// Just benchmark state generation and storage operations
 		// without complex fosite interface implementation
@@ -258,7 +257,7 @@ func BenchmarkClientCreation(b *testing.B) {
 		GoogleRedirectURI:  "https://test.example.com/callback",
 	}
 
-	storage, err := NewGCPIAMStorage(config)
+	server, err := NewOAuthServer(config)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -272,9 +271,14 @@ func BenchmarkClientCreation(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := storage.CreateClient(context.Background(), metadata)
+		redirectURIs, scopes, err := server.authService.parseClientRequest(metadata)
 		if err != nil {
 			b.Fatal(err)
+		}
+		clientID := server.storage.generateState()
+		client := server.storage.createClient(clientID, redirectURIs, scopes, server.config.Issuer)
+		if client == nil {
+			b.Fatal("failed to create client")
 		}
 	}
 }

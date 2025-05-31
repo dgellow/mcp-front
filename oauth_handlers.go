@@ -10,24 +10,28 @@ import (
 
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
-	"golang.org/x/oauth2"
 )
 
-// OAuthServer wraps fosite.OAuth2Provider with our custom storage
+// OAuthServer wraps fosite.OAuth2Provider with clean architecture
 type OAuthServer struct {
-	provider fosite.OAuth2Provider
-	storage  *GCPIAMStorage
-	config   *OAuthConfig
+	provider    fosite.OAuth2Provider
+	storage     *oauthStorage
+	authService *authService
+	config      *OAuthConfig
 }
 
-// NewOAuthServer creates a new OAuth 2.1 server with GCP IAM integration
+// NewOAuthServer creates a new OAuth 2.1 server with clean architecture
 func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
-	gcpStorage, err := NewGCPIAMStorage(config)
+	// Create storage (data layer)
+	storage := newOAuthStorage()
+
+	// Create auth service (business logic)
+	authService, err := newAuthService(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create storage: %w", err)
+		return nil, fmt.Errorf("failed to create auth service: %w", err)
 	}
 
-	// Generate RSA key for JWT signing
+	// Generate secret for JWT signing
 	secret := []byte("32-byte-long-secret-for-signing!!")
 
 	// Create fosite configuration
@@ -42,7 +46,7 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 	// Create OAuth 2.1 provider
 	provider := compose.Compose(
 		fositeConfig,
-		gcpStorage.MemoryStore,
+		storage.MemoryStore,
 		&compose.CommonStrategy{
 			CoreStrategy: compose.NewOAuth2HMACStrategy(fositeConfig, secret, nil),
 		},
@@ -53,9 +57,10 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 	)
 
 	return &OAuthServer{
-		provider: provider,
-		storage:  gcpStorage,
-		config:   config,
+		provider:    provider,
+		storage:     storage,
+		authService: authService,
+		config:      config,
 	}, nil
 }
 
@@ -105,6 +110,21 @@ func (s *OAuthServer) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 func (s *OAuthServer) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// Debug log the incoming request
+	logf("Authorization request: %s", r.URL.RawQuery)
+	clientID := r.URL.Query().Get("client_id")
+	scopes := r.URL.Query().Get("scope")
+	redirectURI := r.URL.Query().Get("redirect_uri")
+	logf("Client ID: %s, Requested scopes: %s", clientID, scopes)
+	logf("Requested redirect_uri: %s", redirectURI)
+	
+	// Debug: Check what redirect URIs the client actually has
+	if client, err := s.storage.GetClient(ctx, clientID); err == nil {
+		logf("Client registered redirect URIs: %v", client.GetRedirectURIs())
+	} else {
+		logf("Client not found: %v", err)
+	}
+
 	// Parse and validate the authorization request
 	ar, err := s.provider.NewAuthorizeRequest(ctx, r)
 	if err != nil {
@@ -114,14 +134,11 @@ func (s *OAuthServer) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate state for Google OAuth flow
-	state := s.storage.GenerateState()
-	s.storage.StoreAuthorizeRequest(state, ar)
+	state := s.storage.generateState()
+	s.storage.storeAuthorizeRequest(state, ar)
 
 	// Redirect to Google OAuth
-	googleURL := s.storage.googleOAuth.AuthCodeURL(state,
-		oauth2.AccessTypeOffline,
-		oauth2.ApprovalForce,
-	)
+	googleURL := s.authService.googleAuthURL(state)
 
 	http.Redirect(w, r, googleURL, http.StatusFound)
 }
@@ -155,7 +172,7 @@ func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Retrieve original authorize request
-	ar, found := s.storage.GetAuthorizeRequest(state)
+	ar, found := s.storage.getAuthorizeRequest(state)
 	if !found {
 		logf("Invalid or expired state: %s", state)
 		http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
@@ -166,17 +183,17 @@ func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Reque
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	token, err := s.storage.googleOAuth.Exchange(ctx, code)
+	token, err := s.authService.exchangeCodeForToken(ctx, code)
 	if err != nil {
 		logf("Google token exchange error: %v", err)
 		http.Error(w, "Failed to exchange authorization code", http.StatusInternalServerError)
 		return
 	}
 
-	// Validate Google token and get user info
-	userInfo, err := s.storage.ValidateGoogleToken(ctx, token)
+	// Validate user and get user info
+	userInfo, err := s.authService.validateUser(ctx, token)
 	if err != nil {
-		logf("Google token validation error: %v", err)
+		logf("User validation error: %v", err)
 		http.Error(w, "Access denied: user validation failed", http.StatusForbidden)
 		return
 	}
@@ -224,12 +241,12 @@ func (s *OAuthServer) TokenHandler(w http.ResponseWriter, r *http.Request) {
 
 // RegisterHandler handles dynamic client registration (RFC 7591)
 func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	logf("Register handler called: %s %s", r.Method, r.URL.Path)
+	
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	ctx := r.Context()
 
 	// Parse client metadata
 	var metadata map[string]interface{}
@@ -238,13 +255,17 @@ func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create client
-	client, err := s.storage.CreateClient(ctx, metadata)
+	// Parse client request
+	redirectURIs, scopes, err := s.authService.parseClientRequest(metadata)
 	if err != nil {
-		logf("Client creation error: %v", err)
-		http.Error(w, "Failed to create client", http.StatusInternalServerError)
+		logf("Client request parsing error: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Generate client ID and create client
+	clientID := s.storage.generateState() // Reuse secure random generation
+	client := s.storage.createClient(clientID, redirectURIs, scopes, s.config.Issuer)
 
 	// Return client registration response
 	response := map[string]interface{}{
@@ -259,6 +280,30 @@ func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(response)
+}
+
+// DebugClientsHandler shows all registered clients (for debugging)
+func (s *OAuthServer) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
+	clients := make(map[string]interface{})
+	
+	// Get all clients thread-safely
+	allClients := s.storage.GetAllClients()
+	for clientID, client := range allClients {
+		clients[clientID] = map[string]interface{}{
+			"redirect_uris":   client.GetRedirectURIs(),
+			"scopes":         client.GetScopes(),
+			"grant_types":    client.GetGrantTypes(),
+			"response_types": client.GetResponseTypes(),
+		}
+	}
+	
+	response := map[string]interface{}{
+		"total_clients": len(clients),
+		"clients":      clients,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
