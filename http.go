@@ -25,6 +25,31 @@ func chainMiddleware(h http.Handler, middlewares ...MiddlewareFunc) http.Handler
 	return h
 }
 
+func corsMiddleware() MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			}
+			
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cache-Control, mcp-protocol-version")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+			
+			// Handle preflight requests
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func newAuthMiddleware(tokens []string) MiddlewareFunc {
 	tokenSet := make(map[string]struct{}, len(tokens))
 	for _, token := range tokens {
@@ -112,12 +137,13 @@ func startHTTPServer(config *Config) error {
 			return err
 		}
 
-		// Register OAuth endpoints
-		httpMux.HandleFunc("/.well-known/oauth-authorization-server", oauthServer.WellKnownHandler)
-		httpMux.HandleFunc("/authorize", oauthServer.AuthorizeHandler)
-		httpMux.HandleFunc("/oauth/callback", oauthServer.GoogleCallbackHandler)
-		httpMux.HandleFunc("/token", oauthServer.TokenHandler)
-		httpMux.HandleFunc("/register", oauthServer.RegisterHandler)
+		// Register OAuth endpoints with CORS middleware
+		corsHandler := corsMiddleware()
+		httpMux.Handle("/.well-known/oauth-authorization-server", corsHandler(http.HandlerFunc(oauthServer.WellKnownHandler)))
+		httpMux.Handle("/authorize", corsHandler(http.HandlerFunc(oauthServer.AuthorizeHandler)))
+		httpMux.Handle("/oauth/callback", corsHandler(http.HandlerFunc(oauthServer.GoogleCallbackHandler)))
+		httpMux.Handle("/token", corsHandler(http.HandlerFunc(oauthServer.TokenHandler)))
+		httpMux.Handle("/register", corsHandler(http.HandlerFunc(oauthServer.RegisterHandler)))
 
 		logf("OAuth 2.1 server initialized with issuer: %s", config.OAuth.Issuer)
 	}
@@ -142,6 +168,9 @@ func startHTTPServer(config *Config) error {
 			logf("<%s> Connected", name)
 
 			middlewares := make([]MiddlewareFunc, 0)
+			
+			// Add CORS as the FIRST middleware to handle OPTIONS before auth
+			middlewares = append(middlewares, corsMiddleware())
 			middlewares = append(middlewares, recoverMiddleware(name))
 			if boolOrDefault(clientConfig.Options.LogEnabled, false) {
 				middlewares = append(middlewares, loggerMiddleware(name))

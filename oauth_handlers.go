@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ory/fosite"
@@ -252,7 +253,7 @@ func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		"redirect_uris":              client.GetRedirectURIs(),
 		"grant_types":                client.GetGrantTypes(),
 		"response_types":             client.GetResponseTypes(),
-		"scope":                      client.GetScopes(),
+		"scope":                      strings.Join(client.GetScopes(), " "), // Convert array to space-separated string
 		"token_endpoint_auth_method": "client_secret_basic",
 	}
 
