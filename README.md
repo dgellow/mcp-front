@@ -112,6 +112,21 @@ Docker:
 docker-compose up -d
 ```
 
+## Testing
+
+Run the integration test suite:
+```bash
+cd integration
+./run_tests.sh
+```
+
+This validates:
+- End-to-end MCP communication with stdio and SSE
+- OAuth 2.1 flow compatibility with Claude.ai
+- Dynamic client registration (RFC 7591)
+- CORS headers and security scenarios
+- Authentication bypass protection
+
 ## Claude.ai integration
 
 Add these MCP server URLs to Claude.ai:
@@ -153,3 +168,44 @@ For production, use a load balancer with HTTPS termination and mount Docker sock
 ## Security
 
 All authorization flows require PKCE. Users must belong to Google Workspace domains in the `allowed_domains` list. Tokens are scoped to MCP endpoints and expire based on `token_ttl` configuration.
+
+The system includes protection against:
+- Authentication bypass attempts
+- SQL injection (delegated to MCP servers)
+- HTTP header injection
+- Path traversal attacks
+- Malformed authentication headers
+
+## Architecture
+
+mcp-front is built as a single Go binary with clean separation of concerns:
+
+- `main.go` - Application entry point and configuration loading
+- `http.go` - HTTP server and CORS middleware  
+- `client.go` - MCP client implementation with stdio/SSE bridge
+- `oauth/` - OAuth 2.1 server implementation with fosite
+- `integration/` - Comprehensive test suite
+
+The OAuth implementation uses:
+- [ory/fosite](https://github.com/ory/fosite) for OAuth 2.1 compliance
+- Google OAuth for user authentication  
+- In-memory storage with thread-safe client management
+- Dynamic client registration following RFC 7591
+
+## Project Status
+
+✅ **Production Ready Features:**
+- OAuth 2.1 with PKCE support
+- Claude.ai compatibility (tested)
+- Dynamic client registration  
+- Thread-safe client storage
+- CORS headers for browser compatibility
+- Comprehensive integration tests
+- Security scenario validation
+- GCP domain validation
+
+🔧 **Development:**
+- See `CLAUDE.md` for detailed implementation guide
+- Integration tests cover all OAuth flows
+- Mock GCP server for testing
+- Automated CI-ready test runner
