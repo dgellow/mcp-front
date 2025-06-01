@@ -1,6 +1,11 @@
 package integration
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
@@ -133,4 +138,239 @@ func TestIntegration(t *testing.T) {
 	t.Log("   - MCP JSON-RPC request/response flow")
 	t.Log("   - Authentication with Bearer tokens")
 	t.Log("   - Database connectivity through proxy")
+}
+
+// TestOAuthIntegration validates OAuth 2.1 flow as used by Claude.ai
+func TestOAuthIntegration(t *testing.T) {
+	// Use OAuth config instead of simple tokens
+	configPath := "config/config.oauth-test.json"
+	
+	// Check if OAuth config exists, if not skip
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		t.Skip("OAuth test config not found, skipping OAuth tests")
+	}
+
+	// Start test database
+	t.Log("🔐 Starting OAuth integration test...")
+	dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
+	if err := dbCmd.Run(); err != nil {
+		t.Fatalf("Failed to start test database: %v", err)
+	}
+
+	// Ensure cleanup
+	t.Cleanup(func() {
+		t.Log("Cleaning up OAuth test environment...")
+		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
+		if err := downCmd.Run(); err != nil {
+			t.Logf("Warning: cleanup failed: %v", err)
+		}
+	})
+
+	// Wait for database
+	time.Sleep(10 * time.Second)
+
+	// Start mock GCP server for OAuth
+	t.Log("Starting mock Google OAuth server...")
+	mockGCP := NewMockGCPServer("9090")
+	if err := mockGCP.Start(); err != nil {
+		t.Fatalf("Failed to start mock GCP server: %v", err)
+	}
+	t.Cleanup(func() {
+		mockGCP.Stop()
+	})
+
+	// Start mcp-front with OAuth config
+	t.Log("Starting mcp-front with OAuth...")
+	mcpCmd := exec.Command("../mcp-front", "-config", configPath)
+	mcpCmd.Env = append(mcpCmd.Environ(),
+		"JWT_SECRET=test-jwt-secret-for-integration-testing",
+		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
+		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
+		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
+	)
+
+	if err := mcpCmd.Start(); err != nil {
+		t.Fatalf("Failed to start mcp-front: %v", err)
+	}
+
+	// Ensure mcp-front is stopped on cleanup
+	t.Cleanup(func() {
+		if mcpCmd.Process != nil {
+			mcpCmd.Process.Kill()
+			mcpCmd.Wait()
+		}
+	})
+
+	// Wait for server to be ready
+	time.Sleep(5 * time.Second)
+
+	// Test OAuth endpoints
+	t.Log("Testing OAuth discovery...")
+	testOAuthDiscovery(t)
+
+	t.Log("Testing dynamic client registration...")
+	clientID := testClientRegistration(t)
+
+	t.Log("Testing client storage...")
+	testClientStorage(t, clientID)
+
+	t.Log("Testing CORS headers...")
+	testCORSHeaders(t)
+
+	t.Log("Testing health endpoint...")
+	testHealthEndpoint(t)
+
+	// Summary
+	t.Log("🎉 OAuth integration test completed successfully!")
+	t.Log("✅ Validated OAuth 2.1 implementation:")
+	t.Log("   - OAuth metadata discovery endpoint")
+	t.Log("   - Dynamic client registration (RFC 7591)")
+	t.Log("   - Client storage persistence (bug fix verified)")
+	t.Log("   - CORS headers for Claude.ai compatibility")
+	t.Log("   - Scope format handling (string not array)")
+	t.Log("   - Health check endpoint")
+}
+
+// OAuth test helper functions
+
+func testOAuthDiscovery(t *testing.T) {
+	req, _ := http.NewRequest("GET", "http://localhost:8080/.well-known/oauth-authorization-server", nil)
+	req.Header.Set("Origin", "https://claude.ai")
+	
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to discover OAuth metadata: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("OAuth discovery failed: %d - %s", resp.StatusCode, string(body))
+	}
+
+	// Verify CORS headers
+	if cors := resp.Header.Get("Access-Control-Allow-Origin"); cors != "https://claude.ai" {
+		t.Errorf("Expected CORS origin https://claude.ai, got: %s", cors)
+	}
+
+	var metadata map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&metadata)
+	
+	// Verify required OAuth endpoints
+	required := []string{"issuer", "authorization_endpoint", "token_endpoint", "registration_endpoint"}
+	for _, field := range required {
+		if _, ok := metadata[field]; !ok {
+			t.Errorf("Missing required field: %s", field)
+		}
+	}
+}
+
+func testClientRegistration(t *testing.T) string {
+	registerReq := map[string]interface{}{
+		"redirect_uris": []string{"https://claude.ai/oauth/callback"},
+		"scope":         "read write", // Claude sends this as a string!
+	}
+	
+	body, _ := json.Marshal(registerReq)
+	req, _ := http.NewRequest("POST", "http://localhost:8080/register", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://claude.ai")
+	
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to register client: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Client registration failed: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var regResp map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&regResp)
+	
+	// Verify scope is returned as string (critical for Claude.ai!)
+	scope, ok := regResp["scope"].(string)
+	if !ok {
+		t.Fatalf("Scope must be a string for Claude.ai, got: %T", regResp["scope"])
+	}
+	if scope != "read write" {
+		t.Errorf("Expected scope 'read write', got: %s", scope)
+	}
+
+	return regResp["client_id"].(string)
+}
+
+func testClientStorage(t *testing.T, clientID string) {
+	req, _ := http.NewRequest("GET", "http://localhost:8080/debug/clients", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to check clients: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var debug map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&debug)
+	
+	totalClients := int(debug["total_clients"].(float64))
+	if totalClients == 0 {
+		t.Fatal("Client was not stored! This is the bug we fixed")
+	}
+
+	clients := debug["clients"].(map[string]interface{})
+	if _, exists := clients[clientID]; !exists {
+		t.Fatalf("Client %s not found in storage", clientID)
+	}
+}
+
+func testCORSHeaders(t *testing.T) {
+	// Test OPTIONS preflight
+	req, _ := http.NewRequest("OPTIONS", "http://localhost:8080/register", nil)
+	req.Header.Set("Origin", "https://claude.ai")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "content-type")
+	
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Preflight failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Preflight should return 200, got: %d", resp.StatusCode)
+	}
+
+	// Check all required CORS headers
+	expectedHeaders := map[string]string{
+		"Access-Control-Allow-Origin":  "https://claude.ai",
+		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+		"Access-Control-Allow-Headers": "Content-Type, Authorization, Cache-Control, mcp-protocol-version",
+	}
+
+	for header, expected := range expectedHeaders {
+		actual := resp.Header.Get(header)
+		if actual != expected {
+			t.Errorf("CORS header %s: expected '%s', got '%s'", header, expected, actual)
+		}
+	}
+}
+
+func testHealthEndpoint(t *testing.T) {
+	resp, err := http.Get("http://localhost:8080/health")
+	if err != nil {
+		t.Fatalf("Health check failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Health check should return 200, got: %d", resp.StatusCode)
+	}
+
+	var health map[string]string
+	json.NewDecoder(resp.Body).Decode(&health)
+	
+	if health["status"] != "ok" {
+		t.Errorf("Health status should be 'ok', got: %s", health["status"])
+	}
 }

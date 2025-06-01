@@ -384,3 +384,10 @@ gcloud compute instance-groups managed create mcp-proxy-group \
 - Zero zombie processes after 24h operation
 - Successful authentication for all @company.com users
 - Proper timeout handling for long-running commands
+
+## Important Development Rules
+
+- NEVER delete files as the first step when making changes. First implement the new solution, verify it works, THEN clean up old files if needed.
+- ALWAYS understand the existing code structure and context before making changes. Read the implementation and tests thoroughly.
+- When adding tests, integrate them into the existing test framework rather than creating separate test files and runners.
+- Think like an experienced engineer: understand the use cases, read the docs, plan properly, then execute.

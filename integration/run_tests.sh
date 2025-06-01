@@ -89,6 +89,10 @@ if go test -v -timeout 15m; then
     echo "  ✅ Security scenarios"
     echo "  ✅ Authentication bypass protection"
     echo "  ✅ Failure handling"
+    echo "  ✅ OAuth 2.1 flow (Claude.ai compatibility)"
+    echo "  ✅ Dynamic client registration"
+    echo "  ✅ CORS headers and preflight"
+    echo "  ✅ Health check endpoint"
     echo ""
     exit 0
 else
