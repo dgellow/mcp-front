@@ -1,9 +1,11 @@
-package main
+package oauth
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -12,18 +14,29 @@ import (
 	"github.com/ory/fosite/compose"
 )
 
-// OAuthServer wraps fosite.OAuth2Provider with clean architecture
-type OAuthServer struct {
+// Server wraps fosite.OAuth2Provider with clean architecture
+type Server struct {
 	provider    fosite.OAuth2Provider
-	storage     *oauthStorage
+	storage     *Storage
 	authService *authService
-	config      *OAuthConfig
+	config      Config
 }
 
-// NewOAuthServer creates a new OAuth 2.1 server with clean architecture
-func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
+// Config holds OAuth server configuration
+type Config struct {
+	Issuer             string
+	TokenTTL           time.Duration
+	AllowedDomains     []string
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURI  string
+	JWTSecret          string // Should be provided via environment variable
+}
+
+// NewServer creates a new OAuth 2.1 server
+func NewServer(config Config) (*Server, error) {
 	// Create storage (data layer)
-	storage := newOAuthStorage()
+	storage := newStorage()
 
 	// Create auth service (business logic)
 	authService, err := newAuthService(config)
@@ -31,16 +44,29 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 		return nil, fmt.Errorf("failed to create auth service: %w", err)
 	}
 
-	// Generate secret for JWT signing
-	secret := []byte("32-byte-long-secret-for-signing!!")
+	// Use provided JWT secret or generate a secure one
+	var secret []byte
+	if config.JWTSecret != "" {
+		secret = []byte(config.JWTSecret)
+	} else {
+		// Generate a cryptographically secure random secret
+		secret = make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
+		}
+		logf("WARNING: Generated random JWT secret. Set JWT_SECRET env var for persistent tokens across restarts")
+	}
 
 	// Create fosite configuration
 	fositeConfig := &compose.Config{
-		AccessTokenLifespan:      config.TokenTTL.ToDuration(),
-		RefreshTokenLifespan:     24 * time.Hour,
-		AuthorizeCodeLifespan:    10 * time.Minute,
-		ScopeStrategy:            fosite.HierarchicScopeStrategy,
-		AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
+		AccessTokenLifespan:            config.TokenTTL,
+		RefreshTokenLifespan:           24 * time.Hour,
+		AuthorizeCodeLifespan:          10 * time.Minute,
+		TokenURL:                       config.Issuer + "/token",
+		ScopeStrategy:                  fosite.HierarchicScopeStrategy,
+		AudienceMatchingStrategy:       fosite.DefaultAudienceMatchingStrategy,
+		EnforcePKCEForPublicClients:    true,
+		EnablePKCEPlainChallengeMethod: false,
 	}
 
 	// Create OAuth 2.1 provider
@@ -56,7 +82,7 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 		compose.OAuth2RefreshTokenGrantFactory,
 	)
 
-	return &OAuthServer{
+	return &Server{
 		provider:    provider,
 		storage:     storage,
 		authService: authService,
@@ -64,50 +90,40 @@ func NewOAuthServer(config *OAuthConfig) (*OAuthServer, error) {
 	}, nil
 }
 
-// ServerMetadata represents OAuth 2.1 authorization server metadata
-type ServerMetadata struct {
-	Issuer                            string   `json:"issuer"`
-	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
-	TokenEndpoint                     string   `json:"token_endpoint"`
-	RegistrationEndpoint              string   `json:"registration_endpoint"`
-	ResponseTypesSupported            []string `json:"response_types_supported"`
-	GrantTypesSupported               []string `json:"grant_types_supported"`
-	SubjectTypesSupported             []string `json:"subject_types_supported"`
-	ScopesSupported                   []string `json:"scopes_supported"`
-	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
-	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
-	PKCERequired                      bool     `json:"pkce_required"`
-}
-
-// WellKnownHandler serves OAuth 2.1 authorization server metadata
-func (s *OAuthServer) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
-	metadata := ServerMetadata{
-		Issuer:                 s.config.Issuer,
-		AuthorizationEndpoint:  s.config.Issuer + "/authorize",
-		TokenEndpoint:          s.config.Issuer + "/token",
-		RegistrationEndpoint:   s.config.Issuer + "/register",
-		ResponseTypesSupported: []string{"code"},
-		GrantTypesSupported: []string{
+// WellKnownHandler serves OAuth 2.0 Authorization Server Metadata (RFC 8414)
+func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
+	metadata := map[string]interface{}{
+		"issuer":                 s.config.Issuer,
+		"authorization_endpoint": s.config.Issuer + "/authorize",
+		"token_endpoint":         s.config.Issuer + "/token",
+		"registration_endpoint":  s.config.Issuer + "/register",
+		"scopes_supported": []string{
+			"read",
+			"write",
+		},
+		"response_types_supported": []string{
+			"code",
+		},
+		"grant_types_supported": []string{
 			"authorization_code",
 			"refresh_token",
 		},
-		SubjectTypesSupported: []string{"public"},
-		ScopesSupported:       []string{"read", "write"},
-		TokenEndpointAuthMethodsSupported: []string{
-			"client_secret_basic",
-			"client_secret_post",
-			"none", // For public clients with PKCE
+		"code_challenge_methods_supported": []string{
+			"S256",
 		},
-		CodeChallengeMethodsSupported: []string{"S256"},
-		PKCERequired:                  true,
+		"token_endpoint_auth_methods_supported": []string{
+			"none",
+		},
+		"revocation_endpoint": s.config.Issuer + "/revoke",
+		"introspection_endpoint": s.config.Issuer + "/introspect",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(metadata)
 }
 
-// AuthorizeHandler handles OAuth 2.1 authorization requests
-func (s *OAuthServer) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
+// AuthorizeHandler handles OAuth 2.0 authorization requests
+func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Debug log the incoming request
@@ -144,30 +160,24 @@ func (s *OAuthServer) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // GoogleCallbackHandler handles the callback from Google OAuth
-func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Check for error from Google
-	if errorCode := r.URL.Query().Get("error"); errorCode != "" {
-		errorDesc := r.URL.Query().Get("error_description")
-		logf("Google OAuth error: %s - %s", errorCode, errorDesc)
-		http.Error(w, fmt.Sprintf("OAuth error: %s", errorDesc), http.StatusBadRequest)
-		return
-	}
-
-	// Extract state and code from callback
+	// Get state and code from query params
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-
-	if state == "" {
-		logf("Missing state parameter in OAuth callback")
-		http.Error(w, "Missing state parameter", http.StatusBadRequest)
+	
+	// Check for errors from Google
+	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
+		errDesc := r.URL.Query().Get("error_description")
+		logf("Google OAuth error: %s - %s", errMsg, errDesc)
+		http.Error(w, fmt.Sprintf("Authentication failed: %s", errMsg), http.StatusBadRequest)
 		return
 	}
 
-	if code == "" {
-		logf("Missing code parameter in OAuth callback")
-		http.Error(w, "Missing authorization code", http.StatusBadRequest)
+	if state == "" || code == "" {
+		logf("Missing state or code in callback")
+		http.Error(w, "Invalid callback parameters", http.StatusBadRequest)
 		return
 	}
 
@@ -179,7 +189,7 @@ func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Exchange code for Google token with timeout
+	// Exchange code for token with timeout
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -199,26 +209,26 @@ func (s *OAuthServer) GoogleCallbackHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Create session with user info
-	session := NewCustomSession(userInfo)
+	session := NewSession(userInfo)
 
-	// Complete OAuth 2.1 authorization flow
+	// Complete the authorization request
 	response, err := s.provider.NewAuthorizeResponse(ctx, ar, session)
 	if err != nil {
-		logf("Authorization response error: %v", err)
+		logf("Failed to create authorize response: %v", err)
 		s.provider.WriteAuthorizeError(w, ar, err)
 		return
 	}
 
-	logf("Successful OAuth flow for user: %s", userInfo.Email)
+	// Write the response (redirects back to client)
 	s.provider.WriteAuthorizeResponse(w, ar, response)
 }
 
-// TokenHandler handles OAuth 2.1 token requests
-func (s *OAuthServer) TokenHandler(w http.ResponseWriter, r *http.Request) {
+// TokenHandler handles OAuth 2.0 token requests
+func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Create access token session
-	session := &CustomSession{DefaultSession: &fosite.DefaultSession{}}
+	// Create session for the token
+	session := &fosite.DefaultSession{}
 
 	// Handle token request
 	accessRequest, err := s.provider.NewAccessRequest(ctx, r, session)
@@ -228,7 +238,7 @@ func (s *OAuthServer) TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create access response
+	// Generate tokens
 	response, err := s.provider.NewAccessResponse(ctx, accessRequest)
 	if err != nil {
 		logf("Access response error: %v", err)
@@ -236,11 +246,12 @@ func (s *OAuthServer) TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Write token response
 	s.provider.WriteAccessResponse(w, accessRequest, response)
 }
 
 // RegisterHandler handles dynamic client registration (RFC 7591)
-func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	logf("Register handler called: %s %s", r.Method, r.URL.Path)
 	
 	if r.Method != http.MethodPost {
@@ -251,7 +262,7 @@ func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse client metadata
 	var metadata map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
@@ -270,21 +281,20 @@ func (s *OAuthServer) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// Return client registration response
 	response := map[string]interface{}{
 		"client_id":                  client.GetID(),
-		"client_secret":              string(client.Secret),
+		"client_id_issued_at":        time.Now().Unix(),
 		"redirect_uris":              client.GetRedirectURIs(),
 		"grant_types":                client.GetGrantTypes(),
 		"response_types":             client.GetResponseTypes(),
-		"scope":                      strings.Join(client.GetScopes(), " "), // Convert array to space-separated string
-		"token_endpoint_auth_method": "client_secret_basic",
+		"scope":                      strings.Join(client.GetScopes(), " "), // Space-separated string
+		"token_endpoint_auth_method": "none",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
 }
 
 // DebugClientsHandler shows all registered clients (for debugging)
-func (s *OAuthServer) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 	clients := make(map[string]interface{})
 	
 	// Get all clients thread-safely
@@ -308,26 +318,39 @@ func (s *OAuthServer) DebugClientsHandler(w http.ResponseWriter, r *http.Request
 }
 
 // ValidateTokenMiddleware creates middleware that validates OAuth tokens
-func (s *OAuthServer) ValidateTokenMiddleware() func(http.Handler) http.Handler {
+func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
 			// Extract token from Authorization header
-			_, ar, err := s.provider.IntrospectToken(ctx, fosite.AccessTokenFromRequest(r), fosite.AccessToken, &CustomSession{}, "")
-			if err != nil {
-				logf("Token validation error: %v", err)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			auth := r.Header.Get("Authorization")
+			if auth == "" {
+				http.Error(w, "Missing authorization header", http.StatusUnauthorized)
 				return
 			}
 
-			// Add user info to context if available
-			if session, ok := ar.GetSession().(*CustomSession); ok && session.UserInfo != nil {
-				ctx = context.WithValue(ctx, "user_info", session.UserInfo)
-				r = r.WithContext(ctx)
+			parts := strings.Split(auth, " ")
+			if len(parts) != 2 || parts[0] != "Bearer" {
+				http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
+				return
+			}
+
+			token := parts[1]
+
+			// Validate token
+			_, _, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, &fosite.DefaultSession{})
+			if err != nil {
+				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+				return
 			}
 
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// logf is a simple logging helper
+func logf(format string, args ...interface{}) {
+	log.Printf("[%s] %s", time.Now().Format("2006-01-02 15:04:05.000-07:00"), fmt.Sprintf(format, args...))
 }

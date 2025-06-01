@@ -1,4 +1,4 @@
-package main
+package oauth
 
 import (
 	"context"
@@ -10,35 +10,35 @@ import (
 	"github.com/ory/fosite/storage"
 )
 
-// oauthStorage is a simple storage layer - only stores and retrieves data
+// Storage is a simple storage layer - only stores and retrieves data
 // It extends the MemoryStore with thread-safe client management
-type oauthStorage struct {
+type Storage struct {
 	*storage.MemoryStore
-	stateCache   sync.Map // map[string]fosite.AuthorizeRequester
+	stateCache   sync.Map     // map[string]fosite.AuthorizeRequester
 	clientsMutex sync.RWMutex // For thread-safe client access
 }
 
-// newOAuthStorage creates a new storage instance
-func newOAuthStorage() *oauthStorage {
-	return &oauthStorage{
+// newStorage creates a new storage instance
+func newStorage() *Storage {
+	return &Storage{
 		MemoryStore: storage.NewMemoryStore(),
 	}
 }
 
 // generateState creates a cryptographically secure state parameter
-func (s *oauthStorage) generateState() string {
+func (s *Storage) generateState() string {
 	b := make([]byte, 32)
 	rand.Read(b)
 	return base64.URLEncoding.EncodeToString(b)
 }
 
 // storeAuthorizeRequest stores an authorize request with state
-func (s *oauthStorage) storeAuthorizeRequest(state string, req fosite.AuthorizeRequester) {
+func (s *Storage) storeAuthorizeRequest(state string, req fosite.AuthorizeRequester) {
 	s.stateCache.Store(state, req)
 }
 
 // getAuthorizeRequest retrieves an authorize request by state (one-time use)
-func (s *oauthStorage) getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool) {
+func (s *Storage) getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool) {
 	if req, ok := s.stateCache.Load(state); ok {
 		s.stateCache.Delete(state) // One-time use
 		return req.(fosite.AuthorizeRequester), true
@@ -47,7 +47,7 @@ func (s *oauthStorage) getAuthorizeRequest(state string) (fosite.AuthorizeReques
 }
 
 // GetClient overrides the MemoryStore's GetClient to use our mutex
-func (s *oauthStorage) GetClient(_ context.Context, id string) (fosite.Client, error) {
+func (s *Storage) GetClient(_ context.Context, id string) (fosite.Client, error) {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 
@@ -59,7 +59,7 @@ func (s *oauthStorage) GetClient(_ context.Context, id string) (fosite.Client, e
 }
 
 // createClient creates a dynamic client and stores it thread-safely
-func (s *oauthStorage) createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
+func (s *Storage) createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
 	secret := make([]byte, 32)
 	rand.Read(secret)
 
@@ -85,7 +85,7 @@ func (s *oauthStorage) createClient(clientID string, redirectURIs []string, scop
 }
 
 // GetAllClients returns all clients thread-safely (for debugging)
-func (s *oauthStorage) GetAllClients() map[string]fosite.Client {
+func (s *Storage) GetAllClients() map[string]fosite.Client {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 

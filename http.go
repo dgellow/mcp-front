@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dgellow/mcp-front/oauth"
 	"github.com/mark3labs/mcp-go/mcp"
 	"golang.org/x/sync/errgroup"
 )
@@ -130,9 +131,18 @@ func startHTTPServer(config *Config) error {
 	}
 
 	// Initialize OAuth server if OAuth config is provided
-	var oauthServer *OAuthServer
+	var oauthServer *oauth.Server
 	if config.OAuth != nil {
-		oauthServer, err = NewOAuthServer(config.OAuth)
+		oauthConfig := oauth.Config{
+			Issuer:             config.OAuth.Issuer,
+			TokenTTL:           time.Duration(config.OAuth.TokenTTL),
+			AllowedDomains:     config.OAuth.AllowedDomains,
+			GoogleClientID:     config.OAuth.GoogleClientID,
+			GoogleClientSecret: config.OAuth.GoogleClientSecret,
+			GoogleRedirectURI:  config.OAuth.GoogleRedirectURI,
+			JWTSecret:          os.Getenv("JWT_SECRET"), // Read from environment
+		}
+		oauthServer, err = oauth.NewServer(oauthConfig)
 		if err != nil {
 			return err
 		}
@@ -150,6 +160,13 @@ func startHTTPServer(config *Config) error {
 
 		logf("OAuth 2.1 server initialized with issuer: %s", config.OAuth.Issuer)
 	}
+
+	// Add health check endpoint
+	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok","service":"mcp-proxy"}`))
+	})
 
 	for name, clientConfig := range config.McpServers {
 		mcpClient, err := newMCPClient(name, clientConfig)
