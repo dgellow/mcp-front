@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Test database for integration tests
+  test-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+    ports:
+      - "15432:5432"
+    volumes:
+      - ./integration/fixtures/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # MCP-front service for integration tests
+  mcp-front:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # OAuth Configuration
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-test-client-id}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-test-client-secret}
+      - JWT_SECRET=${JWT_SECRET:-test-jwt-secret-32-bytes-long!!!!}
+      
+      # Test Database URL
+      - DATABASE_URL=postgresql://testuser:testpass@test-postgres:5432/testdb
+      
+      # Test tokens
+      - NOTION_TOKEN=${NOTION_TOKEN:-test-notion-token}
+      - EXTERNAL_API_TOKEN=${EXTERNAL_API_TOKEN:-test-api-token}
+      
+      # GCP Configuration (test values)
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-test-project}
+    volumes:
+      # Mount Docker socket for stdio-based MCP servers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+      # Mount test config
+      - ./integration/config/config.test.json:/root/config.json:ro
+      
+      # Mount repositories for git MCP server
+      - ./repos:/repos:ro
+    
+    networks:
+      - test-network
+    
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  test-network:
+    driver: bridge

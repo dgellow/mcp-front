@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,9 +19,60 @@ func init() {
 	log.SetPrefix("")
 }
 
+// Log levels for different types of output
+const (
+	LogLevelError = 0
+	LogLevelWarn  = 1
+	LogLevelInfo  = 2
+	LogLevelDebug = 3
+	LogLevelTrace = 4
+)
+
+var logLevel = LogLevelInfo // Default log level
+
+func init() {
+	// Check LOG_LEVEL environment variable
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		switch strings.ToUpper(level) {
+		case "ERROR":
+			logLevel = LogLevelError
+		case "WARN", "WARNING":
+			logLevel = LogLevelWarn
+		case "INFO":
+			logLevel = LogLevelInfo
+		case "DEBUG":
+			logLevel = LogLevelDebug
+		case "TRACE":
+			logLevel = LogLevelTrace
+		}
+	}
+}
+
 func logf(format string, args ...interface{}) {
-	timestamp := time.Now().Format("2006-01-02 15:04:05.000-07:00")
-	log.Printf("[%s] "+format, append([]interface{}{timestamp}, args...)...)
+	logAtLevel(LogLevelInfo, format, args...)
+}
+
+func logError(format string, args ...interface{}) {
+	logAtLevel(LogLevelError, "[ERROR] "+format, args...)
+}
+
+func logWarn(format string, args ...interface{}) {
+	logAtLevel(LogLevelWarn, "[WARN] "+format, args...)
+}
+
+func logDebug(format string, args ...interface{}) {
+	logAtLevel(LogLevelDebug, "[DEBUG] "+format, args...)
+}
+
+func logTrace(format string, args ...interface{}) {
+	logAtLevel(LogLevelTrace, "[TRACE] "+format, args...)
+}
+
+func logAtLevel(level int, format string, args ...interface{}) {
+	if level <= logLevel {
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000-07:00")
+		log.Printf("[%s] "+format, append([]interface{}{timestamp}, args...)...)
+	}
 }
 
 func generateDefaultConfig(path string) error {

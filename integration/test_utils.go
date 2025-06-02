@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -268,6 +269,17 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 	// Start mcp-front
 	t.Log("🚀 Starting mcp-front...")
 	env.mcpCmd = exec.Command("../mcp-front", "-config", "config/config.test.json")
+	
+	// Capture stderr to log file if MCP_LOG_FILE is set
+	if logFile := os.Getenv("MCP_LOG_FILE"); logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			env.mcpCmd.Stderr = f
+			env.mcpCmd.Stdout = f
+			t.Cleanup(func() { f.Close() })
+		}
+	}
+	
 	if err := env.mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start mcp-front: %v", err)
 	}

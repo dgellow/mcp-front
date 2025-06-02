@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
@@ -51,6 +52,16 @@ func TestIntegration(t *testing.T) {
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
 	)
+	
+	// Capture output to log file if MCP_LOG_FILE is set
+	if logFile := os.Getenv("MCP_LOG_FILE"); logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			mcpCmd.Stderr = f
+			mcpCmd.Stdout = f
+			t.Cleanup(func() { f.Close() })
+		}
+	}
 
 	if err := mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start mcp-front: %v", err)
@@ -189,9 +200,33 @@ func TestOAuthIntegration(t *testing.T) {
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
 	)
-
+	
+	// Capture stderr to see startup errors
+	stderrPipe, _ := mcpCmd.StderrPipe()
+	
 	if err := mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start mcp-front: %v", err)
+	}
+
+	// Read stderr in background
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			t.Logf("mcp-front stderr: %s", scanner.Text())
+		}
+	}()
+
+	// Give it a moment to start or fail
+	time.Sleep(2 * time.Second)
+	
+	// Check if server is actually running by trying to connect
+	resp, err := http.Get("http://localhost:8080/health")
+	if err != nil {
+		t.Logf("Health check failed: %v", err)
+		t.Logf("mcp-front might have crashed on startup")
+	} else {
+		resp.Body.Close()
+		t.Log("mcp-front health check passed")
 	}
 
 	// Ensure mcp-front is stopped on cleanup
@@ -203,6 +238,7 @@ func TestOAuthIntegration(t *testing.T) {
 	})
 
 	// Wait for server to be ready (matching regular integration test)
+	t.Log("Waiting for mcp-front to be ready...")
 	time.Sleep(15 * time.Second)
 
 	// Test OAuth endpoints

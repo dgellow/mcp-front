@@ -79,8 +79,12 @@ echo ""
 echo -e "${YELLOW}🧪 Running integration tests...${NC}"
 echo ""
 
+# Create a log file for mcp-front output
+MCP_LOG_FILE="/tmp/mcp-front-test.log"
+export MCP_LOG_FILE
+
 # Run tests with timeout and verbose output
-if go test -v -timeout 15m; then
+if go test -v -timeout 15m 2>&1 | tee /tmp/test-output.log; then
     echo ""
     echo -e "${GREEN}🎉 All integration tests passed!${NC}"
     echo ""
@@ -102,6 +106,15 @@ else
     echo -e "${YELLOW}🔍 Docker Compose logs:${NC}"
     echo "----------------------------------------"
     docker-compose -f config/docker-compose.test.yml logs 2>/dev/null || echo "No Docker logs available"
+    echo "----------------------------------------"
+    echo ""
+    echo -e "${YELLOW}🔍 mcp-front logs:${NC}"
+    echo "----------------------------------------"
+    if [ -f "$MCP_LOG_FILE" ]; then
+        tail -50 "$MCP_LOG_FILE" 2>/dev/null || echo "No mcp-front logs available"
+    else
+        echo "No mcp-front log file found"
+    fi
     echo "----------------------------------------"
     echo ""
     exit 1
