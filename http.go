@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -111,7 +112,7 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 
 func startHTTPServer(config *Config) error {
 
-	baseURL, err := url.Parse(config.McpProxy.BaseURL)
+	baseURL, err := url.Parse(fmt.Sprintf("%v", config.Proxy.BaseURL))
 	if err != nil {
 		return err
 	}
@@ -122,25 +123,30 @@ func startHTTPServer(config *Config) error {
 	var errorGroup errgroup.Group
 	httpMux := http.NewServeMux()
 	httpServer := &http.Server{
-		Addr:    config.McpProxy.Addr,
+		Addr:    fmt.Sprintf("%v", config.Proxy.Addr),
 		Handler: httpMux,
 	}
 	info := mcp.Implementation{
-		Name:    config.McpProxy.Name,
+		Name:    config.Proxy.Name,
 		Version: BuildVersion,
 	}
 
 	// Initialize OAuth server if OAuth config is provided
 	var oauthServer *oauth.Server
-	if config.OAuth != nil {
+	if oauthAuth, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
+		ttl, err := time.ParseDuration(oauthAuth.TokenTTL)
+		if err != nil {
+			return fmt.Errorf("parsing OAuth token TTL: %w", err)
+		}
+
 		oauthConfig := oauth.Config{
-			Issuer:             config.OAuth.Issuer,
-			TokenTTL:           time.Duration(config.OAuth.TokenTTL),
-			AllowedDomains:     config.OAuth.AllowedDomains,
-			GoogleClientID:     config.OAuth.GoogleClientID,
-			GoogleClientSecret: config.OAuth.GoogleClientSecret,
-			GoogleRedirectURI:  config.OAuth.GoogleRedirectURI,
-			JWTSecret:          os.Getenv("JWT_SECRET"), // Read from environment
+			Issuer:             fmt.Sprintf("%v", oauthAuth.Issuer),
+			TokenTTL:           ttl,
+			AllowedDomains:     oauthAuth.AllowedDomains,
+			GoogleClientID:     fmt.Sprintf("%v", oauthAuth.GoogleClientID),
+			GoogleClientSecret: fmt.Sprintf("%v", oauthAuth.GoogleClientSecret),
+			GoogleRedirectURI:  fmt.Sprintf("%v", oauthAuth.GoogleRedirectURI),
+			JWTSecret:          fmt.Sprintf("%v", oauthAuth.JWTSecret),
 		}
 		oauthServer, err = oauth.NewServer(oauthConfig)
 		if err != nil {
@@ -158,23 +164,23 @@ func startHTTPServer(config *Config) error {
 		// Debug endpoint to see registered clients
 		httpMux.Handle("/debug/clients", corsHandler(http.HandlerFunc(oauthServer.DebugClientsHandler)))
 
-		logf("OAuth 2.1 server initialized with issuer: %s", config.OAuth.Issuer)
+		logf("OAuth 2.1 server initialized with issuer: %s", oauthAuth.Issuer)
 	}
 
 	// Add health check endpoint
 	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"mcp-proxy"}`))
+		w.Write([]byte(`{"status":"ok","service":"mcp-front"}`))
 	})
 
-	for name, clientConfig := range config.McpServers {
+	for name, clientConfig := range config.MCPServers {
 		mcpClient, err := newMCPClient(name, clientConfig)
 		if err != nil {
 			logf("<%s> Failed to create client: %v", name, err)
 			os.Exit(1)
 		}
-		server := newMCPServer(name, BuildVersion, config.McpProxy.BaseURL, clientConfig)
+		server := newMCPServer(name, BuildVersion, fmt.Sprintf("%v", config.Proxy.BaseURL), clientConfig)
 		errorGroup.Go(func() error {
 			logf("<%s> Connecting", name)
 			addErr := mcpClient.addToMCPServer(ctx, info, server.mcpServer)
@@ -199,7 +205,7 @@ func startHTTPServer(config *Config) error {
 			// Use OAuth authentication if configured, otherwise fall back to simple tokens
 			if oauthServer != nil {
 				middlewares = append(middlewares, oauthServer.ValidateTokenMiddleware())
-			} else if len(clientConfig.Options.AuthTokens) > 0 {
+			} else if clientConfig.Options != nil && len(clientConfig.Options.AuthTokens) > 0 {
 				middlewares = append(middlewares, newAuthMiddleware(clientConfig.Options.AuthTokens))
 			}
 			mcpRoute := path.Join(baseURL.Path, name)
@@ -229,7 +235,7 @@ func startHTTPServer(config *Config) error {
 
 	go func() {
 		logf("Starting SSE server")
-		logf("SSE server listening on %s", config.McpProxy.Addr)
+		logf("SSE server listening on %s", config.Proxy.Addr)
 		hErr := httpServer.ListenAndServe()
 		if hErr != nil && !errors.Is(hErr, http.ErrServerClosed) {
 			logf("Failed to start server: %v", hErr)

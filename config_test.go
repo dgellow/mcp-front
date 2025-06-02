@@ -1,248 +1,157 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
-	"time"
 )
 
-func TestOAuthConfigParsing(t *testing.T) {
-	configJSON := `{
-		"mcpProxy": {
-			"baseURL": "https://test.example.com",
-			"addr": ":8080",
-			"name": "Test Proxy",
-			"version": "1.0.0"
-		},
-		"oauth": {
-			"issuer": "https://test.example.com",
-			"gcp_project": "test-project",
-			"allowed_domains": ["example.com", "test.com"],
-			"token_ttl": "1h",
-			"storage": "memory",
-			"google_client_id": "test-client-id",
-			"google_client_secret": "test-client-secret",
-			"google_redirect_uri": "https://test.example.com/callback"
-		},
-		"mcpServers": {
-			"test": {
-				"command": "echo",
-				"args": ["hello"]
-			}
-		}
-	}`
-
-	// Create temporary config file
-	tmpFile, err := os.CreateTemp("", "config-*.json")
+func TestLoadBearerTokenConfig(t *testing.T) {
+	config, err := load("config-token.example.json")
 	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write([]byte(configJSON)); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-	tmpFile.Close()
-
-	// Load and test config
-	config, err := load(tmpFile.Name())
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
+		t.Fatalf("Failed to load bearer token config: %v", err)
 	}
 
-	// Test MCP Proxy config
-	if config.McpProxy.BaseURL != "https://test.example.com" {
-		t.Errorf("Expected baseURL 'https://test.example.com', got '%s'", config.McpProxy.BaseURL)
+	if config.Proxy.Name != "mcp-front-dev" {
+		t.Errorf("Expected name mcp-front-dev, got %s", config.Proxy.Name)
 	}
 
-	// Test OAuth config
-	if config.OAuth == nil {
-		t.Fatal("OAuth config should not be nil")
+	// Check that bearer tokens were distributed to servers
+	postgresTokens := config.MCPServers["postgres"].Options.AuthTokens
+	if len(postgresTokens) != 2 {
+		t.Errorf("Expected 2 postgres tokens, got %d", len(postgresTokens))
+	}
+	if postgresTokens[0] != "dev-token-postgres-1" {
+		t.Errorf("Expected first postgres token to be dev-token-postgres-1, got %s", postgresTokens[0])
 	}
 
-	if config.OAuth.Issuer != "https://test.example.com" {
-		t.Errorf("Expected issuer 'https://test.example.com', got '%s'", config.OAuth.Issuer)
-	}
-
-	if config.OAuth.GCPProject != "test-project" {
-		t.Errorf("Expected GCP project 'test-project', got '%s'", config.OAuth.GCPProject)
-	}
-
-	expectedDomains := []string{"example.com", "test.com"}
-	if len(config.OAuth.AllowedDomains) != len(expectedDomains) {
-		t.Errorf("Expected %d allowed domains, got %d", len(expectedDomains), len(config.OAuth.AllowedDomains))
-	}
-
-	for i, domain := range expectedDomains {
-		if config.OAuth.AllowedDomains[i] != domain {
-			t.Errorf("Expected domain '%s' at index %d, got '%s'", domain, i, config.OAuth.AllowedDomains[i])
-		}
-	}
-
-	if config.OAuth.TokenTTL.ToDuration() != time.Hour {
-		t.Errorf("Expected token TTL 1h, got %v", config.OAuth.TokenTTL)
-	}
-
-	if config.OAuth.GoogleClientID != "test-client-id" {
-		t.Errorf("Expected Google client ID 'test-client-id', got '%s'", config.OAuth.GoogleClientID)
-	}
-
-	// Test MCP servers
-	if len(config.McpServers) != 1 {
-		t.Errorf("Expected 1 MCP server, got %d", len(config.McpServers))
-	}
-
-	testServer, exists := config.McpServers["test"]
-	if !exists {
-		t.Error("Expected 'test' server to exist")
-	}
-
-	if testServer.Command != "echo" {
-		t.Errorf("Expected command 'echo', got '%s'", testServer.Command)
+	// Verify OAuth is not configured for bearer token mode
+	if _, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
+		t.Error("Should not have OAuth config for bearer token auth")
 	}
 }
 
-func TestConfigWithoutOAuth(t *testing.T) {
-	configJSON := `{
-		"mcpProxy": {
-			"baseURL": "https://test.example.com",
-			"addr": ":8080",
-			"name": "Test Proxy",
-			"version": "1.0.0"
-		},
-		"mcpServers": {
-			"test": {
-				"command": "echo",
-				"args": ["hello"]
-			}
-		}
-	}`
-
-	tmpFile, err := os.CreateTemp("", "config-*.json")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write([]byte(configJSON)); err != nil {
-		t.Fatalf("Failed to write config: %v", err)
-	}
-	tmpFile.Close()
-
-	config, err := load(tmpFile.Name())
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-
-	// OAuth config should be nil when not specified
-	if config.OAuth != nil {
-		t.Error("OAuth config should be nil when not specified")
-	}
-}
-
-func TestMCPClientConfigParsing(t *testing.T) {
+func TestEnvRefResolution(t *testing.T) {
 	tests := []struct {
 		name     string
-		config   *MCPClientConfig
+		input    interface{}
+		envVars  map[string]string
 		expected interface{}
-		hasError bool
+		wantErr  bool
 	}{
 		{
-			name: "stdio config",
-			config: &MCPClientConfig{
-				Command: "echo",
-				Args:    []string{"hello"},
-				Env:     map[string]string{"TEST": "value"},
+			name: "simple env ref with value",
+			input: map[string]interface{}{
+				"$env": "TEST_VAR",
 			},
-			expected: &StdioMCPClientConfig{
-				Command: "echo",
-				Args:    []string{"hello"},
-				Env:     map[string]string{"TEST": "value"},
+			envVars: map[string]string{
+				"TEST_VAR": "test-value",
 			},
-			hasError: false,
+			expected: "test-value",
 		},
 		{
-			name: "SSE config",
-			config: &MCPClientConfig{
-				URL:     "https://example.com/sse",
-				Headers: map[string]string{"Authorization": "Bearer token"},
+			name: "env ref with default",
+			input: map[string]interface{}{
+				"$env":    "MISSING_VAR",
+				"default": "default-value",
 			},
-			expected: &SSEMCPClientConfig{
-				URL:     "https://example.com/sse",
-				Headers: map[string]string{"Authorization": "Bearer token"},
-			},
-			hasError: false,
+			envVars:  map[string]string{},
+			expected: "default-value",
 		},
 		{
-			name: "streamable config",
-			config: &MCPClientConfig{
-				TransportType: MCPClientTypeStreamable,
-				URL:           "https://example.com/stream",
-				Headers:       map[string]string{"Authorization": "Bearer token"},
-				Timeout:       30 * time.Second,
+			name: "missing env without default",
+			input: map[string]interface{}{
+				"$env": "MISSING_VAR",
 			},
-			expected: &StreamableMCPClientConfig{
-				URL:     "https://example.com/stream",
-				Headers: map[string]string{"Authorization": "Bearer token"},
-				Timeout: 30 * time.Second,
-			},
-			hasError: false,
+			envVars: map[string]string{},
+			wantErr: true,
 		},
 		{
-			name:   "invalid config",
-			config: &MCPClientConfig{
-				// No command, URL, or transport type
+			name: "nested env refs",
+			input: map[string]interface{}{
+				"auth": map[string]interface{}{
+					"secret": map[string]interface{}{
+						"$env": "SECRET",
+					},
+				},
 			},
-			expected: nil,
-			hasError: true,
+			envVars: map[string]string{
+				"SECRET": "secret-value",
+			},
+			expected: map[string]interface{}{
+				"auth": map[string]interface{}{
+					"secret": "secret-value",
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := parseMCPClientConfig(tt.config)
+			// Set env vars
+			for k, v := range tt.envVars {
+				os.Setenv(k, v)
+				defer os.Unsetenv(k)
+			}
 
-			if tt.hasError {
-				if err == nil {
-					t.Error("Expected error but got none")
-				}
+			result, err := resolveEnvRef(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("resolveEnvRef() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
-
-			// Compare results based on type
-			switch expected := tt.expected.(type) {
-			case *StdioMCPClientConfig:
-				stdio, ok := result.(*StdioMCPClientConfig)
-				if !ok {
-					t.Errorf("Expected StdioMCPClientConfig, got %T", result)
-					return
-				}
-				if stdio.Command != expected.Command {
-					t.Errorf("Expected command '%s', got '%s'", expected.Command, stdio.Command)
-				}
-			case *SSEMCPClientConfig:
-				sse, ok := result.(*SSEMCPClientConfig)
-				if !ok {
-					t.Errorf("Expected SSEMCPClientConfig, got %T", result)
-					return
-				}
-				if sse.URL != expected.URL {
-					t.Errorf("Expected URL '%s', got '%s'", expected.URL, sse.URL)
-				}
-			case *StreamableMCPClientConfig:
-				streamable, ok := result.(*StreamableMCPClientConfig)
-				if !ok {
-					t.Errorf("Expected StreamableMCPClientConfig, got %T", result)
-					return
-				}
-				if streamable.URL != expected.URL {
-					t.Errorf("Expected URL '%s', got '%s'", expected.URL, streamable.URL)
+			if !tt.wantErr {
+				// Check if we have maps to compare
+				if resultMap, ok := result.(map[string]interface{}); ok {
+					if expectedMap, ok := tt.expected.(map[string]interface{}); ok {
+						// Simple string representation comparison for this test
+						if fmt.Sprintf("%v", resultMap) != fmt.Sprintf("%v", expectedMap) {
+							t.Errorf("Expected %v, got %v", expectedMap, resultMap)
+						}
+					} else {
+						t.Errorf("Expected %v, got %v", tt.expected, result)
+					}
+				} else if result != tt.expected {
+					t.Errorf("Expected %v, got %v", tt.expected, result)
 				}
 			}
 		})
+	}
+}
+
+func TestConfigVersionValidation(t *testing.T) {
+	// Create a temporary config with wrong version
+	tmpFile := "/tmp/test-wrong-version.json"
+	content := `{
+		"version": "v1.0.0",
+		"proxy": {
+			"baseURL": "http://localhost:8080",
+			"addr": ":8080",
+			"name": "test",
+			"auth": {
+				"kind": "bearerToken",
+				"tokens": {"test": ["token1"]}
+			}
+		},
+		"mcpServers": {
+			"test": {
+				"command": "echo",
+				"args": ["hello"]
+			}
+		}
+	}`
+
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+	defer os.Remove(tmpFile)
+
+	_, err := load(tmpFile)
+	if err == nil {
+		t.Error("Expected error for unsupported version")
+	}
+	if !strings.Contains(err.Error(), "unsupported config version") {
+		t.Errorf("Expected unsupported version error, got: %v", err)
 	}
 }

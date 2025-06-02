@@ -290,7 +290,7 @@ func newMCPServer(name, version, baseURL string, clientConfig *MCPClientConfig) 
 		server.WithRecovery(),
 	}
 
-	if boolOrDefault(clientConfig.Options.LogEnabled, false) {
+	if clientConfig.Options != nil && boolOrDefault(clientConfig.Options.LogEnabled, false) {
 		serverOpts = append(serverOpts, server.WithLogging())
 	}
 	mcpServer := server.NewMCPServer(

@@ -45,13 +45,13 @@ func generateDefaultConfig(path string) error {
 		},
 		"oauth": map[string]interface{}{
 			"issuer":             "https://your-domain.com",
-			"gcp_project":        "your-gcp-project",
-			"allowed_domains":    []string{"your-company.com"},
-			"token_ttl":          "24h",
+			"gcpProject":        "your-gcp-project",
+			"allowedDomains":    []string{"your-company.com"},
+			"tokenTtl":          "24h",
 			"storage":            "memory",
-			"google_client_id":     "your-google-client-id",
-			"google_client_secret": "your-google-client-secret",
-			"google_redirect_uri":  "https://your-domain.com/oauth/callback",
+			"googleClientId":     "your-google-client-id",
+			"googleClientSecret": "your-google-client-secret",
+			"googleRedirectUri":  "https://your-domain.com/oauth/callback",
 		},
 	}
 
@@ -68,7 +68,7 @@ func generateDefaultConfig(path string) error {
 }
 
 func main() {
-	conf := flag.String("config", "config.json", "path to config file or a http(s) url")
+	conf := flag.String("config", "", "path to config file (required)")
 	version := flag.Bool("version", false, "print version and exit")
 	help := flag.Bool("help", false, "print help and exit")
 	configInit := flag.String("config-init", "", "generate default config file at specified path")
@@ -89,6 +89,13 @@ func main() {
 		fmt.Printf("Generated default config at: %s\n", *configInit)
 		return
 	}
+	
+	if *conf == "" {
+		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
+		fmt.Fprintf(os.Stderr, "Run with -help for usage information\n")
+		os.Exit(1)
+	}
+	
 	config, err := load(*conf)
 	if err != nil {
 		logf("Failed to load config: %v", err)

@@ -1,23 +1,25 @@
 {
-  "mcpProxy": {
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-demo"
+    "name": "mcp-front-demo",
+    "auth": {
+      "kind": "bearerToken",
+      "tokens": {
+        "postgres": ["test-token", "demo-token"]
+      }
+    }
   },
   "mcpServers": {
     "postgres": {
       "command": "docker",
       "args": [
-        "run", 
-        "--rm", 
-        "-i", 
-        "--network", 
-        "host", 
-        "mcp/postgres", 
+        "run", "--rm", "-i", "--network", "host",
+        "mcp/postgres",
         "postgresql://testuser:testpass@localhost:15432/testdb"
       ],
       "options": {
-        "authTokens": ["test-token", "demo-token"],
         "logEnabled": true
       }
     }

@@ -32,32 +32,28 @@ func (e ValidationErrors) Error() string {
 	return strings.Join(messages, "; ")
 }
 
-// ValidateConfig validates the entire configuration
+// ValidateConfig validates the config format
 func ValidateConfig(config *Config) error {
 	var errors ValidationErrors
 
-	// Validate MCP Proxy configuration
-	if err := validateMCPProxyConfig(config.McpProxy); err != nil {
+	// Validate version
+	if config.Version == "" {
+		errors = append(errors, ValidationError{Field: "version", Message: "version is required"})
+	} else if !strings.HasPrefix(config.Version, "v0.0.1-DEV_EDITION") {
+		errors = append(errors, ValidationError{Field: "version", Message: fmt.Sprintf("unsupported version: %s", config.Version)})
+	}
+
+	// Validate proxy configuration
+	if err := validateProxyConfig(&config.Proxy, config.MCPServers); err != nil {
 		if ve, ok := err.(ValidationErrors); ok {
 			errors = append(errors, ve...)
 		} else {
-			errors = append(errors, ValidationError{Field: "mcpProxy", Message: err.Error()})
+			errors = append(errors, ValidationError{Field: "proxy", Message: err.Error()})
 		}
 	}
 
-	// Validate OAuth configuration if present
-	if config.OAuth != nil {
-		if err := validateOAuthConfig(config.OAuth); err != nil {
-			if ve, ok := err.(ValidationErrors); ok {
-				errors = append(errors, ve...)
-			} else {
-				errors = append(errors, ValidationError{Field: "oauth", Message: err.Error()})
-			}
-		}
-	}
-
-	// Validate MCP servers configuration
-	if err := validateMCPServersConfig(config.McpServers); err != nil {
+	// Validate MCP servers
+	if err := validateMCPServersConfig(config.MCPServers); err != nil {
 		if ve, ok := err.(ValidationErrors); ok {
 			errors = append(errors, ve...)
 		} else {
@@ -71,33 +67,59 @@ func ValidateConfig(config *Config) error {
 	return nil
 }
 
-// validateMCPProxyConfig validates the MCP proxy configuration
-func validateMCPProxyConfig(config *MCPProxyConfig) error {
+// validateProxyConfig validates the proxy configuration including auth
+func validateProxyConfig(proxy *ProxyConfig, mcpServers map[string]*MCPClientConfig) error {
 	var errors ValidationErrors
 
-	if config == nil {
-		return ValidationError{Field: "mcpProxy", Message: "configuration is required"}
-	}
-
-	// Validate base URL
-	if config.BaseURL == "" {
-		errors = append(errors, ValidationError{Field: "mcpProxy.baseURL", Message: "base URL is required"})
+	// Validate baseURL
+	baseURL := fmt.Sprintf("%v", proxy.BaseURL)
+	if baseURL == "" || baseURL == "<nil>" {
+		errors = append(errors, ValidationError{Field: "proxy.baseURL", Message: "baseURL is required"})
 	} else {
-		if _, err := url.Parse(config.BaseURL); err != nil {
-			errors = append(errors, ValidationError{Field: "mcpProxy.baseURL", Message: fmt.Sprintf("invalid URL: %v", err)})
+		if _, err := url.Parse(baseURL); err != nil {
+			errors = append(errors, ValidationError{Field: "proxy.baseURL", Message: fmt.Sprintf("invalid URL: %v", err)})
 		}
 	}
 
-	// Validate address
-	if config.Addr == "" {
-		errors = append(errors, ValidationError{Field: "mcpProxy.addr", Message: "address is required"})
-	} else if !strings.HasPrefix(config.Addr, ":") {
-		errors = append(errors, ValidationError{Field: "mcpProxy.addr", Message: "address must start with ':' (e.g., ':8080')"})
+	// Validate addr
+	addr := fmt.Sprintf("%v", proxy.Addr)
+	if addr == "" || addr == "<nil>" {
+		errors = append(errors, ValidationError{Field: "proxy.addr", Message: "address is required"})
+	} else if !strings.HasPrefix(addr, ":") {
+		errors = append(errors, ValidationError{Field: "proxy.addr", Message: "address must start with ':' (e.g., ':8080')"})
 	}
 
 	// Validate name
-	if config.Name == "" {
-		errors = append(errors, ValidationError{Field: "mcpProxy.name", Message: "name is required"})
+	if proxy.Name == "" {
+		errors = append(errors, ValidationError{Field: "proxy.name", Message: "name is required"})
+	}
+
+	// Validate auth
+	if proxy.Auth == nil {
+		errors = append(errors, ValidationError{Field: "proxy.auth", Message: "auth configuration is required"})
+	} else {
+		switch auth := proxy.Auth.(type) {
+		case *OAuthAuthConfig:
+			if err := validateOAuthAuth(auth); err != nil {
+				if ve, ok := err.(ValidationErrors); ok {
+					errors = append(errors, ve...)
+				} else {
+					errors = append(errors, ValidationError{Field: "proxy.auth", Message: err.Error()})
+				}
+			}
+
+		case *BearerTokenAuthConfig:
+			if err := validateBearerTokenAuth(auth, mcpServers); err != nil {
+				if ve, ok := err.(ValidationErrors); ok {
+					errors = append(errors, ve...)
+				} else {
+					errors = append(errors, ValidationError{Field: "proxy.auth", Message: err.Error()})
+				}
+			}
+
+		default:
+			errors = append(errors, ValidationError{Field: "proxy.auth", Message: fmt.Sprintf("unknown auth type: %T", auth)})
+		}
 	}
 
 	if len(errors) > 0 {
@@ -106,73 +128,143 @@ func validateMCPProxyConfig(config *MCPProxyConfig) error {
 	return nil
 }
 
-// validateOAuthConfig validates the OAuth configuration
-func validateOAuthConfig(config *OAuthConfig) error {
+// validateOAuthAuth validates OAuth configuration
+func validateOAuthAuth(auth *OAuthAuthConfig) error {
 	var errors ValidationErrors
 
+	if auth.Kind != AuthKindOAuth {
+		errors = append(errors, ValidationError{Field: "proxy.auth.kind", Message: "must be 'oauth'"})
+	}
+
 	// Validate issuer
-	if config.Issuer == "" {
-		errors = append(errors, ValidationError{Field: "oauth.issuer", Message: "issuer is required"})
+	issuer := fmt.Sprintf("%v", auth.Issuer)
+	if issuer == "" || issuer == "<nil>" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.issuer", Message: "issuer is required"})
 	} else {
-		parsedURL, err := url.Parse(config.Issuer)
+		parsedURL, err := url.Parse(issuer)
 		if err != nil {
-			errors = append(errors, ValidationError{Field: "oauth.issuer", Message: fmt.Sprintf("invalid issuer URL: %v", err)})
-		} else if !strings.HasPrefix(config.Issuer, "https://") {
+			errors = append(errors, ValidationError{Field: "proxy.auth.issuer", Message: fmt.Sprintf("invalid issuer URL: %v", err)})
+		} else if !strings.HasPrefix(issuer, "https://") {
 			// Allow HTTP for localhost development
 			if parsedURL.Hostname() != "localhost" && parsedURL.Hostname() != "127.0.0.1" {
-				errors = append(errors, ValidationError{Field: "oauth.issuer", Message: "issuer must use HTTPS in production"})
+				errors = append(errors, ValidationError{Field: "proxy.auth.issuer", Message: "issuer must use HTTPS in production"})
 			}
 		}
 	}
 
 	// Validate GCP project
-	if config.GCPProject == "" {
-		errors = append(errors, ValidationError{Field: "oauth.gcp_project", Message: "GCP project ID is required"})
+	gcpProject := fmt.Sprintf("%v", auth.GCPProject)
+	if gcpProject == "" || gcpProject == "<nil>" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.gcpProject", Message: "GCP project ID is required"})
 	}
 
 	// Validate allowed domains
-	if len(config.AllowedDomains) == 0 {
-		errors = append(errors, ValidationError{Field: "oauth.allowed_domains", Message: "at least one allowed domain is required"})
+	if len(auth.AllowedDomains) == 0 {
+		errors = append(errors, ValidationError{Field: "proxy.auth.allowedDomains", Message: "at least one allowed domain is required"})
 	} else {
-		for i, domain := range config.AllowedDomains {
+		for i, domain := range auth.AllowedDomains {
 			if domain == "" {
-				errors = append(errors, ValidationError{Field: fmt.Sprintf("oauth.allowed_domains[%d]", i), Message: "domain cannot be empty"})
+				errors = append(errors, ValidationError{Field: fmt.Sprintf("proxy.auth.allowedDomains[%d]", i), Message: "domain cannot be empty"})
 			} else if strings.Contains(domain, "/") || strings.Contains(domain, ":") {
-				errors = append(errors, ValidationError{Field: fmt.Sprintf("oauth.allowed_domains[%d]", i), Message: "domain should not contain protocol or path"})
+				errors = append(errors, ValidationError{Field: fmt.Sprintf("proxy.auth.allowedDomains[%d]", i), Message: "domain should not contain protocol or path"})
 			}
 		}
 	}
 
 	// Validate token TTL
-	ttl := config.TokenTTL.ToDuration()
-	if ttl <= 0 {
-		errors = append(errors, ValidationError{Field: "oauth.token_ttl", Message: "token TTL must be positive"})
-	} else if ttl < 5*time.Minute {
-		errors = append(errors, ValidationError{Field: "oauth.token_ttl", Message: "token TTL should be at least 5 minutes"})
-	} else if ttl > 24*time.Hour {
-		errors = append(errors, ValidationError{Field: "oauth.token_ttl", Message: "token TTL should not exceed 24 hours"})
+	if auth.TokenTTL == "" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.tokenTtl", Message: "token TTL is required"})
+	} else {
+		ttl, err := time.ParseDuration(auth.TokenTTL)
+		if err != nil {
+			errors = append(errors, ValidationError{Field: "proxy.auth.tokenTtl", Message: fmt.Sprintf("invalid duration: %v", err)})
+		} else if ttl < 5*time.Minute {
+			errors = append(errors, ValidationError{Field: "proxy.auth.tokenTtl", Message: "token TTL should be at least 5 minutes"})
+		} else if ttl > 24*time.Hour {
+			errors = append(errors, ValidationError{Field: "proxy.auth.tokenTtl", Message: "token TTL should not exceed 24 hours"})
+		}
 	}
 
 	// Validate storage type
-	if config.Storage != "memory" && config.Storage != "redis" {
-		errors = append(errors, ValidationError{Field: "oauth.storage", Message: "storage must be 'memory' or 'redis'"})
+	if auth.Storage != "memory" && auth.Storage != "redis" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.storage", Message: "storage must be 'memory' or 'redis'"})
 	}
 
 	// Validate Google OAuth settings
-	if config.GoogleClientID == "" {
-		errors = append(errors, ValidationError{Field: "oauth.google_client_id", Message: "Google client ID is required"})
+	clientID := fmt.Sprintf("%v", auth.GoogleClientID)
+	if clientID == "" || clientID == "<nil>" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.google_client_id", Message: "Google client ID is required"})
 	}
 
-	if config.GoogleClientSecret == "" {
-		errors = append(errors, ValidationError{Field: "oauth.google_client_secret", Message: "Google client secret is required"})
-	}
+	// Client secret validation happens in validateRawConfig before env resolution
 
-	if config.GoogleRedirectURI == "" {
-		errors = append(errors, ValidationError{Field: "oauth.google_redirect_uri", Message: "Google redirect URI is required"})
+	redirectURI := fmt.Sprintf("%v", auth.GoogleRedirectURI)
+	if redirectURI == "" || redirectURI == "<nil>" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.googleRedirectUri", Message: "Google redirect URI is required"})
 	} else {
-		if _, err := url.Parse(config.GoogleRedirectURI); err != nil {
-			errors = append(errors, ValidationError{Field: "oauth.google_redirect_uri", Message: fmt.Sprintf("invalid redirect URI: %v", err)})
+		if _, err := url.Parse(redirectURI); err != nil {
+			errors = append(errors, ValidationError{Field: "proxy.auth.googleRedirectUri", Message: fmt.Sprintf("invalid redirect URI: %v", err)})
 		}
+	}
+
+	// JWT secret validation happens in validateRawConfig before env resolution
+
+	if len(errors) > 0 {
+		return errors
+	}
+	return nil
+}
+
+// validateBearerTokenAuth validates bearer token configuration
+func validateBearerTokenAuth(auth *BearerTokenAuthConfig, mcpServers map[string]*MCPClientConfig) error {
+	var errors ValidationErrors
+	warnings := []string{}
+
+	if auth.Kind != AuthKindBearerToken {
+		errors = append(errors, ValidationError{Field: "proxy.auth.kind", Message: "must be 'bearerToken'"})
+	}
+
+	if len(auth.Tokens) == 0 {
+		errors = append(errors, ValidationError{Field: "proxy.auth.tokens", Message: "at least one token mapping is required"})
+	}
+
+	// Check that all token keys have corresponding servers
+	for serverName, tokens := range auth.Tokens {
+		if _, exists := mcpServers[serverName]; !exists {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("proxy.auth.tokens.%s", serverName),
+				Message: fmt.Sprintf("server '%s' not found in mcpServers", serverName),
+			})
+		}
+
+		// Validate tokens
+		if len(tokens) == 0 {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("proxy.auth.tokens.%s", serverName),
+				Message: "at least one token is required",
+			})
+		}
+
+		for i, token := range tokens {
+			if token == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("proxy.auth.tokens.%s[%d]", serverName, i),
+					Message: "token cannot be empty",
+				})
+			}
+		}
+	}
+
+	// Check that all servers have tokens (warning only)
+	for serverName := range mcpServers {
+		if _, hasTokens := auth.Tokens[serverName]; !hasTokens {
+			warnings = append(warnings, fmt.Sprintf("server '%s' has no tokens configured", serverName))
+		}
+	}
+
+	// Log warnings
+	for _, warning := range warnings {
+		logf("WARNING: %s", warning)
 	}
 
 	if len(errors) > 0 {
@@ -296,45 +388,4 @@ func validateMCPClientConfig(name string, config *MCPClientConfig) error {
 		return errors
 	}
 	return nil
-}
-
-// SanitizeConfig performs basic sanitization on configuration values
-func SanitizeConfig(config *Config) {
-	if config.McpProxy != nil {
-		// Trim whitespace from strings
-		config.McpProxy.BaseURL = strings.TrimSpace(config.McpProxy.BaseURL)
-		config.McpProxy.Addr = strings.TrimSpace(config.McpProxy.Addr)
-		config.McpProxy.Name = strings.TrimSpace(config.McpProxy.Name)
-
-		// Ensure baseURL doesn't end with slash
-		config.McpProxy.BaseURL = strings.TrimSuffix(config.McpProxy.BaseURL, "/")
-	}
-
-	if config.OAuth != nil {
-		// Trim whitespace and normalize URLs
-		config.OAuth.Issuer = strings.TrimSpace(config.OAuth.Issuer)
-		config.OAuth.Issuer = strings.TrimSuffix(config.OAuth.Issuer, "/")
-		config.OAuth.GCPProject = strings.TrimSpace(config.OAuth.GCPProject)
-		config.OAuth.GoogleClientID = strings.TrimSpace(config.OAuth.GoogleClientID)
-		config.OAuth.GoogleClientSecret = strings.TrimSpace(config.OAuth.GoogleClientSecret)
-		config.OAuth.GoogleRedirectURI = strings.TrimSpace(config.OAuth.GoogleRedirectURI)
-
-		// Normalize domains (lowercase, trim)
-		for i, domain := range config.OAuth.AllowedDomains {
-			config.OAuth.AllowedDomains[i] = strings.ToLower(strings.TrimSpace(domain))
-		}
-	}
-
-	// Sanitize MCP server configurations
-	for _, serverConfig := range config.McpServers {
-		if serverConfig != nil {
-			serverConfig.Command = strings.TrimSpace(serverConfig.Command)
-			serverConfig.URL = strings.TrimSpace(serverConfig.URL)
-
-			// Trim args
-			for i, arg := range serverConfig.Args {
-				serverConfig.Args[i] = strings.TrimSpace(arg)
-			}
-		}
-	}
 }

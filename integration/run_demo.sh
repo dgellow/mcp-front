@@ -66,40 +66,12 @@ echo "✅ Build successful"
 # Start mcp-front
 echo -e "${YELLOW}🚀 Starting mcp-front...${NC}"
 if [ "$USE_OAUTH" = true ]; then
-    # Create temporary config with actual values
-    cat > /tmp/mcp-front-demo-config.json <<EOF
-{
-  "mcpProxy": {
-    "baseURL": "http://localhost:8080",
-    "addr": ":8080",
-    "name": "mcp-front-demo"
-  },
-  "mcpServers": {
-    "postgres": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i", "--network", "host", 
-        "mcp/postgres", "postgresql://testuser:testpass@localhost:15432/testdb"
-      ],
-      "options": {
-        "logEnabled": true
-      }
-    }
-  },
-  "oauth": {
-    "issuer": "http://localhost:8080",
-    "gcp_project": "mcp-front-demo", 
-    "allowed_domains": ["gmail.com", "test.com", "anthropic.com", "claude.ai"],
-    "token_ttl": "24h",
-    "storage": "memory",
-    "google_client_id": "$GOOGLE_CLIENT_ID",
-    "google_client_secret": "$GOOGLE_CLIENT_SECRET",
-    "google_redirect_uri": "http://localhost:8080/oauth/callback"
-  }
-}
-EOF
-    ../mcp-front -config /tmp/mcp-front-demo-config.json &
+    echo "   Using OAuth config because GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set"
+    echo "   Config: config/config.oauth-test.json"
+    JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-for-testing-32-chars-long}" ../mcp-front -config config/config.oauth-test.json &
 else
+    echo "   Using token config because Google OAuth credentials not found"
+    echo "   Config: config/config.demo-token.json" 
     ../mcp-front -config config/config.demo-token.json &
 fi
 MCP_PID=$!
@@ -128,7 +100,7 @@ echo ""
 if [ "$USE_OAUTH" = true ]; then
     echo "Authentication: Google OAuth"
     echo "  OAuth discovery: http://localhost:8080/.well-known/oauth-authorization-server"
-    echo "  Allowed domains: gmail.com, test.com, anthropic.com, claude.ai"
+    echo "  Allowed domains: test.com (see config/config.oauth-test.json)"
     echo ""
     echo "To connect from MCP Inspector:"
     echo "1. Add MCP server: http://localhost:8080/postgres/sse"
@@ -156,7 +128,6 @@ cleanup() {
     echo "🛑 Shutting down demo environment..."
     kill $MCP_PID 2>/dev/null || true
     docker-compose -f config/docker-compose.test.yml down -v
-    rm -f /tmp/mcp-front-demo-config.json
     echo "✅ Demo environment stopped"
     exit 0
 }

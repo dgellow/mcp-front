@@ -142,7 +142,7 @@ func TestIntegration(t *testing.T) {
 
 // TestOAuthIntegration validates OAuth 2.1 flow as used by Claude.ai
 func TestOAuthIntegration(t *testing.T) {
-	// Use OAuth config instead of simple tokens
+	// Use OAuth config to enable OAuth endpoints
 	configPath := "config/config.oauth-test.json"
 	
 	// Check if OAuth config exists, if not skip
@@ -184,6 +184,7 @@ func TestOAuthIntegration(t *testing.T) {
 	mcpCmd := exec.Command("../mcp-front", "-config", configPath)
 	mcpCmd.Env = append(mcpCmd.Environ(),
 		"JWT_SECRET=test-jwt-secret-for-integration-testing",
+		"GOOGLE_CLIENT_SECRET=test-client-secret-for-integration",
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
@@ -201,8 +202,8 @@ func TestOAuthIntegration(t *testing.T) {
 		}
 	})
 
-	// Wait for server to be ready
-	time.Sleep(5 * time.Second)
+	// Wait for server to be ready (matching regular integration test)
+	time.Sleep(15 * time.Second)
 
 	// Test OAuth endpoints
 	t.Log("Testing OAuth discovery...")
