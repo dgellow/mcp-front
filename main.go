@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -19,60 +20,112 @@ func init() {
 	log.SetPrefix("")
 }
 
-// Log levels for different types of output
-const (
-	LogLevelError = 0
-	LogLevelWarn  = 1
-	LogLevelInfo  = 2
-	LogLevelDebug = 3
-	LogLevelTrace = 4
-)
-
-var logLevel = LogLevelInfo // Default log level
+var logger *slog.Logger
 
 func init() {
+	// Configure structured logging using Go's standard slog package
+	var level slog.Level
+	
 	// Check LOG_LEVEL environment variable
-	if level := os.Getenv("LOG_LEVEL"); level != "" {
-		switch strings.ToUpper(level) {
-		case "ERROR":
-			logLevel = LogLevelError
-		case "WARN", "WARNING":
-			logLevel = LogLevelWarn
-		case "INFO":
-			logLevel = LogLevelInfo
-		case "DEBUG":
-			logLevel = LogLevelDebug
-		case "TRACE":
-			logLevel = LogLevelTrace
-		}
+	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
+	case "ERROR":
+		level = slog.LevelError
+	case "WARN", "WARNING":  
+		level = slog.LevelWarn
+	case "INFO", "":
+		level = slog.LevelInfo
+	case "DEBUG":
+		level = slog.LevelDebug
+	default:
+		level = slog.LevelInfo
 	}
+
+	// Check LOG_FORMAT environment variable
+	var handler slog.Handler
+	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
+		// Production: structured JSON logs
+		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+			Level: level,
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				// Customize timestamp format
+				if a.Key == slog.TimeKey {
+					return slog.Attr{
+						Key:   "timestamp",
+						Value: slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano)),
+					}
+				}
+				return a
+			},
+		})
+	} else {
+		// Development: human-readable text logs  
+		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+			Level: level,
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				// Customize timestamp format for readability
+				if a.Key == slog.TimeKey {
+					return slog.Attr{
+						Key:   slog.TimeKey,
+						Value: slog.StringValue(a.Value.Time().Format("2006-01-02 15:04:05.000-07:00")),
+					}
+				}
+				return a
+			},
+		})
+	}
+
+	logger = slog.New(handler)
+	slog.SetDefault(logger)
 }
 
+// Convenience functions using standard slog with component context
 func logf(format string, args ...interface{}) {
-	logAtLevel(LogLevelInfo, format, args...)
+	logger.Info(fmt.Sprintf(format, args...))
 }
 
 func logError(format string, args ...interface{}) {
-	logAtLevel(LogLevelError, "[ERROR] "+format, args...)
+	logger.Error(fmt.Sprintf(format, args...))
 }
 
 func logWarn(format string, args ...interface{}) {
-	logAtLevel(LogLevelWarn, "[WARN] "+format, args...)
+	logger.Warn(fmt.Sprintf(format, args...))
 }
 
 func logDebug(format string, args ...interface{}) {
-	logAtLevel(LogLevelDebug, "[DEBUG] "+format, args...)
+	logger.Debug(fmt.Sprintf(format, args...))
 }
 
 func logTrace(format string, args ...interface{}) {
-	logAtLevel(LogLevelTrace, "[TRACE] "+format, args...)
+	// Use Debug level for trace since slog doesn't have trace
+	logger.Debug(fmt.Sprintf(format, args...))
 }
 
-func logAtLevel(level int, format string, args ...interface{}) {
-	if level <= logLevel {
-		timestamp := time.Now().Format("2006-01-02 15:04:05.000-07:00")
-		log.Printf("[%s] "+format, append([]interface{}{timestamp}, args...)...)
+// Structured logging functions with component and fields
+func logInfoWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
 	}
+	logger.Info(message, args...)
+}
+
+func logErrorWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	logger.Error(message, args...)
+}
+
+func logTraceWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	logger.Debug(message, args...)
 }
 
 func generateDefaultConfig(path string) error {
