@@ -8,10 +8,10 @@
       "kind": "oauth",
       "issuer": "http://localhost:8080",
       "gcpProject": "test-project",
-      "allowedDomains": ["test.com"],
+      "allowedDomains": ["test.com", "stainless.com"],
       "tokenTtl": "1h",
       "storage": "memory",
-      "googleClientId": "test-client-id",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
       "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
       "googleRedirectUri": "http://localhost:8080/oauth/callback",
       "jwtSecret": {"$env": "JWT_SECRET"}

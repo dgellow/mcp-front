@@ -30,7 +30,7 @@ echo "   Test data: users and orders tables"
 
 # Wait for database to be ready
 echo "⏳ Waiting for database to be ready..."
-for i in {1..30}; do
+for i in {1..10}; do
     if docker-compose -f config/docker-compose.test.yml exec -T test-postgres pg_isready -U testuser -d testdb &>/dev/null; then
         echo -e "${GREEN}✅ Database is ready!${NC}"
         break
@@ -68,11 +68,13 @@ echo -e "${YELLOW}🚀 Starting mcp-front...${NC}"
 if [ "$USE_OAUTH" = true ]; then
     echo "   Using OAuth config because GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set"
     echo "   Config: config/config.oauth-test.json"
-    JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-for-testing-32-chars-long}" ../mcp-front -config config/config.oauth-test.json &
+    echo "   Environment: MCP_FRONT_ENV=${MCP_FRONT_ENV:-production}"
+    env MCP_FRONT_ENV="${MCP_FRONT_ENV:-development}" JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-32-bytes-exactly!}" ../mcp-front -config config/config.oauth-test.json &
 else
     echo "   Using token config because Google OAuth credentials not found"
     echo "   Config: config/config.demo-token.json" 
-    ../mcp-front -config config/config.demo-token.json &
+    echo "   Environment: MCP_FRONT_ENV=${MCP_FRONT_ENV:-production}"
+    env MCP_FRONT_ENV="${MCP_FRONT_ENV:-development}" JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-32-bytes-exactly!}" ../mcp-front -config config/config.demo-token.json &
 fi
 MCP_PID=$!
 

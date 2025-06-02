@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/dgellow/mcp-front/internal"
 )
 
 // ValidationError represents a configuration validation error
@@ -264,7 +266,7 @@ func validateBearerTokenAuth(auth *BearerTokenAuthConfig, mcpServers map[string]
 
 	// Log warnings
 	for _, warning := range warnings {
-		logf("WARNING: %s", warning)
+		internal.Logf("WARNING: %s", warning)
 	}
 
 	if len(errors) > 0 {

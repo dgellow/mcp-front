@@ -5,10 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"log/slog"
 	"os"
-	"strings"
-	"time"
+
+	"github.com/dgellow/mcp-front/internal"
 )
 
 var BuildVersion = "dev"
@@ -20,113 +19,6 @@ func init() {
 	log.SetPrefix("")
 }
 
-var logger *slog.Logger
-
-func init() {
-	// Configure structured logging using Go's standard slog package
-	var level slog.Level
-	
-	// Check LOG_LEVEL environment variable
-	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
-	case "ERROR":
-		level = slog.LevelError
-	case "WARN", "WARNING":  
-		level = slog.LevelWarn
-	case "INFO", "":
-		level = slog.LevelInfo
-	case "DEBUG":
-		level = slog.LevelDebug
-	default:
-		level = slog.LevelInfo
-	}
-
-	// Check LOG_FORMAT environment variable
-	var handler slog.Handler
-	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
-		// Production: structured JSON logs
-		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-			Level: level,
-			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-				// Customize timestamp format
-				if a.Key == slog.TimeKey {
-					return slog.Attr{
-						Key:   "timestamp",
-						Value: slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano)),
-					}
-				}
-				return a
-			},
-		})
-	} else {
-		// Development: human-readable text logs  
-		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: level,
-			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-				// Customize timestamp format for readability
-				if a.Key == slog.TimeKey {
-					return slog.Attr{
-						Key:   slog.TimeKey,
-						Value: slog.StringValue(a.Value.Time().Format("2006-01-02 15:04:05.000-07:00")),
-					}
-				}
-				return a
-			},
-		})
-	}
-
-	logger = slog.New(handler)
-	slog.SetDefault(logger)
-}
-
-// Convenience functions using standard slog with component context
-func logf(format string, args ...interface{}) {
-	logger.Info(fmt.Sprintf(format, args...))
-}
-
-func logError(format string, args ...interface{}) {
-	logger.Error(fmt.Sprintf(format, args...))
-}
-
-func logWarn(format string, args ...interface{}) {
-	logger.Warn(fmt.Sprintf(format, args...))
-}
-
-func logDebug(format string, args ...interface{}) {
-	logger.Debug(fmt.Sprintf(format, args...))
-}
-
-func logTrace(format string, args ...interface{}) {
-	// Use Debug level for trace since slog doesn't have trace
-	logger.Debug(fmt.Sprintf(format, args...))
-}
-
-// Structured logging functions with component and fields
-func logInfoWithFields(component, message string, fields map[string]interface{}) {
-	args := make([]any, 0, len(fields)*2+2)
-	args = append(args, "component", component)
-	for k, v := range fields {
-		args = append(args, k, v)
-	}
-	logger.Info(message, args...)
-}
-
-func logErrorWithFields(component, message string, fields map[string]interface{}) {
-	args := make([]any, 0, len(fields)*2+2)
-	args = append(args, "component", component)
-	for k, v := range fields {
-		args = append(args, k, v)
-	}
-	logger.Error(message, args...)
-}
-
-func logTraceWithFields(component, message string, fields map[string]interface{}) {
-	args := make([]any, 0, len(fields)*2+2)
-	args = append(args, "component", component)
-	for k, v := range fields {
-		args = append(args, k, v)
-	}
-	logger.Debug(message, args...)
-}
 
 func generateDefaultConfig(path string) error {
 	defaultConfig := map[string]interface{}{
@@ -188,7 +80,7 @@ func main() {
 	}
 	if *configInit != "" {
 		if err := generateDefaultConfig(*configInit); err != nil {
-			logf("Failed to generate config: %v", err)
+			internal.LogError("Failed to generate config: %v", err)
 			os.Exit(1)
 		}
 		fmt.Printf("Generated default config at: %s\n", *configInit)
@@ -203,12 +95,12 @@ func main() {
 	
 	config, err := load(*conf)
 	if err != nil {
-		logf("Failed to load config: %v", err)
+		internal.LogError("Failed to load config: %v", err)
 		os.Exit(1)
 	}
 	err = startHTTPServer(config)
 	if err != nil {
-		logf("Failed to start server: %v", err)
+		internal.LogError("Failed to start server: %v", err)
 		os.Exit(1)
 	}
 }

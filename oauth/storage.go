@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"sync"
 
+	"github.com/dgellow/mcp-front/internal"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/storage"
 )
@@ -60,17 +61,16 @@ func (s *Storage) GetClient(_ context.Context, id string) (fosite.Client, error)
 
 // createClient creates a dynamic client and stores it thread-safely
 func (s *Storage) createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
-	secret := make([]byte, 32)
-	rand.Read(secret)
-
+	// Create as public client (no secret) since MCP Inspector is a public client
 	client := &fosite.DefaultClient{
 		ID:            clientID,
-		Secret:        secret,
+		Secret:        nil, // Public client - no secret
 		RedirectURIs:  redirectURIs,
 		Scopes:        scopes,
 		GrantTypes:    []string{"authorization_code", "refresh_token"},
 		ResponseTypes: []string{"code"},
 		Audience:      []string{issuer},
+		Public:        true, // Mark as public client
 	}
 
 	// Thread-safe client storage
@@ -79,8 +79,8 @@ func (s *Storage) createClient(clientID string, redirectURIs []string, scopes []
 	clientCount := len(s.MemoryStore.Clients)
 	s.clientsMutex.Unlock()
 
-	logf("Created client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
-	logf("Total clients in storage: %d", clientCount)
+	internal.Logf("Created client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
+	internal.Logf("Total clients in storage: %d", clientCount)
 	return client
 }
 

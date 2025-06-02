@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgellow/mcp-front/internal"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -100,7 +101,7 @@ func (c *Client) addToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	if err != nil {
 		return err
 	}
-	logf("<%s> Successfully initialized MCP client", c.name)
+	internal.Logf("<%s> Successfully initialized MCP client", c.name)
 
 	err = c.addToolsToServer(ctx, mcpServer)
 	if err != nil {
@@ -123,7 +124,7 @@ PingLoop:
 	for {
 		select {
 		case <-ctx.Done():
-			logf("<%s> Context done, stopping ping", c.name)
+			internal.Logf("<%s> Context done, stopping ping", c.name)
 			break PingLoop
 		case <-ticker.C:
 			_ = c.client.Ping(ctx)
@@ -148,7 +149,7 @@ func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServ
 			filterFunc = func(toolName string) bool {
 				_, inList := filterSet[toolName]
 				if !inList {
-					logf("<%s> Ignoring tool %s as it is not in allow list", c.name, toolName)
+					internal.Logf("<%s> Ignoring tool %s as it is not in allow list", c.name, toolName)
 				}
 				return inList
 			}
@@ -156,12 +157,12 @@ func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServ
 			filterFunc = func(toolName string) bool {
 				_, inList := filterSet[toolName]
 				if inList {
-					logf("<%s> Ignoring tool %s as it is in block list", c.name, toolName)
+					internal.Logf("<%s> Ignoring tool %s as it is in block list", c.name, toolName)
 				}
 				return !inList
 			}
 		default:
-			logf("<%s> Unknown tool filter mode: %s, skipping tool filter", c.name, mode)
+			internal.Logf("<%s> Unknown tool filter mode: %s, skipping tool filter", c.name, mode)
 		}
 	}
 
@@ -173,10 +174,10 @@ func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServ
 		if len(tools.Tools) == 0 {
 			break
 		}
-		logf("<%s> Successfully listed %d tools", c.name, len(tools.Tools))
+		internal.Logf("<%s> Successfully listed %d tools", c.name, len(tools.Tools))
 		for _, tool := range tools.Tools {
 			if filterFunc(tool.Name) {
-				logf("<%s> Adding tool %s", c.name, tool.Name)
+				internal.Logf("<%s> Adding tool %s", c.name, tool.Name)
 				mcpServer.AddTool(tool, c.client.CallTool)
 			}
 		}
@@ -199,9 +200,9 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 		if len(prompts.Prompts) == 0 {
 			break
 		}
-		logf("<%s> Successfully listed %d prompts", c.name, len(prompts.Prompts))
+		internal.Logf("<%s> Successfully listed %d prompts", c.name, len(prompts.Prompts))
 		for _, prompt := range prompts.Prompts {
-			logf("<%s> Adding prompt %s", c.name, prompt.Name)
+			internal.Logf("<%s> Adding prompt %s", c.name, prompt.Name)
 			mcpServer.AddPrompt(prompt, c.client.GetPrompt)
 		}
 		if prompts.NextCursor == "" {
@@ -222,9 +223,9 @@ func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCP
 		if len(resources.Resources) == 0 {
 			break
 		}
-		logf("<%s> Successfully listed %d resources", c.name, len(resources.Resources))
+		internal.Logf("<%s> Successfully listed %d resources", c.name, len(resources.Resources))
 		for _, resource := range resources.Resources {
-			logf("<%s> Adding resource %s", c.name, resource.Name)
+			internal.Logf("<%s> Adding resource %s", c.name, resource.Name)
 			mcpServer.AddResource(resource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 				readResource, e := c.client.ReadResource(ctx, request)
 				if e != nil {
@@ -252,9 +253,9 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 		if len(resourceTemplates.ResourceTemplates) == 0 {
 			break
 		}
-		logf("<%s> Successfully listed %d resource templates", c.name, len(resourceTemplates.ResourceTemplates))
+		internal.Logf("<%s> Successfully listed %d resource templates", c.name, len(resourceTemplates.ResourceTemplates))
 		for _, resourceTemplate := range resourceTemplates.ResourceTemplates {
-			logf("<%s> Adding resource template %s", c.name, resourceTemplate.Name)
+			internal.Logf("<%s> Adding resource template %s", c.name, resourceTemplate.Name)
 			mcpServer.AddResourceTemplate(resourceTemplate, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 				readResource, e := c.client.ReadResource(ctx, request)
 				if e != nil {
@@ -291,10 +292,10 @@ func newMCPServer(name, version, baseURL string, clientConfig *MCPClientConfig) 
 	}
 
 	if clientConfig.Options != nil && boolOrDefault(clientConfig.Options.LogEnabled, false) {
-		logger.Debug("enabling MCP server logging", "component", name)
+		internal.LogDebug("enabling MCP server logging for component %s", name)
 		serverOpts = append(serverOpts, server.WithLogging())
 	} else {
-		logger.Debug("MCP server logging disabled", "component", name, "has_options", clientConfig.Options != nil)
+		internal.LogDebug("MCP server logging disabled for component %s (has_options=%v)", name, clientConfig.Options != nil)
 	}
 	mcpServer := server.NewMCPServer(
 		name,
