@@ -193,10 +193,11 @@ All authorization flows require PKCE. Users must belong to Google Workspace doma
 
 The system includes protection against:
 - Authentication bypass attempts
-- SQL injection (delegated to MCP servers)
 - HTTP header injection
 - Path traversal attacks
 - Malformed authentication headers
+
+⚠️ **Important Security Note**: mcp-front acts as an authentication proxy and does **NOT** provide protection against SQL injection, command injection, or other attacks that may be possible through individual MCP servers. Each MCP server is responsible for its own input validation and security. Carefully review the security practices of any MCP servers you deploy, as they will have access to your backend systems after OAuth authentication.
 
 ## Storage Options
 

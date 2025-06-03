@@ -142,6 +142,8 @@ mcp-front/
 - **Environment Secrets**: All sensitive configuration from environment variables
 - **Security Testing**: Comprehensive test suite validating bypass protection
 
+⚠️ **Security Boundary**: mcp-front provides OAuth authentication and proxying but does **NOT** validate or sanitize data sent to individual MCP servers. SQL injection, command injection, and other application-layer attacks are the responsibility of each MCP server implementation. Deploy only trusted MCP servers and ensure they follow secure coding practices.
+
 ### Storage Architecture
 
 OAuth client data is stored using a pluggable storage architecture:
