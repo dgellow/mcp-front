@@ -3,34 +3,23 @@
 Production-ready OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
 
 ```
-Claude.ai
-    │
-    │ HTTPS
-    ▼
-┌─────────────────────────────┐
-│             GCP             │
-│                             │
-│       Cloud Armor           │
-│            │                │
-│            ▼                │
-│      Load Balancer          │
-│            │                │
-│            ▼                │
-│        mcp-front            │
-│    (OAuth + Routing)        │
-│            │                │
-│            ▼                │
-│     ┌─────────────┐         │
-│     │ mcp-notion  │         │
-│     └─────────────┘         │
-│     ┌─────────────┐         │
-│     │mcp-postgres │         │
-│     └─────────────┘         │
-│     ┌─────────────┐         │
-│     │  mcp-git    │         │
-│     └─────────────┘         │
-│                             │
-└─────────────────────────────┘
+Claude.ai/MCP Inspector → OAuth Discovery → Dynamic Client Registration → PKCE Auth Flow
+    │                                                                           │
+    └── Authenticated Requests (Bearer Tokens) ──────────────────────────────────┘
+                              │
+                              ▼
+                    mcp-front (OAuth + Proxy)
+                    │ Structured Logging │
+                    │ JWT Validation     │
+                    │ Domain Validation  │
+                    │                    │
+            ┌───────┼───────────┼────────┐
+            ▼       ▼           ▼        ▼
+       /notion/sse /postgres/sse /git/sse /health
+            │       │           │        │
+            ▼       ▼           ▼        ▼
+       notion-mcp postgres-mcp git-mcp Health Check
+       (Docker)   (Docker)    (Docker)  (Status)
 ```
 
 ## How it works
@@ -117,7 +106,24 @@ go build .
 
 Docker:
 ```bash
-docker-compose up -d
+# Using Docker Hub image
+docker run -d -p 8080:8080 \
+  -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
+  -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
+  -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v $(pwd)/config.json:/app/config.json \
+  dgellow/mcp-front:latest
+
+# Or build locally
+docker build -t mcp-front .
+docker run -d -p 8080:8080 \
+  -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
+  -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
+  -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v $(pwd)/config.json:/app/config.json \
+  mcp-front
 ```
 
 ## Testing

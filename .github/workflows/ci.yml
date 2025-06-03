@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Run staticcheck
+      uses: dominikh/staticcheck-action@v1.3.1
+      with:
+        version: "2024.1.1"
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest
+        args: --timeout=5m
+
+    - name: Run unit tests
+      run: go test -v ./...
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image for testing
+      run: docker build -t mcp-front:test .
+
+    - name: Run integration tests
+      env:
+        GOOGLE_CLIENT_ID: test-client-id
+        GOOGLE_CLIENT_SECRET: test-client-secret
+        JWT_SECRET: test-jwt-secret-that-is-32-bytes!
+        DATABASE_URL: postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable
+      run: |
+        cd integration
+        chmod +x run_tests.sh
+        ./run_tests.sh
+
