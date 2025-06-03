@@ -11,6 +11,20 @@ import (
 	"github.com/ory/fosite/storage"
 )
 
+// OAuthStorage defines the interface for OAuth client storage
+type OAuthStorage interface {
+	fosite.Storage
+	generateState() string
+	storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
+	getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
+	createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
+	GetAllClients() map[string]fosite.Client
+	GetMemoryStore() *storage.MemoryStore // Expose underlying MemoryStore for fosite
+}
+
+// Ensure Storage implements OAuthStorage interface
+var _ OAuthStorage = (*Storage)(nil)
+
 // Storage is a simple storage layer - only stores and retrieves data
 // It extends the MemoryStore with thread-safe client management
 type Storage struct {
@@ -95,4 +109,9 @@ func (s *Storage) GetAllClients() map[string]fosite.Client {
 		clients[id] = client
 	}
 	return clients
+}
+
+// GetMemoryStore returns the underlying MemoryStore for fosite
+func (s *Storage) GetMemoryStore() *storage.MemoryStore {
+	return s.MemoryStore
 }

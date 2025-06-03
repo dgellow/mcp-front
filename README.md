@@ -45,6 +45,7 @@ Create `config.json` based on `config-oauth.json`:
     "gcp_project": "your-gcp-project",
     "allowed_domains": ["yourcompany.com"],
     "token_ttl": "1h",
+    "storage": "memory",
     "google_client_id": "${GOOGLE_CLIENT_ID}",
     "google_client_secret": "${GOOGLE_CLIENT_SECRET}", 
     "google_redirect_uri": "https://mcp.yourcompany.com/oauth/callback"
@@ -196,6 +197,37 @@ The system includes protection against:
 - HTTP header injection
 - Path traversal attacks
 - Malformed authentication headers
+
+## Storage Options
+
+OAuth client data can be stored using different backends:
+
+### Memory Storage (Development)
+```json
+{
+  "oauth": {
+    "storage": "memory"
+  }
+}
+```
+- Default option, suitable for development and testing
+- All client registrations lost on restart
+- Fast, no external dependencies
+
+### Firestore Storage (Production)
+```json
+{
+  "oauth": {
+    "storage": "firestore",
+    "gcp_project": "your-gcp-project"
+  }
+}
+```
+- Production-ready persistent storage
+- Requires GCP Firestore enabled in your project
+- Automatic authentication via service accounts or ADC
+- Client registrations survive restarts
+- Hybrid architecture: Firestore for persistence + in-memory cache for performance
 
 ## Architecture
 

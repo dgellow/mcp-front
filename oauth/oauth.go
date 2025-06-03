@@ -25,7 +25,7 @@ func isDevelopmentMode() bool {
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
 	provider    fosite.OAuth2Provider
-	storage     *Storage
+	storage     OAuthStorage
 	authService *authService
 	config      Config
 }
@@ -39,12 +39,30 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURI  string
 	JWTSecret          string // Should be provided via environment variable
+	StorageType        string // "memory" or "firestore"
+	GCPProjectID       string // Required for firestore storage
 }
 
 // NewServer creates a new OAuth 2.1 server
 func NewServer(config Config) (*Server, error) {
 	// Create storage (data layer)
-	storage := newStorage()
+	var storage OAuthStorage
+	var err error
+	
+	switch config.StorageType {
+	case "firestore":
+		if config.GCPProjectID == "" {
+			return nil, fmt.Errorf("GCP project ID is required for Firestore storage")
+		}
+		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
+		}
+	case "memory", "":
+		storage = newStorage()
+	default:
+		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
+	}
 
 	// Create auth service (business logic)
 	authService, err := newAuthService(config)
@@ -90,7 +108,7 @@ func NewServer(config Config) (*Server, error) {
 	// Create OAuth 2.1 provider
 	provider := compose.Compose(
 		fositeConfig,
-		storage.MemoryStore,
+		storage.GetMemoryStore(),
 		&compose.CommonStrategy{
 			CoreStrategy: compose.NewOAuth2HMACStrategy(fositeConfig, secret, nil),
 		},

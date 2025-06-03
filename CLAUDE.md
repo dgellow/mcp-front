@@ -10,6 +10,7 @@ A secure proxy server that provides OAuth 2.1 authentication for multiple MCP (M
 - **Dynamic Client Registration**: RFC 7591 compliant for Claude.ai and MCP Inspector integration
 - **Public Client Support**: Handles clients without secrets for testing and development
 - **Environment-Based Configuration**: Development vs production security modes
+- **Flexible Storage**: Memory (development) and Firestore (production) storage backends
 - **Structured Logging**: Production-ready logging using Go's standard slog package
 - **Path-based MCP Routing**: Multiple MCP servers behind authenticated endpoints
 - **SSE Transport**: Server-Sent Events for real-time Claude.ai communication
@@ -140,6 +141,26 @@ mcp-front/
 - **Health Checks**: Built-in monitoring endpoint at `/health`
 - **Environment Secrets**: All sensitive configuration from environment variables
 - **Security Testing**: Comprehensive test suite validating bypass protection
+
+### Storage Architecture
+
+OAuth client data is stored using a pluggable storage architecture:
+
+#### Memory Storage (Default)
+- **Use Case**: Development and testing
+- **Characteristics**: Fast, no external dependencies, data lost on restart
+- **Thread Safety**: Mutex-protected concurrent access
+- **Configuration**: `"storage": "memory"` (default)
+
+#### Firestore Storage (Production)
+- **Use Case**: Production deployments requiring persistence
+- **Architecture**: Hybrid design with Firestore persistence + in-memory cache
+- **Performance**: Sub-millisecond access via memory cache, Firestore for durability
+- **Authentication**: Automatic via GCP service accounts or Application Default Credentials
+- **Scalability**: Handles thousands of OAuth clients with minimal cost
+- **Configuration**: `"storage": "firestore"` + `"gcp_project": "your-project"`
+- **Collection**: Stores client entities in `oauth_clients` collection
+- **Startup**: Automatically loads existing clients into memory cache
 
 ### MCP Transport
 

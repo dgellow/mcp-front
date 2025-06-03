@@ -1,0 +1,48 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": {"$env": "BASE_URL", "default": "https://mcp.yourcompany.com"},
+    "addr": {"$env": "ADDR", "default": ":8080"},
+    "name": "mcp-front",
+    "auth": {
+      "kind": "oauth",
+      "issuer": {"$env": "OAUTH_ISSUER", "default": "https://mcp.yourcompany.com"},
+      "gcpProject": {"$env": "GCP_PROJECT"},
+      "allowedDomains": ["yourcompany.com", "contractors.yourcompany.com"],
+      "tokenTtl": "24h",
+      "storage": "firestore",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
+      "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
+      "googleRedirectUri": {"$env": "GOOGLE_REDIRECT_URI", "default": "https://mcp.yourcompany.com/oauth/callback"},
+      "jwtSecret": {"$env": "JWT_SECRET"}
+    }
+  },
+  "mcpServers": {
+    "postgres": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--network", "host",
+        "mcp/postgres",
+        {"$env": "DATABASE_URL"}
+      ],
+      "env": {
+        "PGPASSWORD": {"$env": "POSTGRES_PASSWORD"}
+      }
+    },
+    "notion": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "mcp/notion"],
+      "env": {
+        "NOTION_TOKEN": {"$env": "NOTION_TOKEN"}
+      }
+    },
+    "git": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "-v", "/repos:/repos:ro",
+        "mcp/git"
+      ]
+    }
+  }
+}

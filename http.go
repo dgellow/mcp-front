@@ -159,6 +159,8 @@ func startHTTPServer(config *Config) error {
 			GoogleClientSecret: fmt.Sprintf("%v", oauthAuth.GoogleClientSecret),
 			GoogleRedirectURI:  fmt.Sprintf("%v", oauthAuth.GoogleRedirectURI),
 			JWTSecret:          fmt.Sprintf("%v", oauthAuth.JWTSecret),
+			StorageType:        oauthAuth.Storage,
+			GCPProjectID:       fmt.Sprintf("%v", oauthAuth.GCPProject),
 		}
 		
 		internal.LogTraceWithFields("oauth", "creating OAuth server", map[string]interface{}{
