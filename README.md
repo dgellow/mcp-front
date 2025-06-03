@@ -1,6 +1,6 @@
 # mcp-front
 
-Simple OAuth 2.1 + GCP IAM authentication for multiple MCP servers on GCP. Makes MCP deployment effortless.
+Production-ready OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
 
 ```
 Claude.ai
@@ -86,8 +86,16 @@ Set these environment variables:
 ```bash
 export GOOGLE_CLIENT_ID="your-oauth-client-id"
 export GOOGLE_CLIENT_SECRET="your-oauth-client-secret"
+export JWT_SECRET="your-32-byte-jwt-secret-for-oauth!"
 export NOTION_TOKEN="your-notion-token"
 export DATABASE_URL="postgresql://..."
+
+# Optional: Set development mode for testing
+export MCP_FRONT_ENV="development"
+
+# Optional: Configure structured logging
+export LOG_LEVEL="info"         # debug, info, warn, error
+export LOG_FORMAT="json"        # json or text
 ```
 
 ## Google OAuth setup
@@ -114,18 +122,25 @@ docker-compose up -d
 
 ## Testing
 
-Run the integration test suite:
+Run the comprehensive integration test suite:
 ```bash
 cd integration
 ./run_tests.sh
 ```
 
 This validates:
-- End-to-end MCP communication with stdio and SSE
-- OAuth 2.1 flow compatibility with Claude.ai
-- Dynamic client registration (RFC 7591)
-- CORS headers and security scenarios
-- Authentication bypass protection
+- **OAuth 2.1 Integration**: JWT secret validation, client registration, state parameter handling
+- **Security Testing**: Authentication bypass protection, development vs production modes
+- **MCP Communication**: End-to-end stdio and SSE transport
+- **Claude.ai Compatibility**: Dynamic client registration (RFC 7591), PKCE flows
+- **Environment Configuration**: Development mode features, structured logging
+- **CORS and Headers**: Proper browser compatibility
+
+Run specific OAuth tests:
+```bash
+cd integration
+go test -v -run TestOAuthFlowIntegration
+```
 
 ## Claude.ai integration
 
@@ -181,31 +196,41 @@ The system includes protection against:
 mcp-front is built as a single Go binary with clean separation of concerns:
 
 - `main.go` - Application entry point and configuration loading
-- `http.go` - HTTP server and CORS middleware  
+- `http.go` - HTTP server with structured logging and CORS middleware  
 - `client.go` - MCP client implementation with stdio/SSE bridge
 - `oauth/` - OAuth 2.1 server implementation with fosite
-- `integration/` - Comprehensive test suite
+- `internal/` - Centralized structured logging with Go's slog
+- `integration/` - Comprehensive test suite with OAuth flow validation
 
 The OAuth implementation uses:
 - [ory/fosite](https://github.com/ory/fosite) for OAuth 2.1 compliance
-- Google OAuth for user authentication  
+- Google OAuth for user authentication with domain validation
 - In-memory storage with thread-safe client management
 - Dynamic client registration following RFC 7591
+- Public client support for MCP Inspector compatibility
+- Environment-based security configuration (dev vs production)
+- HMAC-SHA512/256 JWT signing with 32-byte secret requirement
 
 ## Project Status
 
 ✅ **Production Ready Features:**
-- OAuth 2.1 with PKCE support
-- Claude.ai compatibility (tested)
-- Dynamic client registration  
-- Thread-safe client storage
+- OAuth 2.1 with PKCE support and fosite compliance
+- Claude.ai and MCP Inspector compatibility (tested)
+- Dynamic client registration with public client support
+- Thread-safe client storage with mutex protection
+- Structured logging with Go's standard slog package
+- Environment-based configuration (development vs production)
+- JWT secret length validation (32-byte requirement)
+- State parameter entropy handling
 - CORS headers for browser compatibility
-- Comprehensive integration tests
-- Security scenario validation
-- GCP domain validation
+- Comprehensive OAuth integration test suite
+- Security scenario validation and bypass protection
+- GCP domain validation with Google Workspace integration
 
-🔧 **Development:**
+🔧 **Testing & Development:**
+- OAuth flow integration tests covering JWT validation, client registration, state handling
+- Environment-based test scenarios (MCP_FRONT_ENV)
+- Mock database setup with Docker Compose
+- Automated CI-ready test runner with health checks
+- Development mode for debugging OAuth clients
 - See `CLAUDE.md` for detailed implementation guide
-- Integration tests cover all OAuth flows
-- Mock GCP server for testing
-- Automated CI-ready test runner
