@@ -19,7 +19,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags='-w -s -extldflags "-static"' \
     -a -installsuffix cgo \
-    -o mcp-front .
+    -o mcp-front ./cmd/mcp-front
 
 # Final stage - use alpine for Docker CLI and tools
 FROM alpine:latest

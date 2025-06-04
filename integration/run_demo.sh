@@ -55,7 +55,7 @@ fi
 # Build mcp-front
 echo -e "${YELLOW}🔨 Building mcp-front...${NC}"
 cd ..
-go build -o mcp-front .
+go build -o cmd/mcp-front/mcp-front ./cmd/mcp-front
 if [ $? -ne 0 ]; then
     echo "❌ Build failed!"
     exit 1
@@ -69,12 +69,12 @@ if [ "$USE_OAUTH" = true ]; then
     echo "   Using OAuth config because GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set"
     echo "   Config: config/config.oauth-test.json"
     echo "   Environment: MCP_FRONT_ENV=${MCP_FRONT_ENV:-production}"
-    env MCP_FRONT_ENV="${MCP_FRONT_ENV:-development}" JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-32-bytes-exactly!}" ../mcp-front -config config/config.oauth-test.json &
+    env MCP_FRONT_ENV="${MCP_FRONT_ENV:-development}" JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-32-bytes-exactly!}" ../cmd/mcp-front/mcp-front -config config/config.oauth-test.json &
 else
     echo "   Using token config because Google OAuth credentials not found"
     echo "   Config: config/config.demo-token.json" 
     echo "   Environment: MCP_FRONT_ENV=${MCP_FRONT_ENV:-production}"
-    env MCP_FRONT_ENV="${MCP_FRONT_ENV:-development}" JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-32-bytes-exactly!}" ../mcp-front -config config/config.demo-token.json &
+    env MCP_FRONT_ENV="${MCP_FRONT_ENV:-development}" JWT_SECRET="${JWT_SECRET:-demo-jwt-secret-32-bytes-exactly!}" ../cmd/mcp-front/mcp-front -config config/config.demo-token.json &
 fi
 MCP_PID=$!
 

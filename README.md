@@ -101,7 +101,7 @@ Local development:
 ```bash
 git clone https://github.com/dgellow/mcp-front.git
 cd mcp-front
-go build .
+go build -o mcp-front ./cmd/mcp-front
 ./mcp-front -config config.json
 ```
 

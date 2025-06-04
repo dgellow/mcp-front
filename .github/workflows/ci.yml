@@ -61,7 +61,7 @@ jobs:
         args: --timeout=5m
 
     - name: Run unit tests
-      run: go test -v ./...
+      run: go test -v ./internal/... ./cmd/...
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3

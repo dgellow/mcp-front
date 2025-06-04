@@ -1,13 +1,7 @@
 #!/bin/bash
 
-# Integration test runner for CI and fresh dev environments
-# Builds binary, sets up environment, runs tests, cleans up
-
+# Integration test runner - quiet unless there are failures
 set -e
-
-echo "🧪 mcp-front Integration Test Runner"
-echo "==================================="
-echo ""
 
 # Colors
 GREEN='\033[0;32m'
@@ -20,102 +14,119 @@ cd "$(dirname "$0")"
 
 # Function for cleanup
 cleanup() {
-    echo ""
-    echo -e "${YELLOW}🧹 Cleaning up test environment...${NC}"
-    docker-compose -f config/docker-compose.test.yml down -v 2>/dev/null || true
-    pkill -f mcp-front 2>/dev/null || true
-    echo "✅ Cleanup complete"
+    docker-compose -f config/docker-compose.test.yml down -v &>/dev/null || true
+    pkill -f mcp-front &>/dev/null || true
 }
 
 # Set up cleanup on exit
 trap cleanup EXIT
 
-echo "📋 Pre-flight checks..."
-
-# Check required tools
-echo -n "  - Docker: "
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker not found${NC}"
-    exit 1
-fi
-echo "✅"
-
-echo -n "  - Docker Compose: "
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}❌ Docker Compose not found${NC}"
-    exit 1
-fi
-echo "✅"
-
-echo -n "  - Go: "
-if ! command -v go &> /dev/null; then
-    echo -e "${RED}❌ Go not found${NC}"
-    exit 1
-fi
-echo "✅"
-
-echo -n "  - mcp/postgres image: "
-if ! docker image inspect mcp/postgres &> /dev/null; then
-    echo -e "${GREEN}ℹ️  Not found, pulling...${NC}"
-    docker pull mcp/postgres || {
-        echo -e "${RED}❌ Failed to pull mcp/postgres image${NC}"
+# Check required tools silently
+check_dependencies() {
+    local missing=()
+    
+    command -v docker &>/dev/null || missing+=("docker")
+    command -v docker-compose &>/dev/null || missing+=("docker-compose")
+    command -v go &>/dev/null || missing+=("go")
+    
+    if [ ${#missing[@]} -ne 0 ]; then
+        echo -e "${RED}❌ Missing required tools: ${missing[*]}${NC}"
         exit 1
-    }
-fi
-echo "✅"
-
-echo ""
-echo -e "${YELLOW}🔨 Building mcp-front binary...${NC}"
-cd ..
-go build -o mcp-front .
-if [ ! -f "mcp-front" ]; then
-    echo -e "${RED}❌ Build failed - binary not found${NC}"
-    exit 1
-fi
-echo "✅ Binary built successfully"
-
-cd integration
-echo ""
-echo -e "${YELLOW}🧪 Running integration tests...${NC}"
-echo ""
-
-# Create a log file for mcp-front output
-MCP_LOG_FILE="/tmp/mcp-front-test.log"
-export MCP_LOG_FILE
-
-# Run tests with timeout and verbose output
-if go test -v -timeout 15m 2>&1 | tee /tmp/test-output.log; then
-    echo ""
-    echo -e "${GREEN}🎉 All integration tests passed!${NC}"
-    echo ""
-    echo "Test coverage:"
-    echo "  ✅ End-to-end integration"
-    echo "  ✅ Security scenarios"
-    echo "  ✅ Authentication bypass protection"
-    echo "  ✅ Failure handling"
-    echo "  ✅ OAuth 2.1 flow (Claude.ai compatibility)"
-    echo "  ✅ Dynamic client registration"
-    echo "  ✅ CORS headers and preflight"
-    echo "  ✅ Health check endpoint"
-    echo ""
-    exit 0
-else
-    echo ""
-    echo -e "${RED}❌ Integration tests failed${NC}"
-    echo ""
-    echo -e "${YELLOW}🔍 Docker Compose logs:${NC}"
-    echo "----------------------------------------"
-    docker-compose -f config/docker-compose.test.yml logs 2>/dev/null || echo "No Docker logs available"
-    echo "----------------------------------------"
-    echo ""
-    echo -e "${YELLOW}🔍 mcp-front logs:${NC}"
-    echo "----------------------------------------"
-    if [ -f "$MCP_LOG_FILE" ]; then
-        tail -50 "$MCP_LOG_FILE" 2>/dev/null || echo "No mcp-front logs available"
-    else
-        echo "No mcp-front log file found"
     fi
-    echo "----------------------------------------"
-    echo ""
-    exit 1
-fi
+    
+    # Pull mcp/postgres if needed (silently)
+    if ! docker image inspect mcp/postgres &>/dev/null; then
+        docker pull mcp/postgres &>/dev/null || {
+            echo -e "${RED}❌ Failed to pull mcp/postgres image${NC}"
+            exit 1
+        }
+    fi
+}
+
+# Build binary
+build_binary() {
+    cd ..
+    go build -o cmd/mcp-front/mcp-front ./cmd/mcp-front &>/dev/null
+    if [ ! -f "cmd/mcp-front/mcp-front" ]; then
+        echo -e "${RED}❌ Build failed${NC}"
+        exit 1
+    fi
+    cd integration
+}
+
+# Simple spinner animation
+show_animation() {
+    local spinners=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local frame=0
+    
+    # Hide cursor
+    tput civis
+    
+    while true; do
+        printf "\r  ${spinners[$((frame % ${#spinners[@]}))]} Running tests..."
+        frame=$((frame + 1))
+        sleep 0.1
+    done
+}
+
+# Run tests
+run_tests() {
+    # Create a log file for mcp-front output
+    export MCP_LOG_FILE="/tmp/mcp-front-test.log"
+    
+    # Start animation in background
+    show_animation &
+    local anim_pid=$!
+    
+    # Run tests, capturing output
+    if go test -timeout 15m &>/tmp/test-output.log; then
+        # Kill animation and clear line
+        kill $anim_pid 2>/dev/null || true
+        wait $anim_pid 2>/dev/null || true
+        printf "\r\033[K"
+        tput cnorm  # Show cursor again
+        
+        # Success - print minimal output
+        echo -e "${GREEN}✓ All tests passed${NC}"
+        return 0
+    else
+        # Kill animation and clear line
+        kill $anim_pid 2>/dev/null || true
+        wait $anim_pid 2>/dev/null || true
+        printf "\r\033[K"
+        tput cnorm  # Show cursor again
+        # Failure - show details
+        echo -e "${RED}❌ Tests failed${NC}"
+        echo ""
+        echo "Test output:"
+        echo "----------------------------------------"
+        cat /tmp/test-output.log
+        echo "----------------------------------------"
+        echo ""
+        
+        # Show docker logs if available
+        if docker-compose -f config/docker-compose.test.yml ps -q &>/dev/null; then
+            echo "Docker logs:"
+            echo "----------------------------------------"
+            docker-compose -f config/docker-compose.test.yml logs 2>/dev/null || true
+            echo "----------------------------------------"
+            echo ""
+        fi
+        
+        # Show mcp-front logs if available
+        if [ -f "$MCP_LOG_FILE" ]; then
+            echo "mcp-front logs (last 50 lines):"
+            echo "----------------------------------------"
+            tail -50 "$MCP_LOG_FILE" 2>/dev/null || true
+            echo "----------------------------------------"
+            echo ""
+        fi
+        
+        return 1
+    fi
+}
+
+# Main execution
+check_dependencies
+build_binary
+run_tests

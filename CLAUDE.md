@@ -189,7 +189,7 @@ export LOG_LEVEL="debug"            # debug, info, warn, error
 export LOG_FORMAT="text"            # json (production) or text (development)
 
 # Build and run
-go build -o mcp-front .
+go build -o mcp-front ./cmd/mcp-front
 ./mcp-front -config config.json
 ```
 

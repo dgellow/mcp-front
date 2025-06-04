@@ -11,7 +11,6 @@ import (
 
 func TestSecurityScenarios(t *testing.T) {
 	// Start test database first
-	t.Log("🔒 Setting up test environment for security tests...")
 	dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
 	if err := dbCmd.Run(); err != nil {
 		t.Fatalf("Failed to start test database: %v", err)
@@ -38,7 +37,7 @@ func TestSecurityScenarios(t *testing.T) {
 	time.Sleep(15 * time.Second)
 
 	t.Run("NoAuthToken", func(t *testing.T) {
-		t.Log("🔒 Testing access without any authentication token...")
+		// Test:
 
 		resp, err := http.Get("http://localhost:8080/postgres/sse")
 		if err != nil {
@@ -48,13 +47,11 @@ func TestSecurityScenarios(t *testing.T) {
 
 		if resp.StatusCode != 401 {
 			t.Errorf("❌ Expected 401 Unauthorized, got %d", resp.StatusCode)
-		} else {
-			t.Log("✅ Correctly rejected request without auth token")
 		}
 	})
 
 	t.Run("InvalidBearerToken", func(t *testing.T) {
-		t.Log("🔒 Testing access with invalid Bearer token...")
+		// Test:
 
 		client := &http.Client{}
 		req, _ := http.NewRequest("GET", "http://localhost:8080/postgres/sse", nil)
@@ -69,13 +66,11 @@ func TestSecurityScenarios(t *testing.T) {
 
 		if resp.StatusCode != 401 {
 			t.Errorf("❌ Expected 401 Unauthorized, got %d", resp.StatusCode)
-		} else {
-			t.Log("✅ Correctly rejected invalid Bearer token")
 		}
 	})
 
 	t.Run("MalformedAuthHeader", func(t *testing.T) {
-		t.Log("🔒 Testing access with malformed Authorization header...")
+		// Test:
 
 		malformedHeaders := []string{
 			"Bearer",                           // Missing token
@@ -87,7 +82,7 @@ func TestSecurityScenarios(t *testing.T) {
 		}
 
 		for _, authHeader := range malformedHeaders {
-			t.Logf("Testing malformed header: '%s'", authHeader)
+			// Testing malformed header
 
 			client := &http.Client{}
 			req, _ := http.NewRequest("GET", "http://localhost:8080/postgres/sse", nil)
@@ -104,11 +99,10 @@ func TestSecurityScenarios(t *testing.T) {
 				t.Errorf("❌ Expected 401 for malformed header '%s', got %d", authHeader, resp.StatusCode)
 			}
 		}
-		t.Log("✅ All malformed auth headers correctly rejected")
 	})
 
 	t.Run("SQLInjectionAttempts", func(t *testing.T) {
-		t.Log("🔒 Testing SQL injection resistance...")
+		// Test:
 
 		client := NewMCPClient("http://localhost:8080")
 		client.Authenticate()
@@ -128,7 +122,7 @@ func TestSecurityScenarios(t *testing.T) {
 		}
 
 		for _, payload := range sqlInjectionPayloads {
-			t.Logf("Testing SQL injection payload: %s", payload)
+			// Testing SQL injection payload
 
 			// Try to inject via the query parameter
 			_, err := client.SendMCPRequest("tools/call", map[string]interface{}{
@@ -142,15 +136,14 @@ func TestSecurityScenarios(t *testing.T) {
 			// The exact behavior depends on the postgres MCP implementation
 			// but it should NOT succeed in executing malicious SQL
 			if err != nil {
-				t.Logf("✅ SQL injection payload rejected: %v", err)
-			} else {
+					} else {
 				t.Logf("⚠️  SQL injection payload was accepted (should be sanitized by postgres MCP)")
 			}
 		}
 	})
 
 	t.Run("HeaderInjectionAttempts", func(t *testing.T) {
-		t.Log("🔒 Testing HTTP header injection resistance...")
+		// Test:
 
 		// Try to inject malicious headers
 		maliciousHeaders := []string{
@@ -161,7 +154,7 @@ func TestSecurityScenarios(t *testing.T) {
 		}
 
 		for _, maliciousAuth := range maliciousHeaders {
-			t.Logf("Testing header injection: %q", maliciousAuth)
+			// Testing header injection
 
 			client := &http.Client{}
 			req, _ := http.NewRequest("GET", "http://localhost:8080/postgres/sse", nil)
@@ -170,7 +163,6 @@ func TestSecurityScenarios(t *testing.T) {
 
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Logf("✅ Header injection blocked at HTTP level: %v", err)
 				continue
 			}
 			resp.Body.Close()
@@ -187,11 +179,10 @@ func TestSecurityScenarios(t *testing.T) {
 				t.Errorf("❌ Expected 401 for header injection attempt, got %d", resp.StatusCode)
 			}
 		}
-		t.Log("✅ Header injection attempts properly handled")
 	})
 
 	t.Run("PathTraversalAttempts", func(t *testing.T) {
-		t.Log("🔒 Testing path traversal resistance...")
+		// Test:
 
 		pathTraversalAttempts := []string{
 			"../../../etc/passwd",
@@ -202,7 +193,7 @@ func TestSecurityScenarios(t *testing.T) {
 		}
 
 		for _, path := range pathTraversalAttempts {
-			t.Logf("Testing path traversal: %s", path)
+			// Testing path traversal
 
 			client := &http.Client{}
 			req, _ := http.NewRequest("GET", fmt.Sprintf("http://localhost:8080/%s", path), nil)
@@ -210,7 +201,6 @@ func TestSecurityScenarios(t *testing.T) {
 
 			resp, err := client.Do(req)
 			if err != nil {
-				t.Logf("✅ Path traversal blocked: %v", err)
 				continue
 			}
 			resp.Body.Close()
@@ -219,13 +209,12 @@ func TestSecurityScenarios(t *testing.T) {
 			if resp.StatusCode == 200 {
 				t.Errorf("❌ Path traversal may have succeeded: %s returned 200", path)
 			} else {
-				t.Logf("✅ Path traversal blocked: %s returned %d", path, resp.StatusCode)
-			}
+					}
 		}
 	})
 
 	t.Run("TokenReuse", func(t *testing.T) {
-		t.Log("🔒 Testing token reuse scenarios...")
+		// Test:
 
 		// Test that the same token works consistently
 		client1 := NewMCPClient("http://localhost:8080")
@@ -240,13 +229,11 @@ func TestSecurityScenarios(t *testing.T) {
 
 		if err1 != nil || err2 != nil {
 			t.Errorf("❌ Valid token should work for multiple clients: %v, %v", err1, err2)
-		} else {
-			t.Log("✅ Token reuse works correctly")
 		}
 	})
 
 	t.Run("AuthenticationBypass", func(t *testing.T) {
-		t.Log("🔒 Testing authentication bypass vulnerabilities...")
+		// Test:
 
 		// Test case: token without Bearer prefix should be rejected
 		t.Run("RejectsTokenWithoutBearer", func(t *testing.T) {
@@ -264,8 +251,7 @@ func TestSecurityScenarios(t *testing.T) {
 			if resp.StatusCode == 200 {
 				t.Errorf("❌ CRITICAL: Auth bypass! 'test-token' without Bearer returned 200")
 			} else if resp.StatusCode == 401 {
-				t.Log("✅ Correctly rejects token without Bearer prefix")
-			} else {
+					} else {
 				t.Logf("⚠️  Unexpected status %d for malformed auth", resp.StatusCode)
 			}
 		})
@@ -302,14 +288,13 @@ func TestSecurityScenarios(t *testing.T) {
 				} else if !tc.shouldPass && resp.StatusCode != 401 {
 					t.Errorf("❌ Invalid auth '%s' should return 401, got %d", tc.authHeader, resp.StatusCode)
 				} else {
-					t.Logf("✅ Auth header '%s' correctly handled", tc.name)
-				}
+							}
 			})
 		}
 	})
 
 	t.Run("RateLimitingCheck", func(t *testing.T) {
-		t.Log("🔒 Testing potential rate limiting (rapid requests)...")
+		// Test:
 
 		client := NewMCPClient("http://localhost:8080")
 		client.Authenticate()
@@ -323,23 +308,21 @@ func TestSecurityScenarios(t *testing.T) {
 			if err != nil {
 				errorCount++
 				if strings.Contains(err.Error(), "rate") || strings.Contains(err.Error(), "limit") {
-					t.Logf("✅ Rate limiting detected: %v", err)
-				}
+							}
 			} else {
 				successCount++
 			}
 		}
 
-		t.Logf("Rapid requests: %d success, %d errors", successCount, errorCount)
+		// Rapid requests completed
 		if successCount > 0 {
-			t.Log("✅ Service handles rapid requests")
-		}
+			}
 	})
 }
 
 // TestFailureScenarios validates error handling
 func TestFailureScenarios(t *testing.T) {
-	t.Log("Testing failure scenarios...")
+	// Testing failure scenarios
 
 	t.Run("FailsWithWrongAuth", func(t *testing.T) {
 		dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
@@ -358,11 +341,11 @@ func TestFailureScenarios(t *testing.T) {
 			t.Fatalf("Failed to start mcp-front: %v", err)
 		}
 		defer func() {
-		if mcpCmd.Process != nil {
-			mcpCmd.Process.Kill()
-			mcpCmd.Wait()
-		}
-	}()
+			if mcpCmd.Process != nil {
+				mcpCmd.Process.Kill()
+				mcpCmd.Wait()
+			}
+		}()
 
 		time.Sleep(15 * time.Second)
 
@@ -399,8 +382,7 @@ func TestFailureScenarios(t *testing.T) {
 				if resp.StatusCode != tc.expected {
 					t.Errorf("❌ Token '%s': expected %d, got %d", tc.name, tc.expected, resp.StatusCode)
 				} else {
-					t.Logf("✅ Token '%s': correctly returned %d", tc.name, resp.StatusCode)
-				}
+							}
 			})
 		}
 	})
