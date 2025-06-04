@@ -107,14 +107,14 @@ go build -o mcp-front ./cmd/mcp-front
 
 Docker:
 ```bash
-# Using Docker Hub image
+# Using Docker Hub image (use specific SHA tag)
 docker run -d -p 8080:8080 \
   -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
   -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
   -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/config.json:/app/config.json \
-  dgellow/mcp-front:latest
+  dgellow/mcp-front:main-a734cfc
 
 # Or build locally
 docker build -t mcp-front .
