@@ -33,7 +33,7 @@ var _ OAuthStorage = (*FirestoreStorage)(nil)
 // OAuthClientEntity represents the structure stored in Firestore
 type OAuthClientEntity struct {
 	ID            string   `firestore:"id"`
-	Secret        *string  `firestore:"secret,omitempty"`        // nil for public clients
+	Secret        *string  `firestore:"secret,omitempty"` // nil for public clients
 	RedirectURIs  []string `firestore:"redirect_uris"`
 	Scopes        []string `firestore:"scopes"`
 	GrantTypes    []string `firestore:"grant_types"`
@@ -49,7 +49,7 @@ func (e *OAuthClientEntity) ToFositeClient() *fosite.DefaultClient {
 	if e.Secret != nil {
 		secret = []byte(*e.Secret)
 	}
-	
+
 	return &fosite.DefaultClient{
 		ID:            e.ID,
 		Secret:        secret,
@@ -171,7 +171,7 @@ func (s *FirestoreStorage) GetClient(ctx context.Context, id string) (fosite.Cli
 		s.clientsMutex.RUnlock()
 		client, err := s.loadClientFromFirestore(ctx, id)
 		s.clientsMutex.RLock()
-		
+
 		if err != nil {
 			return nil, fosite.ErrNotFound
 		}
@@ -222,7 +222,7 @@ func (s *FirestoreStorage) createClient(clientID string, redirectURIs []string, 
 	// Store in Firestore
 	ctx := context.Background()
 	entity := FromFositeClient(client, time.Now().Unix())
-	
+
 	_, err := s.client.Collection(s.collection).Doc(clientID).Set(ctx, entity)
 	if err != nil {
 		internal.LogError("Failed to store client in Firestore (client_id: %s): %v", clientID, err)

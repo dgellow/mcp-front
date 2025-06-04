@@ -38,19 +38,19 @@ func corsMiddleware() MiddlewareFunc {
 			if origin == "" {
 				origin = "*"
 			}
-			
+
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cache-Control, mcp-protocol-version")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Max-Age", "3600")
-			
+
 			// Handle preflight requests
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -139,13 +139,13 @@ func Start(cfg *config.Config) error {
 	var oauthServer *oauth.Server
 	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
 		internal.LogDebug("initializing OAuth 2.1 server")
-		
+
 		// Validate required OAuth fields
 		if oauthAuth.Issuer == nil || oauthAuth.TokenTTL == "" {
 			internal.LogError("OAuth configuration missing required fields: issuer and token_ttl are required")
 			return fmt.Errorf("OAuth configuration missing required fields: issuer and token_ttl are required")
 		}
-		
+
 		internal.LogDebug("parsing OAuth token TTL: %s", oauthAuth.TokenTTL)
 		ttl, err := time.ParseDuration(oauthAuth.TokenTTL)
 		if err != nil {
@@ -164,13 +164,13 @@ func Start(cfg *config.Config) error {
 			StorageType:        oauthAuth.Storage,
 			GCPProjectID:       fmt.Sprintf("%v", oauthAuth.GCPProject),
 		}
-		
+
 		internal.LogTraceWithFields("oauth", "creating OAuth server", map[string]interface{}{
 			"issuer":          oauthConfig.Issuer,
 			"token_ttl":       oauthConfig.TokenTTL.String(),
 			"allowed_domains": oauthConfig.AllowedDomains,
 		})
-		
+
 		oauthServer, err = oauth.NewServer(oauthConfig)
 		if err != nil {
 			internal.LogErrorWithFields("oauth", "failed to create OAuth server", map[string]interface{}{
@@ -178,7 +178,7 @@ func Start(cfg *config.Config) error {
 			})
 			return fmt.Errorf("failed to create OAuth server: %w", err)
 		}
-		
+
 		if oauthServer == nil {
 			internal.LogErrorWithFields("oauth", "OAuth server creation returned nil", nil)
 			return fmt.Errorf("OAuth server creation returned nil")
@@ -188,13 +188,13 @@ func Start(cfg *config.Config) error {
 			"endpoints": []string{
 				"/.well-known/oauth-authorization-server",
 				"/authorize",
-				"/oauth/callback", 
+				"/oauth/callback",
 				"/token",
 				"/register",
 				"/debug/clients",
 			},
 		})
-		
+
 		// Register OAuth endpoints with CORS middleware
 		corsHandler := corsMiddleware()
 		httpMux.Handle("/.well-known/oauth-authorization-server", corsHandler(http.HandlerFunc(oauthServer.WellKnownHandler)))
@@ -202,7 +202,7 @@ func Start(cfg *config.Config) error {
 		httpMux.Handle("/oauth/callback", corsHandler(http.HandlerFunc(oauthServer.GoogleCallbackHandler)))
 		httpMux.Handle("/token", corsHandler(http.HandlerFunc(oauthServer.TokenHandler)))
 		httpMux.Handle("/register", corsHandler(http.HandlerFunc(oauthServer.RegisterHandler)))
-		
+
 		// Debug endpoint to see registered clients
 		httpMux.Handle("/debug/clients", corsHandler(http.HandlerFunc(oauthServer.DebugClientsHandler)))
 
@@ -227,16 +227,16 @@ func Start(cfg *config.Config) error {
 			os.Exit(1)
 		}
 		server := client.NewMCPServer(name, "dev", fmt.Sprintf("%v", cfg.Proxy.BaseURL), clientConfig)
-		
+
 		// Capture loop variables to avoid closure issues
 		currentName := name
 		currentClient := mcpClient
 		currentServer := server
 		currentConfig := clientConfig
-		
+
 		errorGroup.Go(func() error {
 			internal.LogTraceWithFields(currentName, "starting MCP client initialization", nil)
-			
+
 			// Add nil checks to prevent panics
 			if currentClient == nil {
 				internal.LogErrorWithFields(currentName, "client is nil", nil)
@@ -246,7 +246,7 @@ func Start(cfg *config.Config) error {
 				internal.LogErrorWithFields(currentName, "server or mcpServer is nil", nil)
 				return fmt.Errorf("<%s> server or mcpServer is nil", currentName)
 			}
-			
+
 			internal.LogTraceWithFields(currentName, "client and server objects validated", nil)
 			internal.LogInfoWithFields(currentName, "connecting to MCP server", nil)
 			addErr := currentClient.AddToMCPServer(ctx, info, currentServer.MCPServer)
@@ -263,25 +263,25 @@ func Start(cfg *config.Config) error {
 
 			internal.LogTraceWithFields(currentName, "setting up middleware chain", nil)
 			middlewares := make([]MiddlewareFunc, 0)
-			
+
 			// Add CORS as the FIRST middleware to handle OPTIONS before auth
 			middlewares = append(middlewares, corsMiddleware())
 			middlewares = append(middlewares, recoverMiddleware(currentName))
-			
+
 			// Add logging middleware if enabled and Options is not nil
 			hasOptions := currentConfig.Options != nil
 			internal.LogTraceWithFields(currentName, "checking logging configuration", map[string]interface{}{
 				"has_options": hasOptions,
 			})
-			
+
 			if hasOptions && config.BoolOrDefault(currentConfig.Options.LogEnabled, false) {
 				internal.LogTraceWithFields(currentName, "adding logger middleware", nil)
 				middlewares = append(middlewares, loggerMiddleware(currentName))
 			} else {
 				logEnabled := hasOptions && currentConfig.Options.LogEnabled != nil && *currentConfig.Options.LogEnabled
 				internal.LogTraceWithFields(currentName, "skipping logger middleware", map[string]interface{}{
-					"has_options":   hasOptions,
-					"log_enabled":   logEnabled,
+					"has_options": hasOptions,
+					"log_enabled": logEnabled,
 				})
 			}
 
@@ -290,7 +290,7 @@ func Start(cfg *config.Config) error {
 			internal.LogTraceWithFields(currentName, "configuring authentication", map[string]interface{}{
 				"oauth_enabled": hasOAuth,
 			})
-			
+
 			if hasOAuth {
 				internal.LogTraceWithFields(currentName, "adding OAuth middleware", nil)
 				middlewares = append(middlewares, oauthServer.ValidateTokenMiddleware())
@@ -302,7 +302,7 @@ func Start(cfg *config.Config) error {
 			} else {
 				internal.LogTraceWithFields(currentName, "no authentication middleware configured", nil)
 			}
-			
+
 			mcpRoute := path.Join(baseURL.Path, currentName)
 			if !strings.HasPrefix(mcpRoute, "/") {
 				mcpRoute = "/" + mcpRoute
@@ -310,18 +310,18 @@ func Start(cfg *config.Config) error {
 			if !strings.HasSuffix(mcpRoute, "/") {
 				mcpRoute += "/"
 			}
-			
+
 			internal.LogTraceWithFields(currentName, "registering route", map[string]interface{}{
-				"route": mcpRoute,
+				"route":            mcpRoute,
 				"middleware_count": len(middlewares),
 			})
 			httpMux.Handle(mcpRoute, chainMiddleware(currentServer.SSEServer, middlewares...))
-			
+
 			httpServer.RegisterOnShutdown(func() {
 				internal.Logf("<%s> Shutting down", currentName)
 				_ = currentClient.Close()
 			})
-			
+
 			internal.LogTraceWithFields(currentName, "MCP client initialization completed successfully", nil)
 			return nil
 		})
@@ -329,7 +329,7 @@ func Start(cfg *config.Config) error {
 
 	// Channel to signal errors that should trigger shutdown
 	errChan := make(chan error, 2)
-	
+
 	// Wait for all MCP clients to initialize
 	go func() {
 		err := errorGroup.Wait()
@@ -374,7 +374,7 @@ func Start(cfg *config.Config) error {
 		internal.Logf("Server shutdown error: %v", err)
 		return err
 	}
-	
+
 	internal.Logf("Server shutdown complete")
 	return nil
 }

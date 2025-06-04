@@ -13,12 +13,12 @@ var logger *slog.Logger
 func init() {
 	// Configure structured logging using Go's standard slog package
 	var level slog.Level
-	
+
 	// Check LOG_LEVEL environment variable
 	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
 	case "ERROR":
 		level = slog.LevelError
-	case "WARN", "WARNING":  
+	case "WARN", "WARNING":
 		level = slog.LevelWarn
 	case "INFO", "":
 		level = slog.LevelInfo
@@ -46,7 +46,7 @@ func init() {
 			},
 		})
 	} else {
-		// Development: human-readable text logs  
+		// Development: human-readable text logs
 		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			Level: level,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {

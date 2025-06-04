@@ -163,7 +163,7 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 	for _, endpoint := range endpoints {
 		t.Run(endpoint.method+" "+endpoint.path, func(t *testing.T) {
 			var req *http.Request
-			
+
 			if endpoint.path == "/register" && endpoint.method == "POST" {
 				requestBody := `{"redirect_uris": ["https://client.example.com/callback"], "scope": "read write"}`
 				req = httptest.NewRequest(endpoint.method, endpoint.path, strings.NewReader(requestBody))
@@ -171,9 +171,9 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 			} else {
 				req = httptest.NewRequest(endpoint.method, endpoint.path, nil)
 			}
-			
+
 			req.Header.Set("Origin", "http://localhost:6274")
-			
+
 			// For preflight requests, add required headers
 			if endpoint.method == "OPTIONS" {
 				req.Header.Set("Access-Control-Request-Method", "GET")
@@ -185,7 +185,7 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 			// Create CORS-wrapped handler
 			corsHandler := corsMiddleware()
 			var handler http.Handler
-			
+
 			switch endpoint.path {
 			case "/.well-known/oauth-authorization-server":
 				handler = corsHandler(http.HandlerFunc(server.WellKnownHandler))

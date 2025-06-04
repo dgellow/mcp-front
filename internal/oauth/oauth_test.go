@@ -61,8 +61,8 @@ func TestNewServerWithoutJWTSecret(t *testing.T) {
 
 func TestWellKnownHandler(t *testing.T) {
 	config := Config{
-		Issuer:   "https://test.example.com",
-		TokenTTL: time.Hour,
+		Issuer:    "https://test.example.com",
+		TokenTTL:  time.Hour,
 		JWTSecret: "test-secret-32-bytes-long-for-testing",
 	}
 
@@ -93,7 +93,7 @@ func TestWellKnownHandler(t *testing.T) {
 	requiredFields := []string{
 		"issuer",
 		"authorization_endpoint",
-		"token_endpoint", 
+		"token_endpoint",
 		"registration_endpoint",
 		"scopes_supported",
 		"response_types_supported",
@@ -115,8 +115,8 @@ func TestWellKnownHandler(t *testing.T) {
 
 func TestRegisterHandler(t *testing.T) {
 	config := Config{
-		Issuer:   "https://test.example.com",
-		TokenTTL: time.Hour,
+		Issuer:    "https://test.example.com",
+		TokenTTL:  time.Hour,
 		JWTSecret: "test-secret-32-bytes-long-for-testing",
 	}
 
@@ -165,8 +165,8 @@ func TestRegisterHandler(t *testing.T) {
 
 func TestRegisterHandlerInvalidMethod(t *testing.T) {
 	config := Config{
-		Issuer:   "https://test.example.com", 
-		TokenTTL: time.Hour,
+		Issuer:    "https://test.example.com",
+		TokenTTL:  time.Hour,
 		JWTSecret: "test-secret-32-bytes-long-for-testing",
 	}
 
@@ -187,8 +187,8 @@ func TestRegisterHandlerInvalidMethod(t *testing.T) {
 
 func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 	config := Config{
-		Issuer:   "https://test.example.com",
-		TokenTTL: time.Hour,
+		Issuer:    "https://test.example.com",
+		TokenTTL:  time.Hour,
 		JWTSecret: "test-secret-32-bytes-long-for-testing",
 	}
 
@@ -268,7 +268,7 @@ func TestStorageArchitecture(t *testing.T) {
 		redirectURIs := []string{"https://example.com/callback"}
 		scopes := []string{"read", "write"}
 		issuer := "https://test.example.com"
-		
+
 		client := storage.createClient(clientID, redirectURIs, scopes, issuer)
 
 		if client.GetID() != clientID {
@@ -288,16 +288,16 @@ func TestStorageArchitecture(t *testing.T) {
 		redirectURIs := []string{"https://example.com/callback"}
 		scopes := []string{"read"}
 		issuer := "https://test.example.com"
-		
+
 		// Create client
 		originalClient := storage.createClient(clientID, redirectURIs, scopes, issuer)
-		
+
 		// Retrieve client
 		retrievedClient, err := storage.GetClient(nil, clientID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve client: %v", err)
 		}
-		
+
 		if retrievedClient.GetID() != originalClient.GetID() {
 			t.Errorf("Retrieved client ID doesn't match original")
 		}
@@ -311,7 +311,7 @@ func TestStorageArchitecture(t *testing.T) {
 		if clients == nil {
 			t.Error("GetAllClients should return a map, not nil")
 		}
-		
+
 		// Should be able to call this multiple times safely
 		clients2 := storage.GetAllClients()
 		if len(clients) != len(clients2) {
@@ -323,7 +323,7 @@ func TestStorageArchitecture(t *testing.T) {
 func TestAuthServiceArchitecture(t *testing.T) {
 	config := Config{
 		GoogleClientID:     "test-client-id",
-		GoogleClientSecret: "test-client-secret", 
+		GoogleClientSecret: "test-client-secret",
 		GoogleRedirectURI:  "https://test.example.com/callback",
 		AllowedDomains:     []string{"example.com"},
 	}

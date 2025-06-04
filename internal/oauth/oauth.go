@@ -48,7 +48,7 @@ func NewServer(config Config) (*Server, error) {
 	// Create storage (data layer)
 	var storage OAuthStorage
 	var err error
-	
+
 	switch config.StorageType {
 	case "firestore":
 		if config.GCPProjectID == "" {
@@ -74,6 +74,10 @@ func NewServer(config Config) (*Server, error) {
 	var secret []byte
 	if config.JWTSecret != "" {
 		secret = []byte(config.JWTSecret)
+		// Validate JWT secret length for HMAC-SHA512/256
+		if len(secret) < 32 {
+			return nil, fmt.Errorf("JWT secret must be at least 32 bytes long for security, got %d bytes", len(secret))
+		}
 	} else {
 		// Generate a cryptographically secure random secret
 		secret = make([]byte, 32)
@@ -152,7 +156,7 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint_auth_methods_supported": []string{
 			"none",
 		},
-		"revocation_endpoint": s.config.Issuer + "/revoke",
+		"revocation_endpoint":    s.config.Issuer + "/revoke",
 		"introspection_endpoint": s.config.Issuer + "/introspect",
 	}
 
@@ -173,7 +177,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	internal.Logf("Client ID: %s, Requested scopes: %s", clientID, scopes)
 	internal.Logf("Requested redirect_uri: %s", redirectURI)
 	internal.Logf("State parameter: '%s' (length: %d)", stateParam, len(stateParam))
-	
+
 	// In development mode, generate a secure state parameter if missing
 	// This works around bugs in OAuth clients like MCP Inspector
 	if isDevelopmentMode() && len(stateParam) == 0 {
@@ -188,7 +192,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		r.Form.Set("state", generatedState)
 	}
-	
+
 	// Debug: Check what redirect URIs the client actually has
 	if client, err := s.storage.GetClient(ctx, clientID); err == nil {
 		internal.Logf("Client registered redirect URIs: %v", client.GetRedirectURIs())
@@ -222,7 +226,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// Get state and code from query params
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
-	
+
 	// Check for errors from Google
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		errDesc := r.URL.Query().Get("error_description")
@@ -276,7 +280,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		internal.LogError("Failed to create authorize response: %v (type: %T)", err, err)
 		// Log more details about the error
 		if fositeErr, ok := err.(*fosite.RFC6749Error); ok {
-			internal.LogError("Fosite error details - Code: %s, Description: %s, Debug: %s", 
+			internal.LogError("Fosite error details - Code: %s, Description: %s, Debug: %s",
 				fositeErr.ErrorField, fositeErr.DescriptionField, fositeErr.DebugField)
 		}
 		s.provider.WriteAuthorizeError(w, ar, err)
@@ -317,7 +321,7 @@ func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 // RegisterHandler handles dynamic client registration (RFC 7591)
 func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	internal.Logf("Register handler called: %s %s", r.Method, r.URL.Path)
-	
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -354,29 +358,30 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
 }
 
 // DebugClientsHandler shows all registered clients (for debugging)
 func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 	clients := make(map[string]interface{})
-	
+
 	// Get all clients thread-safely
 	allClients := s.storage.GetAllClients()
 	for clientID, client := range allClients {
 		clients[clientID] = map[string]interface{}{
-			"redirect_uris":   client.GetRedirectURIs(),
+			"redirect_uris":  client.GetRedirectURIs(),
 			"scopes":         client.GetScopes(),
 			"grant_types":    client.GetGrantTypes(),
 			"response_types": client.GetResponseTypes(),
 		}
 	}
-	
+
 	response := map[string]interface{}{
 		"total_clients": len(clients),
-		"clients":      clients,
+		"clients":       clients,
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }

@@ -21,7 +21,6 @@ func init() {
 	log.SetPrefix("")
 }
 
-
 func generateDefaultConfig(path string) error {
 	defaultConfig := map[string]interface{}{
 		"mcpProxy": map[string]interface{}{
@@ -37,16 +36,16 @@ func generateDefaultConfig(path string) error {
 					"mcp/postgres", "postgresql://user:password@localhost:5432/database",
 				},
 				"options": map[string]interface{}{
-					"authTokens":  []string{"your-secret-token"},
+					"authTokens": []string{"your-secret-token"},
 					"logEnabled": true,
 				},
 			},
 		},
 		"oauth": map[string]interface{}{
 			"issuer":             "https://your-domain.com",
-			"gcpProject":        "your-gcp-project",
-			"allowedDomains":    []string{"your-company.com"},
-			"tokenTtl":          "24h",
+			"gcpProject":         "your-gcp-project",
+			"allowedDomains":     []string{"your-company.com"},
+			"tokenTtl":           "24h",
 			"storage":            "memory",
 			"googleClientId":     "your-google-client-id",
 			"googleClientSecret": "your-google-client-secret",
@@ -88,13 +87,13 @@ func main() {
 		fmt.Printf("Generated default config at: %s\n", *configInit)
 		return
 	}
-	
+
 	if *conf == "" {
 		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
 		fmt.Fprintf(os.Stderr, "Run with -help for usage information\n")
 		os.Exit(1)
 	}
-	
+
 	cfg, err := config.Load(*conf)
 	if err != nil {
 		internal.LogError("Failed to load config: %v", err)

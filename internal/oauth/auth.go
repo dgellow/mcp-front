@@ -39,7 +39,7 @@ func newAuthService(config Config) (*authService, error) {
 		},
 		Endpoint: google.Endpoint,
 	}
-	
+
 	internal.Logf("Google OAuth config - ClientID: %s, RedirectURL: %s", config.GoogleClientID, config.GoogleRedirectURI)
 
 	return &authService{

@@ -83,11 +83,11 @@ const (
 // OAuthAuthConfig represents OAuth 2.1 configuration
 type OAuthAuthConfig struct {
 	Kind               AuthKind    `json:"kind"`
-	Issuer             interface{} `json:"issuer"`             // string or EnvRef
-	GCPProject         interface{} `json:"gcpProject"`         // string or EnvRef
+	Issuer             interface{} `json:"issuer"`     // string or EnvRef
+	GCPProject         interface{} `json:"gcpProject"` // string or EnvRef
 	AllowedDomains     []string    `json:"allowedDomains"`
 	TokenTTL           string      `json:"tokenTtl"`
-	Storage            string      `json:"storage"` // "memory" or "firestore"
+	Storage            string      `json:"storage"`            // "memory" or "firestore"
 	GoogleClientID     interface{} `json:"googleClientId"`     // string or EnvRef
 	GoogleClientSecret interface{} `json:"googleClientSecret"` // EnvRef only!
 	GoogleRedirectURI  interface{} `json:"googleRedirectUri"`  // string or EnvRef

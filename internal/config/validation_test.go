@@ -165,9 +165,9 @@ func TestValidateConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			err := ValidateConfig(&tt.config)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
@@ -267,9 +267,9 @@ func TestValidateBearerTokenAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			err := validateBearerTokenAuth(tt.auth, servers)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
@@ -447,9 +447,9 @@ func TestValidateOAuthAuth(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			err := validateOAuthAuth(tt.auth)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
@@ -634,9 +634,9 @@ func TestValidateMCPServersConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			err := validateMCPServersConfig(tt.servers)
-			
+
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error but got none")
@@ -700,7 +700,7 @@ func TestValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result := tt.errors.Error()
 			if result != tt.expected {
 				t.Errorf("expected %q, got %q", tt.expected, result)
@@ -734,7 +734,7 @@ func TestBearerTokenDistribution(t *testing.T) {
 				Args:    []string{"run", "postgres-mcp"},
 			},
 			"notion": {
-				Command: "docker", 
+				Command: "docker",
 				Args:    []string{"run", "notion-mcp"},
 			},
 		},
@@ -774,7 +774,6 @@ func TestBearerTokenDistribution(t *testing.T) {
 		t.Errorf("notion token not distributed correctly: %v", notionTokens)
 	}
 }
-
 
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
