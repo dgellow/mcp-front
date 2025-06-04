@@ -136,7 +136,7 @@ func TestSecurityScenarios(t *testing.T) {
 			// The exact behavior depends on the postgres MCP implementation
 			// but it should NOT succeed in executing malicious SQL
 			if err != nil {
-					} else {
+			} else {
 				t.Logf("⚠️  SQL injection payload was accepted (should be sanitized by postgres MCP)")
 			}
 		}
@@ -209,7 +209,7 @@ func TestSecurityScenarios(t *testing.T) {
 			if resp.StatusCode == 200 {
 				t.Errorf("❌ Path traversal may have succeeded: %s returned 200", path)
 			} else {
-					}
+			}
 		}
 	})
 
@@ -251,7 +251,7 @@ func TestSecurityScenarios(t *testing.T) {
 			if resp.StatusCode == 200 {
 				t.Errorf("❌ CRITICAL: Auth bypass! 'test-token' without Bearer returned 200")
 			} else if resp.StatusCode == 401 {
-					} else {
+			} else {
 				t.Logf("⚠️  Unexpected status %d for malformed auth", resp.StatusCode)
 			}
 		})
@@ -288,7 +288,7 @@ func TestSecurityScenarios(t *testing.T) {
 				} else if !tc.shouldPass && resp.StatusCode != 401 {
 					t.Errorf("❌ Invalid auth '%s' should return 401, got %d", tc.authHeader, resp.StatusCode)
 				} else {
-							}
+				}
 			})
 		}
 	})
@@ -308,7 +308,7 @@ func TestSecurityScenarios(t *testing.T) {
 			if err != nil {
 				errorCount++
 				if strings.Contains(err.Error(), "rate") || strings.Contains(err.Error(), "limit") {
-							}
+				}
 			} else {
 				successCount++
 			}
@@ -316,7 +316,7 @@ func TestSecurityScenarios(t *testing.T) {
 
 		// Rapid requests completed
 		if successCount > 0 {
-			}
+		}
 	})
 }
 
@@ -382,7 +382,7 @@ func TestFailureScenarios(t *testing.T) {
 				if resp.StatusCode != tc.expected {
 					t.Errorf("❌ Token '%s': expected %d, got %d", tc.name, tc.expected, resp.StatusCode)
 				} else {
-							}
+				}
 			})
 		}
 	})
