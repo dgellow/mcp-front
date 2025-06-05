@@ -34,8 +34,8 @@ func newAuthService(config Config) (*authService, error) {
 		ClientSecret: config.GoogleClientSecret,
 		RedirectURL:  config.GoogleRedirectURI,
 		Scopes: []string{
-			"https://www.googleapis.com/auth/userinfo.email",
-			"https://www.googleapis.com/auth/userinfo.profile",
+			"openid",
+			"email",
 		},
 		Endpoint: google.Endpoint,
 	}
