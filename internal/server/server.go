@@ -216,6 +216,7 @@ func Start(cfg *config.Config) error {
 			JWTSecret:           fmt.Sprintf("%v", oauthAuth.JWTSecret),
 			StorageType:         oauthAuth.Storage,
 			GCPProjectID:        fmt.Sprintf("%v", oauthAuth.GCPProject),
+			FirestoreDatabase:   oauthAuth.FirestoreDatabase,
 			FirestoreCollection: oauthAuth.FirestoreCollection,
 		}
 

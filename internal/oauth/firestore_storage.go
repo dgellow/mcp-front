@@ -84,8 +84,17 @@ func FromFositeClient(client fosite.Client, createdAt int64) *OAuthClientEntity 
 }
 
 // newFirestoreStorage creates a new Firestore storage instance
-func newFirestoreStorage(ctx context.Context, projectID, collection string) (*FirestoreStorage, error) {
-	client, err := firestore.NewClient(ctx, projectID)
+func newFirestoreStorage(ctx context.Context, projectID, database, collection string) (*FirestoreStorage, error) {
+	var client *firestore.Client
+	var err error
+	
+	// Firestore client with custom database
+	if database != "" && database != "(default)" {
+		client, err = firestore.NewClientWithDatabase(ctx, projectID, database)
+	} else {
+		client, err = firestore.NewClient(ctx, projectID)
+	}
+	
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Firestore client: %w", err)
 	}

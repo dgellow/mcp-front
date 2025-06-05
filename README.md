@@ -220,7 +220,9 @@ OAuth client data can be stored using different backends:
 {
   "oauth": {
     "storage": "firestore",
-    "gcp_project": "your-gcp-project"
+    "gcp_project": "your-gcp-project",
+    "firestore_database": "my-firestore-db",      // Optional, defaults to "(default)"
+    "firestore_collection": "custom_oauth_clients" // Optional, defaults to "mcp_front_oauth_clients"
   }
 }
 ```
@@ -229,6 +231,7 @@ OAuth client data can be stored using different backends:
 - Automatic authentication via service accounts or ADC
 - Client registrations survive restarts
 - Hybrid architecture: Firestore for persistence + in-memory cache for performance
+- Configurable database and collection names for multi-environment setups
 
 ## Architecture
 

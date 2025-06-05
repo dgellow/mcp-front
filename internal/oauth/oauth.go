@@ -41,6 +41,7 @@ type Config struct {
 	JWTSecret           string // Should be provided via environment variable
 	StorageType         string // "memory" or "firestore"
 	GCPProjectID        string // Required for firestore storage
+	FirestoreDatabase   string // Optional: Firestore database name (default: "(default)")
 	FirestoreCollection string // Optional: Collection name for Firestore storage (default: "mcp_front_oauth_clients")
 }
 
@@ -55,12 +56,17 @@ func NewServer(config Config) (*Server, error) {
 		if config.GCPProjectID == "" {
 			return nil, fmt.Errorf("GCP project ID is required for Firestore storage")
 		}
+		// Use default database name if not specified
+		database := config.FirestoreDatabase
+		if database == "" {
+			database = "(default)"
+		}
 		// Use default collection name if not specified
 		collection := config.FirestoreCollection
 		if collection == "" {
 			collection = "mcp_front_oauth_clients"
 		}
-		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, collection)
+		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, database, collection)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
 		}

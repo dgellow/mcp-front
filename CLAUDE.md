@@ -58,6 +58,7 @@ The server uses JSON configuration with OAuth and MCP server definitions:
     "allowed_domains": ["yourcompany.com"],
     "token_ttl": "1h",
     "storage": "firestore",
+    "firestore_database": "my-firestore-db",  // Optional, defaults to "(default)"
     "firestore_collection": "custom_oauth_clients",  // Optional, defaults to "mcp_front_oauth_clients"
     "google_client_id": "${GOOGLE_CLIENT_ID}",
     "google_client_secret": "${GOOGLE_CLIENT_SECRET}",
