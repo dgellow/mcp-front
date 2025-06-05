@@ -290,13 +290,7 @@ func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientC
 	serverOpts := []server.ServerOption{
 		server.WithResourceCapabilities(true, true),
 		server.WithRecovery(),
-	}
-
-	if clientConfig.Options != nil && config.BoolOrDefault(clientConfig.Options.LogEnabled, false) {
-		internal.LogDebug("enabling MCP server logging for component %s", name)
-		serverOpts = append(serverOpts, server.WithLogging())
-	} else {
-		internal.LogDebug("MCP server logging disabled for component %s (has_options=%v)", name, clientConfig.Options != nil)
+		server.WithLogging(), // Always enable MCP server logging
 	}
 	mcpServer := server.NewMCPServer(
 		name,

@@ -56,6 +56,46 @@ func corsMiddleware() MiddlewareFunc {
 	}
 }
 
+// responseWriter captures response status and size
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+	wrote  bool
+}
+
+func wrapResponseWriter(w http.ResponseWriter) *responseWriter {
+	return &responseWriter{ResponseWriter: w}
+}
+
+func (rw *responseWriter) Status() int {
+	if !rw.wrote {
+		return http.StatusOK
+	}
+	return rw.status
+}
+
+func (rw *responseWriter) BytesWritten() int {
+	return rw.bytes
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	if !rw.wrote {
+		rw.status = code
+		rw.wrote = true
+		rw.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.wrote {
+		rw.WriteHeader(http.StatusOK)
+	}
+	n, err := rw.ResponseWriter.Write(b)
+	rw.bytes += n
+	return n, err
+}
+
 func newAuthMiddleware(tokens []string) MiddlewareFunc {
 	tokenSet := make(map[string]struct{}, len(tokens))
 	for _, token := range tokens {
@@ -94,8 +134,21 @@ func newAuthMiddleware(tokens []string) MiddlewareFunc {
 func loggerMiddleware(prefix string) MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			internal.Logf("<%s> Request [%s] %s", prefix, r.Method, r.URL.Path)
-			next.ServeHTTP(w, r)
+			start := time.Now()
+			wrapped := wrapResponseWriter(w)
+			
+			next.ServeHTTP(wrapped, r)
+			
+			// Log request with response details
+			internal.LogInfoWithFields(prefix, "request", map[string]interface{}{
+				"method":      r.Method,
+				"path":        r.URL.Path,
+				"status":      wrapped.Status(),
+				"duration_ms": time.Since(start).Milliseconds(),
+				"bytes":       wrapped.BytesWritten(),
+				"remote_addr": r.RemoteAddr,
+				"user_agent":  r.UserAgent(),
+			})
 		})
 	}
 }
@@ -195,16 +248,20 @@ func Start(cfg *config.Config) error {
 			},
 		})
 
-		// Register OAuth endpoints with CORS middleware
-		corsHandler := corsMiddleware()
-		httpMux.Handle("/.well-known/oauth-authorization-server", corsHandler(http.HandlerFunc(oauthServer.WellKnownHandler)))
-		httpMux.Handle("/authorize", corsHandler(http.HandlerFunc(oauthServer.AuthorizeHandler)))
-		httpMux.Handle("/oauth/callback", corsHandler(http.HandlerFunc(oauthServer.GoogleCallbackHandler)))
-		httpMux.Handle("/token", corsHandler(http.HandlerFunc(oauthServer.TokenHandler)))
-		httpMux.Handle("/register", corsHandler(http.HandlerFunc(oauthServer.RegisterHandler)))
+		// Register OAuth endpoints with CORS and logging middleware
+		oauthMiddlewares := []MiddlewareFunc{
+			corsMiddleware(),
+			loggerMiddleware("oauth"),
+		}
+		
+		httpMux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(oauthServer.WellKnownHandler), oauthMiddlewares...))
+		httpMux.Handle("/authorize", chainMiddleware(http.HandlerFunc(oauthServer.AuthorizeHandler), oauthMiddlewares...))
+		httpMux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(oauthServer.GoogleCallbackHandler), oauthMiddlewares...))
+		httpMux.Handle("/token", chainMiddleware(http.HandlerFunc(oauthServer.TokenHandler), oauthMiddlewares...))
+		httpMux.Handle("/register", chainMiddleware(http.HandlerFunc(oauthServer.RegisterHandler), oauthMiddlewares...))
 
 		// Debug endpoint to see registered clients
-		httpMux.Handle("/debug/clients", corsHandler(http.HandlerFunc(oauthServer.DebugClientsHandler)))
+		httpMux.Handle("/debug/clients", chainMiddleware(http.HandlerFunc(oauthServer.DebugClientsHandler), oauthMiddlewares...))
 
 		internal.LogInfoWithFields("oauth", "OAuth 2.1 server initialized", map[string]interface{}{
 			"issuer": oauthAuth.Issuer,
@@ -213,12 +270,12 @@ func Start(cfg *config.Config) error {
 		internal.LogDebug("no OAuth configuration found, using token-based authentication")
 	}
 
-	// Add health check endpoint
-	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	// Add health check endpoint with logging
+	httpMux.Handle("/health", chainMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok","service":"mcp-front"}`))
-	})
+	}), loggerMiddleware("health")))
 
 	for name, clientConfig := range cfg.MCPServers {
 		mcpClient, err := client.NewMCPClient(name, clientConfig)
@@ -267,23 +324,9 @@ func Start(cfg *config.Config) error {
 			// Add CORS as the FIRST middleware to handle OPTIONS before auth
 			middlewares = append(middlewares, corsMiddleware())
 			middlewares = append(middlewares, recoverMiddleware(currentName))
-
-			// Add logging middleware if enabled and Options is not nil
-			hasOptions := currentConfig.Options != nil
-			internal.LogTraceWithFields(currentName, "checking logging configuration", map[string]interface{}{
-				"has_options": hasOptions,
-			})
-
-			if hasOptions && config.BoolOrDefault(currentConfig.Options.LogEnabled, false) {
-				internal.LogTraceWithFields(currentName, "adding logger middleware", nil)
-				middlewares = append(middlewares, loggerMiddleware(currentName))
-			} else {
-				logEnabled := hasOptions && currentConfig.Options.LogEnabled != nil && *currentConfig.Options.LogEnabled
-				internal.LogTraceWithFields(currentName, "skipping logger middleware", map[string]interface{}{
-					"has_options": hasOptions,
-					"log_enabled": logEnabled,
-				})
-			}
+			
+			// Always add logging middleware for request tracking
+			middlewares = append(middlewares, loggerMiddleware(currentName))
 
 			// Use OAuth authentication if configured, otherwise fall back to simple tokens
 			hasOAuth := oauthServer != nil
@@ -294,7 +337,7 @@ func Start(cfg *config.Config) error {
 			if hasOAuth {
 				internal.LogTraceWithFields(currentName, "adding OAuth middleware", nil)
 				middlewares = append(middlewares, oauthServer.ValidateTokenMiddleware())
-			} else if hasOptions && len(currentConfig.Options.AuthTokens) > 0 {
+			} else if currentConfig.Options != nil && len(currentConfig.Options.AuthTokens) > 0 {
 				internal.LogTraceWithFields(currentName, "adding token auth middleware", map[string]interface{}{
 					"token_count": len(currentConfig.Options.AuthTokens),
 				})

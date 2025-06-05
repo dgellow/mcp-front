@@ -314,6 +314,15 @@ func TestValidateOAuthAuth(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "valid_oauth_auth_firestore",
+			auth: func() *OAuthAuthConfig {
+				a := *validOAuth
+				a.Storage = "firestore"
+				return &a
+			}(),
+			wantErr: false,
+		},
+		{
 			name: "invalid_kind",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
@@ -430,7 +439,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 				return &a
 			}(),
 			wantErr: true,
-			errMsg:  "storage must be 'memory' or 'redis'",
+			errMsg:  "storage must be 'memory' or 'firestore'",
 		},
 		{
 			name: "invalid_redirect_uri",

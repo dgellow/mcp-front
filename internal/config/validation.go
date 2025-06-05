@@ -188,8 +188,8 @@ func validateOAuthAuth(auth *OAuthAuthConfig) error {
 	}
 
 	// Validate storage type
-	if auth.Storage != "memory" && auth.Storage != "redis" {
-		errors = append(errors, ValidationError{Field: "proxy.auth.storage", Message: "storage must be 'memory' or 'redis'"})
+	if auth.Storage != "memory" && auth.Storage != "firestore" {
+		errors = append(errors, ValidationError{Field: "proxy.auth.storage", Message: "storage must be 'memory' or 'firestore'"})
 	}
 
 	// Validate Google OAuth settings

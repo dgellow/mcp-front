@@ -45,7 +45,6 @@ type ToolFilterConfig struct {
 
 type Options struct {
 	PanicIfInvalid *bool             `json:"panicIfInvalid,omitempty"`
-	LogEnabled     *bool             `json:"logEnabled,omitempty"`
 	AuthTokens     []string          `json:"authTokens,omitempty"`
 	ToolFilter     *ToolFilterConfig `json:"toolFilter,omitempty"`
 }
