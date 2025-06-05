@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -293,7 +294,7 @@ func TestStorageArchitecture(t *testing.T) {
 		originalClient := storage.createClient(clientID, redirectURIs, scopes, issuer)
 
 		// Retrieve client
-		retrievedClient, err := storage.GetClient(nil, clientID)
+		retrievedClient, err := storage.GetClient(context.TODO(), clientID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve client: %v", err)
 		}

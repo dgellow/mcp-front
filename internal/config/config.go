@@ -86,33 +86,6 @@ func resolveEnvRef(value interface{}) (interface{}, error) {
 	}
 }
 
-// resolveConfigEnvRefs resolves all environment references in a config struct
-func resolveConfigEnvRefs(config interface{}) error {
-	// Convert to map for processing
-	jsonBytes, err := json.Marshal(config)
-	if err != nil {
-		return err
-	}
-
-	var configMap map[string]interface{}
-	if err := json.Unmarshal(jsonBytes, &configMap); err != nil {
-		return err
-	}
-
-	// Resolve all env refs
-	resolved, err := resolveEnvRef(configMap)
-	if err != nil {
-		return err
-	}
-
-	// Convert back to struct
-	resolvedBytes, err := json.Marshal(resolved)
-	if err != nil {
-		return err
-	}
-
-	return json.Unmarshal(resolvedBytes, config)
-}
 
 // parseAuthConfig parses the auth configuration with proper type discrimination
 func parseAuthConfig(authRaw interface{}) (interface{}, error) {

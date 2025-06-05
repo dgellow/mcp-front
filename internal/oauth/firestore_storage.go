@@ -65,7 +65,7 @@ func (e *OAuthClientEntity) ToFositeClient() *fosite.DefaultClient {
 // FromFositeClient converts a fosite client to a Firestore entity
 func FromFositeClient(client fosite.Client, createdAt int64) *OAuthClientEntity {
 	var secret *string
-	if clientSecret := client.GetHashedSecret(); clientSecret != nil && len(clientSecret) > 0 {
+	if clientSecret := client.GetHashedSecret(); len(clientSecret) > 0 {
 		s := string(clientSecret)
 		secret = &s
 	}

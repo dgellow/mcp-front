@@ -6,13 +6,6 @@ import (
 	"testing"
 )
 
-var (
-	// Test flags for controlling test execution
-	runIntegration = flag.Bool("integration", true, "Run integration tests")
-	runSecurity    = flag.Bool("security", true, "Run security tests")
-	runScenarios   = flag.Bool("scenarios", true, "Run failure scenario tests")
-	quickTest      = flag.Bool("quick", false, "Run only quick smoke tests")
-)
 
 // TestMain provides test suite setup and teardown
 func TestMain(m *testing.M) {
