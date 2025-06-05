@@ -57,7 +57,8 @@ The server uses JSON configuration with OAuth and MCP server definitions:
     "gcp_project": "your-gcp-project",
     "allowed_domains": ["yourcompany.com"],
     "token_ttl": "1h",
-    "storage": "memory",
+    "storage": "firestore",
+    "firestore_collection": "custom_oauth_clients",  // Optional, defaults to "mcp_front_oauth_clients"
     "google_client_id": "${GOOGLE_CLIENT_ID}",
     "google_client_secret": "${GOOGLE_CLIENT_SECRET}",
     "google_redirect_uri": "https://mcp.yourcompany.com/oauth/callback"
@@ -161,7 +162,7 @@ OAuth client data is stored using a pluggable storage architecture:
 - **Authentication**: Automatic via GCP service accounts or Application Default Credentials
 - **Scalability**: Handles thousands of OAuth clients with minimal cost
 - **Configuration**: `"storage": "firestore"` + `"gcp_project": "your-project"`
-- **Collection**: Stores client entities in `oauth_clients` collection
+- **Collection**: Stores client entities in `mcp_front_oauth_clients` collection by default (configurable via `firestoreCollection` in config)
 - **Startup**: Automatically loads existing clients into memory cache
 
 ### MCP Transport

@@ -207,15 +207,16 @@ func Start(cfg *config.Config) error {
 		}
 
 		oauthConfig := oauth.Config{
-			Issuer:             fmt.Sprintf("%v", oauthAuth.Issuer),
-			TokenTTL:           ttl,
-			AllowedDomains:     oauthAuth.AllowedDomains,
-			GoogleClientID:     fmt.Sprintf("%v", oauthAuth.GoogleClientID),
-			GoogleClientSecret: fmt.Sprintf("%v", oauthAuth.GoogleClientSecret),
-			GoogleRedirectURI:  fmt.Sprintf("%v", oauthAuth.GoogleRedirectURI),
-			JWTSecret:          fmt.Sprintf("%v", oauthAuth.JWTSecret),
-			StorageType:        oauthAuth.Storage,
-			GCPProjectID:       fmt.Sprintf("%v", oauthAuth.GCPProject),
+			Issuer:              fmt.Sprintf("%v", oauthAuth.Issuer),
+			TokenTTL:            ttl,
+			AllowedDomains:      oauthAuth.AllowedDomains,
+			GoogleClientID:      fmt.Sprintf("%v", oauthAuth.GoogleClientID),
+			GoogleClientSecret:  fmt.Sprintf("%v", oauthAuth.GoogleClientSecret),
+			GoogleRedirectURI:   fmt.Sprintf("%v", oauthAuth.GoogleRedirectURI),
+			JWTSecret:           fmt.Sprintf("%v", oauthAuth.JWTSecret),
+			StorageType:         oauthAuth.Storage,
+			GCPProjectID:        fmt.Sprintf("%v", oauthAuth.GCPProject),
+			FirestoreCollection: oauthAuth.FirestoreCollection,
 		}
 
 		internal.LogTraceWithFields("oauth", "creating OAuth server", map[string]interface{}{

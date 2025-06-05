@@ -32,15 +32,16 @@ type Server struct {
 
 // Config holds OAuth server configuration
 type Config struct {
-	Issuer             string
-	TokenTTL           time.Duration
-	AllowedDomains     []string
-	GoogleClientID     string
-	GoogleClientSecret string
-	GoogleRedirectURI  string
-	JWTSecret          string // Should be provided via environment variable
-	StorageType        string // "memory" or "firestore"
-	GCPProjectID       string // Required for firestore storage
+	Issuer              string
+	TokenTTL            time.Duration
+	AllowedDomains      []string
+	GoogleClientID      string
+	GoogleClientSecret  string
+	GoogleRedirectURI   string
+	JWTSecret           string // Should be provided via environment variable
+	StorageType         string // "memory" or "firestore"
+	GCPProjectID        string // Required for firestore storage
+	FirestoreCollection string // Optional: Collection name for Firestore storage (default: "mcp_front_oauth_clients")
 }
 
 // NewServer creates a new OAuth 2.1 server
@@ -54,7 +55,12 @@ func NewServer(config Config) (*Server, error) {
 		if config.GCPProjectID == "" {
 			return nil, fmt.Errorf("GCP project ID is required for Firestore storage")
 		}
-		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID)
+		// Use default collection name if not specified
+		collection := config.FirestoreCollection
+		if collection == "" {
+			collection = "mcp_front_oauth_clients"
+		}
+		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, collection)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
 		}
