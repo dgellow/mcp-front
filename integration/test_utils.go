@@ -15,6 +15,26 @@ import (
 	"time"
 )
 
+// getDockerComposeCommand returns the appropriate docker compose command
+func getDockerComposeCommand() string {
+	// Check if docker compose v2 is available
+	cmd := exec.Command("docker", "compose", "version")
+	if err := cmd.Run(); err == nil {
+		return "docker compose"
+	}
+	return "docker-compose"
+}
+
+// execDockerCompose executes docker compose with the given arguments
+func execDockerCompose(args ...string) *exec.Cmd {
+	dcCmd := getDockerComposeCommand()
+	if dcCmd == "docker compose" {
+		allArgs := append([]string{"compose"}, args...)
+		return exec.Command("docker", allArgs...)
+	}
+	return exec.Command("docker-compose", args...)
+}
+
 // MCPClient simulates an MCP client for testing
 type MCPClient struct {
 	baseURL string
@@ -252,7 +272,7 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 
 	// Start test database
 	t.Log("🚀 Starting test database...")
-	env.dbCmd = exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
+	env.dbCmd = execDockerCompose("-f", "config/docker-compose.test.yml", "up", "-d")
 	if err := env.dbCmd.Run(); err != nil {
 		t.Fatalf("Failed to start test database: %v", err)
 	}
@@ -306,7 +326,7 @@ func (env *TestEnvironment) Cleanup() {
 	}
 
 	if env.dbCmd != nil {
-		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
+		downCmd := execDockerCompose("-f", "config/docker-compose.test.yml", "down", "-v")
 		_ = downCmd.Run()
 	}
 }

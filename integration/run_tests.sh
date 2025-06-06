@@ -12,9 +12,18 @@ NC='\033[0m' # No Color
 # Change to integration directory
 cd "$(dirname "$0")"
 
+# Docker compose command wrapper
+docker_compose() {
+    if docker compose version &>/dev/null 2>&1; then
+        docker compose "$@"
+    else
+        docker-compose "$@"
+    fi
+}
+
 # Function for cleanup
 cleanup() {
-    docker-compose -f config/docker-compose.test.yml down -v &>/dev/null || true
+    docker_compose -f config/docker-compose.test.yml down -v &>/dev/null || true
     pkill -f mcp-front &>/dev/null || true
 }
 
@@ -26,7 +35,10 @@ check_dependencies() {
     local missing=()
     
     command -v docker &>/dev/null || missing+=("docker")
-    command -v docker-compose &>/dev/null || missing+=("docker-compose")
+    # Check for docker compose v2 (plugin) or v1 (standalone)
+    if ! docker compose version &>/dev/null 2>&1 && ! command -v docker-compose &>/dev/null; then
+        missing+=("docker-compose")
+    fi
     command -v go &>/dev/null || missing+=("go")
     
     if [ ${#missing[@]} -ne 0 ]; then
@@ -105,10 +117,10 @@ run_tests() {
         echo ""
         
         # Show docker logs if available
-        if docker-compose -f config/docker-compose.test.yml ps -q &>/dev/null; then
+        if docker_compose -f config/docker-compose.test.yml ps -q &>/dev/null; then
             echo "Docker logs:"
             echo "----------------------------------------"
-            docker-compose -f config/docker-compose.test.yml logs 2>/dev/null || true
+            docker_compose -f config/docker-compose.test.yml logs 2>/dev/null || true
             echo "----------------------------------------"
             echo ""
         fi
