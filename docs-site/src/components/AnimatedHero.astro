@@ -1,0 +1,325 @@
+---
+export interface Props {
+  title: string;
+  tagline: string;
+}
+
+const { title, tagline } = Astro.props;
+---
+
+<div class="animated-hero">
+  <div class="hero-content">
+    <h1 class="hero-title">{title}</h1>
+    <p class="hero-tagline">{tagline}</p>
+  </div>
+  
+  <div class="animation-container">
+    <!-- Floating particles -->
+    <div class="particles">
+      {Array.from({ length: 20 }).map((_, i) => (
+        <div class="particle" style={`--delay: ${i * 0.2}s; --x: ${Math.random() * 100}%; --y: ${Math.random() * 100}%`}></div>
+      ))}
+    </div>
+    
+    <!-- Connection lines -->
+    <svg class="connections" viewBox="0 0 800 400">
+      <defs>
+        <linearGradient id="line-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#9B8AC4;stop-opacity:0" />
+          <stop offset="50%" style="stop-color:#9B8AC4;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#9B8AC4;stop-opacity:0" />
+        </linearGradient>
+      </defs>
+      
+      <!-- Animated paths -->
+      <path class="flow-line" d="M 50 200 Q 200 150 400 200 T 750 200" />
+      <path class="flow-line" d="M 50 250 Q 250 300 400 250 T 750 250" />
+      <path class="flow-line" d="M 100 150 Q 300 100 500 150 T 700 150" />
+      
+      <!-- Nodes -->
+      <g class="nodes">
+        <circle cx="100" cy="200" r="4" class="node" />
+        <circle cx="400" cy="200" r="6" class="node primary" />
+        <circle cx="700" cy="200" r="4" class="node" />
+        
+        <circle cx="250" cy="150" r="3" class="node" />
+        <circle cx="550" cy="250" r="3" class="node" />
+      </g>
+    </svg>
+    
+    <!-- Terminal window -->
+    <div class="terminal">
+      <div class="terminal-header">
+        <div class="terminal-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+      <div class="terminal-body">
+        <div class="terminal-line">
+          <span class="prompt">$</span>
+          <span class="command typing">docker run mcp-front</span>
+        </div>
+        <div class="terminal-line output">
+          <span class="dim">Starting OAuth 2.1 proxy...</span>
+        </div>
+        <div class="terminal-line output">
+          <span class="success">✓ Server listening on :8080</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .animated-hero {
+    position: relative;
+    padding: 4rem 0;
+    overflow: hidden;
+  }
+  
+  .hero-content {
+    text-align: center;
+    position: relative;
+    z-index: 10;
+    margin-bottom: 3rem;
+  }
+  
+  .hero-title {
+    font-size: 3.5rem;
+    font-weight: 300;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, #E5E5E5 0%, #9B8AC4 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+  }
+  
+  .hero-tagline {
+    font-size: 1.25rem;
+    color: #888888;
+    margin-top: 1rem;
+    font-weight: 300;
+  }
+  
+  .animation-container {
+    position: relative;
+    height: 400px;
+    margin: 0 auto;
+    max-width: 800px;
+  }
+  
+  /* Particles */
+  .particles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  
+  .particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: #9B8AC4;
+    opacity: 0.3;
+    left: var(--x);
+    top: var(--y);
+    animation: float 20s infinite ease-in-out;
+    animation-delay: var(--delay);
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translate(0, 0);
+      opacity: 0;
+    }
+    10% {
+      opacity: 0.3;
+    }
+    50% {
+      transform: translate(calc(var(--x) - 50%), calc(var(--y) - 50%));
+      opacity: 0.6;
+    }
+    90% {
+      opacity: 0.3;
+    }
+  }
+  
+  /* Connection lines */
+  .connections {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .flow-line {
+    fill: none;
+    stroke: url(#line-gradient);
+    stroke-width: 1;
+    opacity: 0.3;
+    stroke-dasharray: 300;
+    stroke-dashoffset: 0;
+    animation: flow 8s linear infinite;
+  }
+  
+  .flow-line:nth-child(2) {
+    animation-delay: -2s;
+  }
+  
+  .flow-line:nth-child(3) {
+    animation-delay: -4s;
+  }
+  
+  @keyframes flow {
+    to {
+      stroke-dashoffset: -600;
+    }
+  }
+  
+  .node {
+    fill: #666666;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  
+  .node.primary {
+    fill: #9B8AC4;
+    animation-delay: -0.5s;
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 0.6;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.2);
+    }
+  }
+  
+  /* Terminal */
+  .terminal {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 500px;
+    background: #1A1A1A;
+    border: 1px solid #3A3A3A;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .terminal-header {
+    background: #2B2B2B;
+    padding: 0.5rem;
+    border-bottom: 1px solid #3A3A3A;
+  }
+  
+  .terminal-dots {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .terminal-dots span {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #444444;
+  }
+  
+  .terminal-dots span:nth-child(1) {
+    background: #FF5F57;
+  }
+  
+  .terminal-dots span:nth-child(2) {
+    background: #FFBD2E;
+  }
+  
+  .terminal-dots span:nth-child(3) {
+    background: #28CA42;
+  }
+  
+  .terminal-body {
+    padding: 1rem;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 14px;
+  }
+  
+  .terminal-line {
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .prompt {
+    color: #9B8AC4;
+  }
+  
+  .command {
+    color: #E5E5E5;
+  }
+  
+  .typing::after {
+    content: '_';
+    animation: blink 1s infinite;
+  }
+  
+  @keyframes blink {
+    0%, 50% {
+      opacity: 1;
+    }
+    51%, 100% {
+      opacity: 0;
+    }
+  }
+  
+  .output {
+    margin-left: 1rem;
+    opacity: 0;
+    animation: fadeIn 0.5s forwards;
+  }
+  
+  .output:nth-child(2) {
+    animation-delay: 1s;
+  }
+  
+  .output:nth-child(3) {
+    animation-delay: 2s;
+  }
+  
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
+    }
+  }
+  
+  .dim {
+    color: #666666;
+  }
+  
+  .success {
+    color: #74AA9C;
+  }
+  
+  /* Responsive */
+  @media (max-width: 768px) {
+    .hero-title {
+      font-size: 2.5rem;
+    }
+    
+    .terminal {
+      width: 90%;
+      max-width: 400px;
+    }
+    
+    .animation-container {
+      height: 300px;
+    }
+  }
+</style>

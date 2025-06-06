@@ -1,0 +1,96 @@
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradient pulse -->
+    <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#74AA9C;stop-opacity:1">
+        <animate attributeName="stop-color" values="#74AA9C;#8BBCAE;#74AA9C" dur="3s" repeatCount="indefinite" />
+      </stop>
+      <stop offset="100%" style="stop-color:#666666;stop-opacity:1">
+        <animate attributeName="stop-color" values="#666666;#888888;#666666" dur="3s" repeatCount="indefinite" />
+      </stop>
+    </linearGradient>
+    
+    <!-- Glitch effect -->
+    <filter id="glitch">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="1" result="noise" seed="1">
+        <animate attributeName="seed" values="1;5;1" dur="0.1s" repeatCount="indefinite" />
+      </feTurbulence>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="0" result="displacement">
+        <animate attributeName="scale" values="0;3;0" dur="0.2s" begin="2s" repeatCount="indefinite" />
+      </feDisplacementMap>
+    </filter>
+    
+    <!-- Glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background pulse -->
+  <circle cx="20" cy="20" r="25" fill="none" stroke="url(#logo-gradient)" stroke-width="0.5" opacity="0.2">
+    <animate attributeName="r" values="25;30;25" dur="2s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0.2;0.4;0.2" dur="2s" repeatCount="indefinite" />
+  </circle>
+  
+  <!-- Main logo group with glitch effect -->
+  <g filter="url(#glitch)">
+    <!-- Left bracket - the input gate -->
+    <path d="M 12 8 L 4 8 L 4 32 L 12 32" 
+          fill="none" 
+          stroke="#888888" 
+          stroke-width="2"
+          stroke-linecap="round">
+      <animate attributeName="stroke" values="#888888;#AAAAAA;#888888" dur="4s" repeatCount="indefinite" />
+    </path>
+    
+    <!-- Center gateway with glow -->
+    <g filter="url(#glow)">
+      <rect x="16" y="12" width="8" height="16" rx="1" fill="url(#logo-gradient)">
+        <!-- Morphing animation -->
+        <animate attributeName="height" values="16;14;18;16" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="y" values="12;13;11;12" dur="2s" repeatCount="indefinite" />
+      </rect>
+    </g>
+    
+    <!-- Right bracket - the output gate -->
+    <path d="M 28 8 L 36 8 L 36 32 L 28 32" 
+          fill="none" 
+          stroke="#888888" 
+          stroke-width="2"
+          stroke-linecap="round">
+      <animate attributeName="stroke" values="#888888;#AAAAAA;#888888" dur="4s" repeatCount="indefinite" />
+    </path>
+  </g>
+  
+  <!-- Data flow particles -->
+  <g>
+    <!-- Left particle -->
+    <circle r="1.5" fill="#E5E5E5">
+      <animate attributeName="opacity" values="0;1;1;0" dur="2s" repeatCount="indefinite" />
+      <animateMotion path="M 10 20 L 16 20" dur="2s" repeatCount="indefinite" />
+    </circle>
+    
+    <!-- Through particle -->
+    <circle r="1" fill="#74AA9C">
+      <animate attributeName="opacity" values="0;0;1;1;0" dur="2s" repeatCount="indefinite" />
+      <animateMotion path="M 16 20 L 24 20" dur="2s" repeatCount="indefinite" />
+    </circle>
+    
+    <!-- Right particle -->
+    <circle r="1.5" fill="#E5E5E5">
+      <animate attributeName="opacity" values="0;0;0;1;0" dur="2s" repeatCount="indefinite" />
+      <animateMotion path="M 24 20 L 30 20" dur="2s" repeatCount="indefinite" />
+    </circle>
+  </g>
+  
+  <!-- Energy burst on loop -->
+  <circle cx="20" cy="20" r="0" fill="none" stroke="#74AA9C" stroke-width="1" opacity="0">
+    <animate attributeName="r" values="0;20;20" dur="3s" repeatCount="indefinite" />
+    <animate attributeName="opacity" values="0;0.6;0" dur="3s" repeatCount="indefinite" />
+    <animate attributeName="stroke-width" values="2;0.5;0" dur="3s" repeatCount="indefinite" />
+  </circle>
+</svg>

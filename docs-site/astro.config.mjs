@@ -12,7 +12,7 @@ export default defineConfig({
 			description: 'OAuth 2.1 authenticated proxy for Model Context Protocol servers',
 			logo: {
 				alt: 'MCP Front Logo',
-				src: './src/assets/logo.svg',
+				src: './src/assets/animated-logo.svg',
 			},
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/dgellow/mcp-front' },
@@ -71,6 +71,9 @@ export default defineConfig({
 				},
 			],
 			customCss: ['./src/styles/custom.css'],
+			components: {
+				Header: './src/components/CustomHeader.astro',
+			},
 		}),
 	],
 });

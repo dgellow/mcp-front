@@ -1,126 +1,114 @@
 ---
-title: MCP Front Documentation
-description: OAuth 2.1 authenticated proxy for Model Context Protocol servers
+title: MCP Front
+description: The missing auth layer for MCP servers
 template: splash
-hero:
-  title: MCP Front
-  tagline: Secure OAuth 2.1 proxy for Model Context Protocol servers
-  image:
-    file: ../../assets/logo.svg
-  actions:
-    - text: Get Started
-      link: /mcp-front/getting-started/
-      icon: right-arrow
-      variant: primary
-    - text: View on GitHub
-      link: https://github.com/dgellow/mcp-front
-      icon: external
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import AnimatedHero from '../../components/AnimatedHero.astro';
 
-## What is MCP Front?
+<AnimatedHero 
+  title="MCP Front" 
+  tagline="OAuth 2.1 proxy for Model Context Protocol servers" 
+/>
 
-MCP Front is a secure proxy server that adds OAuth 2.1 authentication to Model Context Protocol (MCP) servers. It enables Claude.ai to safely access your company's internal resources while maintaining strict security boundaries.
+## Your MCP servers are naked
+
+Seriously. You're running MCP servers with bearer tokens hardcoded in Claude's config. Your database credentials are sitting in plaintext. Your internal APIs are one leaked config away from the internet.
+
+MCP Front wraps your servers in proper OAuth 2.1 auth. Real security, not security theater.
 
 <CardGrid stagger>
-  <Card title="🔐 OAuth 2.1 Authentication" icon="shield">
-    Industry-standard OAuth 2.1 with PKCE support for secure authentication
+  <Card title="OAuth 2.1 + PKCE">
+    Modern auth. Not your 2015 OAuth flow.
   </Card>
-  <Card title="🏢 Enterprise Ready" icon="building">
-    Google Workspace integration with domain restrictions and Firestore persistence
+  <Card title="JWT tokens">
+    HS256. Configurable TTL. No cookies.
   </Card>
-  <Card title="🐳 Docker Native" icon="container">
-    Production-ready Docker images with multi-stage builds and health checks
+  <Card title="Firestore">
+    Persistent storage. Or memory mode for dev.
   </Card>
-  <Card title="⚡ High Performance" icon="rocket">
-    Built with Go for minimal resource usage and maximum throughput
+  <Card title="Go performance">
+    Sub-millisecond proxy overhead. Promise.
   </Card>
 </CardGrid>
 
-## Architecture Overview
+## How it actually works
 
 <div class="architecture-diagram">
-  <img src="/mcp-front/architecture.svg" alt="MCP Front Architecture" />
+  <object data="/mcp-front/architecture.svg" type="image/svg+xml" aria-label="MCP Front Architecture">
+    <img src="/mcp-front/architecture.svg" alt="MCP Front Architecture" />
+  </object>
 </div>
 
-MCP Front acts as a protective shield between Claude.ai and your internal MCP servers:
+1. Claude tries to connect to your MCP server
+2. Gets redirected to OAuth flow (Google by default, because of course)
+3. User proves they're not a rando
+4. mcp-front proxies the connection to your actual MCP server
+5. Your database credentials stay secret, your job stays secure
 
-1. **Claude.ai** connects to MCP Front using OAuth 2.1
-2. **MCP Front** validates the authentication and checks permissions
-3. **Authorized requests** are proxied to the appropriate MCP servers
-4. **MCP servers** can be stdio-based (Docker) or HTTP-based services
+## Why you need this
 
-## Key Features
+### Bearer tokens are not auth
+If your security model is "hope nobody finds this string", you're doing it wrong. OAuth 2.1 or GTFO.
 
-### 🛡️ Security First
-- OAuth 2.1 with PKCE for maximum security
-- JWT tokens with configurable TTL
-- Domain-based access restrictions
-- No credentials stored in Claude.ai
+### Google knows who you are
+Integrates with Google Workspace. Domain restrictions mean `sketchy@gmail.com` can't access your prod database.
 
-### 🔧 Flexible Authentication
-- **Bearer Token**: Simple token-based auth for development
-- **OAuth 2.1**: Full OAuth flow for production environments
-- **Google Workspace**: Enterprise SSO integration
+### It just works™
+Docker image, binary, whatever. Deploys to Cloud Run in 2 minutes. Scales to infinity\*.
 
-### 📦 Easy Deployment
-- Single binary or Docker container
-- Docker Compose for complete stack
-- Google Cloud Run compatible
-- Comprehensive health checks
+<small>\*Infinity not guaranteed. Please consult your SRE before attempting infinity.</small>
 
-### 🎯 MCP Protocol Support
-- Server-Sent Events (SSE) for real-time streaming
-- Both stdio and HTTP transport protocols
-- Automatic reconnection handling
-- Request/response correlation
+### Protocol translation for free
+Your stdio-based MCP server becomes an SSE endpoint. Magic? No, just good engineering.
 
-## Quick Start
+## Start in 30 seconds
 
 ```bash
-# Using Docker
-docker run -p 8080:8080 \
-  -e GOOGLE_CLIENT_ID=your-client-id \
-  -e GOOGLE_CLIENT_SECRET=your-secret \
-  -e JWT_SECRET=your-jwt-secret \
-  -v ./config.json:/config.json \
-  ghcr.io/dgellow/mcp-front:latest
+# Clone it
+git clone https://github.com/dgellow/mcp-front
+cd mcp-front
 
-# Using Docker Compose
+# Configure it (copy and edit)
+cp config-oauth.example.json config.json
+
+# Run it
 docker-compose up -d
 ```
 
-## Use Cases
+That's it. You now have auth. You're welcome.
+
+## What people actually use this for
 
 <CardGrid>
-  <Card title="Database Access" icon="database">
-    Securely query internal databases through Claude.ai while maintaining audit trails
+  <Card title="Postgres without tears" icon="database">
+    Let Claude query your database without giving it your master password like a fool
   </Card>
-  <Card title="API Integration" icon="puzzle">
-    Connect Claude.ai to internal APIs with proper authentication and rate limiting
+  <Card title="Git but secure" icon="git-branch">
+    Clone private repos without storing GitHub tokens in Claude's brain
   </Card>
-  <Card title="Tool Automation" icon="setting">
-    Execute internal tools and scripts with controlled permissions
+  <Card title="Notion for robots" icon="document">
+    Your company wiki, now accessible to AI, without the IT department having a stroke
   </Card>
-  <Card title="Knowledge Base" icon="document">
-    Access company documentation and knowledge bases securely
+  <Card title="Whatever you want" icon="puzzle">
+    Got an API? Slap mcp-front in front. Boom, it's secure now.
   </Card>
 </CardGrid>
 
-## Next Steps
+## Now what?
 
 <CardGrid>
-  <Card title="Getting Started" icon="rocket">
-    [Set up MCP Front](/mcp-front/getting-started/) in your environment
+  <Card title="Just start" icon="rocket">
+    [Getting started guide](/mcp-front/getting-started/) - 5 minutes to working auth
   </Card>
-  <Card title="Configuration Guide" icon="setting">
-    [Configure authentication](/mcp-front/config/overview/) and MCP servers
+  <Card title="Configure stuff" icon="setting">
+    [Configuration docs](/mcp-front/config/overview/) - Make it work for your setup
   </Card>
-  <Card title="OAuth Setup" icon="shield">
-    [Set up OAuth 2.1](/mcp-front/oauth/overview/) with Google Workspace
+  <Card title="OAuth deep dive" icon="shield">
+    [OAuth guide](/mcp-front/oauth/overview/) - For when you need to impress security
   </Card>
-  <Card title="Deploy to Production" icon="cloud">
-    [Deploy to production](/mcp-front/deployment/production/) with best practices
+  <Card title="Ship it" icon="cloud">
+    [Deploy to prod](/mcp-front/deployment/production/) - Because localhost isn't a deployment strategy
   </Card>
 </CardGrid>
