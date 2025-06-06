@@ -1,0 +1,174 @@
+<svg viewBox="0 0 1200 700"
+  xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Grainy texture filter for that Stainless aesthetic -->
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" seed="5"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="discrete" tableValues="0 .02 .03 .04 .05"/>
+      </feComponentTransfer>
+      <feComposite operator="over" in2="SourceGraphic"/>
+    </filter>
+
+    <!-- Subtle shadow -->
+    <filter id="softShadow">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="0" dy="2" result="offsetblur"/>
+      <feFlood flood-color="#000000" flood-opacity="0.1"/>
+      <feComposite in2="offsetblur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Anthropic gradient -->
+    <linearGradient id="anthropicGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D4A574;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#C19A6B;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Subtle purple gradient for mcp-front -->
+    <linearGradient id="mcpGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#9B8AC4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7B6BA5;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background with gradient -->
+  <rect width="1200" height="700" fill="#1A1A1A"/>
+  <rect width="1200" height="700" fill="#222222" filter="url(#grain)"/>
+
+  <!-- Title -->
+  <text x="600" y="50" font-family="-apple-system, system-ui, sans-serif" font-size="32" font-weight="300" text-anchor="middle" fill="#E5E5E5" letter-spacing="2">MCP-FRONT</text>
+  <text x="600" y="80" font-family="-apple-system, system-ui, sans-serif" font-size="14" font-weight="300" text-anchor="middle" fill="#888888" letter-spacing="0.5">Secure gateway for internal MCP servers</text>
+
+  <!-- AI Assistants Section -->
+  <g id="ai-assistants">
+    <text x="200" y="130" font-family="-apple-system, system-ui, sans-serif" font-size="11" font-weight="500" text-anchor="middle" fill="#666666" letter-spacing="1.5">AI ASSISTANTS</text>
+
+    <!-- Claude - Anthropic -->
+    <g filter="url(#softShadow)">
+      <rect x="100" y="150" width="200" height="70" rx="8" fill="#2B2B2B" stroke="#3A3A3A" stroke-width="1"/>
+      <!-- Anthropic accent -->
+      <rect x="100" y="150" width="4" height="70" rx="2" fill="url(#anthropicGradient)"/>
+      <text x="200" y="180" font-family="-apple-system, system-ui, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#E5E5E5">Claude</text>
+      <text x="200" y="200" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="300" text-anchor="middle" fill="#888888">Anthropic</text>
+    </g>
+
+    <!-- ChatGPT - OpenAI -->
+    <g filter="url(#softShadow)">
+      <rect x="100" y="240" width="200" height="70" rx="8" fill="#2B2B2B" stroke="#3A3A3A" stroke-width="1"/>
+      <!-- OpenAI accent -->
+      <rect x="100" y="240" width="4" height="70" rx="2" fill="#74AA9C"/>
+      <text x="200" y="270" font-family="-apple-system, system-ui, sans-serif" font-size="18" font-weight="400" text-anchor="middle" fill="#E5E5E5">ChatGPT</text>
+      <text x="200" y="290" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="300" text-anchor="middle" fill="#888888">OpenAI</text>
+    </g>
+  </g>
+
+  <!-- Clean arrows from AI to Gateway -->
+  <g id="routes-to-gateway">
+    <path d="M 304 185 Q 400 185 450 210" stroke="#888888" stroke-width="2" fill="none" opacity="0.6"/>
+    <circle cx="450" cy="210" r="3" fill="#888888"/>
+
+    <path d="M 304 275 Q 400 275 450 250" stroke="#888888" stroke-width="2" fill="none" opacity="0.6"/>
+    <circle cx="450" cy="250" r="3" fill="#888888"/>
+  </g>
+
+  <!-- Central Gateway -->
+  <g id="gateway" filter="url(#softShadow)">
+    <rect x="450" y="150" width="300" height="180" rx="12" fill="#2B2B2B" stroke="url(#mcpGradient)" stroke-width="2"/>
+
+    <!-- Gateway Header -->
+    <rect x="450" y="150" width="300" height="50" rx="12" fill="#2B2B2B"/>
+    <rect x="450" y="180" width="300" height="20" fill="#2B2B2B"/>
+    <text x="600" y="180" font-family="-apple-system, system-ui, sans-serif" font-size="20" font-weight="400" text-anchor="middle" fill="#E5E5E5">mcp-front</text>
+
+    <!-- OAuth Info -->
+    <text x="600" y="225" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="300" text-anchor="middle" fill="#888888">OAuth 2.1 + PKCE Gateway</text>
+
+    <!-- Features -->
+    <g transform="translate(480, 250)">
+      <circle cx="0" cy="0" r="3" fill="#666666"/>
+      <text x="10" y="4" font-family="-apple-system, system-ui, sans-serif" font-size="11" fill="#999999">Dynamic Client Registration</text>
+
+      <circle cx="0" cy="20" r="3" fill="#666666"/>
+      <text x="10" y="24" font-family="-apple-system, system-ui, sans-serif" font-size="11" fill="#999999">JWT Validation (HS256)</text>
+
+      <circle cx="0" cy="40" r="3" fill="#666666"/>
+      <text x="10" y="44" font-family="-apple-system, system-ui, sans-serif" font-size="11" fill="#999999">Domain Validation</text>
+
+      <circle cx="0" cy="60" r="3" fill="#666666"/>
+      <text x="10" y="64" font-family="-apple-system, system-ui, sans-serif" font-size="11" fill="#999999">Protocol Translation → SSE</text>
+    </g>
+  </g>
+
+  <!-- Simple elegant connection visualization -->
+  <g id="connection-flow">
+    <!-- Main flow indicator -->
+    <path d="M 600 330 L 600 380" stroke="#888888" stroke-width="2" fill="none" opacity="0.6"/>
+
+    <!-- Branching indicator -->
+    <circle cx="600" cy="380" r="4" fill="#888888" opacity="0.8"/>
+    <path d="M 600 380 L 300 380" stroke="#888888" stroke-width="1.5" fill="none" opacity="0.5"/>
+    <path d="M 600 380 L 900 380" stroke="#888888" stroke-width="1.5" fill="none" opacity="0.5"/>
+
+    <!-- Vertical drops to route badges -->
+    <path d="M 300 380 L 300 425" stroke="#888888" stroke-width="1" fill="none" opacity="0.4"/>
+    <path d="M 600 380 L 600 425" stroke="#888888" stroke-width="1" fill="none" opacity="0.4"/>
+    <path d="M 900 380 L 900 425" stroke="#888888" stroke-width="1" fill="none" opacity="0.4"/>
+  </g>
+
+  <!-- MCP Services Section Header -->
+  <g>
+    <!-- Background for better visibility -->
+    <rect x="500" y="392" width="200" height="26" rx="13" fill="#1A1A1A" stroke="#444444" stroke-width="1"/>
+    <text x="600" y="408" font-family="-apple-system, system-ui, sans-serif" font-size="11" font-weight="500" text-anchor="middle" fill="#888888" letter-spacing="1.5">MCP SERVICES</text>
+  </g>
+
+  <!-- Service endpoints -->
+  <g id="service-routes">
+    <rect x="240" y="425" width="120" height="24" rx="12" fill="#1A1A1A" stroke="#555555" stroke-width="1"/>
+    <text x="300" y="441" font-family="SF Mono, Monaco, monospace" font-size="10" text-anchor="middle" fill="#AAAAAA">/notion/sse</text>
+
+    <rect x="540" y="425" width="120" height="24" rx="12" fill="#1A1A1A" stroke="#555555" stroke-width="1"/>
+    <text x="600" y="441" font-family="SF Mono, Monaco, monospace" font-size="10" text-anchor="middle" fill="#AAAAAA">/postgres/sse</text>
+
+    <rect x="840" y="425" width="120" height="24" rx="12" fill="#1A1A1A" stroke="#555555" stroke-width="1"/>
+    <text x="900" y="441" font-family="SF Mono, Monaco, monospace" font-size="10" text-anchor="middle" fill="#AAAAAA">/git/sse</text>
+  </g>
+
+  <!-- MCP Services -->
+  <g id="services">
+    <!-- Notion MCP -->
+    <g filter="url(#softShadow)">
+      <rect x="200" y="480" width="200" height="100" rx="8" fill="#2B2B2B" stroke="#3A3A3A" stroke-width="1"/>
+      <rect x="210" y="490" width="50" height="20" rx="10" fill="#4A6FA5"/>
+      <text x="235" y="504" font-family="-apple-system, system-ui, sans-serif" font-size="10" font-weight="400" text-anchor="middle" fill="#B8D4F0">docker</text>
+      <text x="300" y="530" font-family="-apple-system, system-ui, sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#E5E5E5">notion-mcp</text>
+      <text x="300" y="550" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="300" text-anchor="middle" fill="#888888">Knowledge Base</text>
+    </g>
+
+    <!-- PostgreSQL MCP -->
+    <g filter="url(#softShadow)">
+      <rect x="500" y="480" width="200" height="100" rx="8" fill="#2B2B2B" stroke="#3A3A3A" stroke-width="1"/>
+      <rect x="510" y="490" width="50" height="20" rx="10" fill="#4A6FA5"/>
+      <text x="535" y="504" font-family="-apple-system, system-ui, sans-serif" font-size="10" font-weight="400" text-anchor="middle" fill="#B8D4F0">docker</text>
+      <text x="600" y="530" font-family="-apple-system, system-ui, sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#E5E5E5">postgres-mcp</text>
+      <text x="600" y="550" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="300" text-anchor="middle" fill="#888888">Database Access</text>
+    </g>
+
+    <!-- Git MCP -->
+    <g filter="url(#softShadow)">
+      <rect x="800" y="480" width="200" height="100" rx="8" fill="#2B2B2B" stroke="#3A3A3A" stroke-width="1"/>
+      <rect x="810" y="490" width="50" height="20" rx="10" fill="#5B7F5B"/>
+      <text x="835" y="504" font-family="-apple-system, system-ui, sans-serif" font-size="10" font-weight="400" text-anchor="middle" fill="#C5E4C5">native</text>
+      <text x="900" y="530" font-family="-apple-system, system-ui, sans-serif" font-size="16" font-weight="400" text-anchor="middle" fill="#E5E5E5">git-mcp</text>
+      <text x="900" y="550" font-family="-apple-system, system-ui, sans-serif" font-size="12" font-weight="300" text-anchor="middle" fill="#888888">Version Control</text>
+    </g>
+  </g>
+
+  <!-- Subtle branding -->
+  <text x="1180" y="690" font-family="-apple-system, system-ui, sans-serif" font-size="10" font-weight="300" text-anchor="end" fill="#444444">Model Context Protocol</text>
+</svg>

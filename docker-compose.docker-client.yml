@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  mcp-front:
+    build:
+      context: .
+      dockerfile: Dockerfile.docker-client
+    image: mcp-front:docker-client
+    container_name: mcp-front-docker
+    ports:
+      - "8080:8080"
+    environment:
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - MCP_FRONT_ENV=${MCP_FRONT_ENV:-production}
+    volumes:
+      # Mount Docker socket to allow container to run Docker commands
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Mount config file
+      - ./config.json:/app/config.json:ro
+      # Optional: Mount local directory for MCP server data
+      - ./data:/app/data
+    # Add user to docker group (GID 999 is typical for Docker socket)
+    group_add:
+      - "999"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

@@ -2,25 +2,11 @@
 
 Production-ready OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
 
-```
-Claude.ai/MCP Inspector → OAuth Discovery → Dynamic Client Registration → PKCE Auth Flow
-    │                                                                           │
-    └── Authenticated Requests (Bearer Tokens) ──────────────────────────────────┘
-                              │
-                              ▼
-                    mcp-front (OAuth + Proxy)
-                    │ Structured Logging │
-                    │ JWT Validation     │
-                    │ Domain Validation  │
-                    │                    │
-            ┌───────┼───────────┼────────┐
-            ▼       ▼           ▼        ▼
-       /notion/sse /postgres/sse /git/sse /health
-            │       │           │        │
-            ▼       ▼           ▼        ▼
-       notion-mcp postgres-mcp git-mcp Health Check
-       (Docker)   (Docker)    (Docker)  (Status)
-```
+<div align="center">
+
+![mcp-front Architecture](docs/architecture.svg)
+
+</div>
 
 ## How it works
 
@@ -35,7 +21,7 @@ Create `config.json` based on `config-oauth.json`:
 ```json
 {
   "mcpProxy": {
-    "baseURL": "https://mcp.yourcompany.com", 
+    "baseURL": "https://mcp.yourcompany.com",
     "addr": ":8080",
     "name": "Company MCP Front",
     "version": "1.0.0"
@@ -47,23 +33,23 @@ Create `config.json` based on `config-oauth.json`:
     "token_ttl": "1h",
     "storage": "memory",
     "google_client_id": "${GOOGLE_CLIENT_ID}",
-    "google_client_secret": "${GOOGLE_CLIENT_SECRET}", 
+    "google_client_secret": "${GOOGLE_CLIENT_SECRET}",
     "google_redirect_uri": "https://mcp.yourcompany.com/oauth/callback"
   },
   "mcpServers": {
     "notion": {
       "command": "docker",
       "args": ["run", "--rm", "-i", "mcp/notion:latest"],
-      "env": {"NOTION_TOKEN": "${NOTION_TOKEN}"}
+      "env": { "NOTION_TOKEN": "${NOTION_TOKEN}" }
     },
     "postgres": {
-      "command": "docker", 
+      "command": "docker",
       "args": ["run", "--rm", "-i", "mcp/postgres:latest"],
-      "env": {"DATABASE_URL": "${DATABASE_URL}"}
+      "env": { "DATABASE_URL": "${DATABASE_URL}" }
     },
     "external": {
       "url": "https://api.example.com/mcp",
-      "headers": {"Authorization": "Bearer ${API_TOKEN}"}
+      "headers": { "Authorization": "Bearer ${API_TOKEN}" }
     }
   }
 }
@@ -98,6 +84,7 @@ export LOG_FORMAT="json"        # json or text
 ## Running
 
 Local development:
+
 ```bash
 git clone https://github.com/dgellow/mcp-front.git
 cd mcp-front
@@ -106,6 +93,7 @@ go build -o mcp-front ./cmd/mcp-front
 ```
 
 Docker:
+
 ```bash
 # Using Docker Hub image (use specific SHA tag)
 docker run -d -p 8080:8080 \
@@ -127,15 +115,41 @@ docker run -d -p 8080:8080 \
   mcp-front
 ```
 
+### Running mcp-front with Docker client included
+
+If you need mcp-front to run Docker commands (for MCP servers configured with `command: "docker"`), use the Docker client image:
+
+```bash
+# Build the Docker client image
+docker build -f Dockerfile.docker-client -t mcp-front:docker-client .
+
+# Run with Docker socket mounted
+docker run -d -p 8080:8080 \
+  -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
+  -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
+  -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v $(pwd)/config.json:/app/config.json:ro \
+  --group-add $(stat -c '%g' /var/run/docker.sock) \
+  mcp-front:docker-client
+
+# Or use docker-compose
+docker-compose -f docker-compose.docker-client.yml up -d
+```
+
+This variant includes the Docker CLI, allowing mcp-front to spawn Docker containers for MCP servers.
+
 ## Testing
 
 Run the comprehensive integration test suite:
+
 ```bash
 cd integration
 ./run_tests.sh
 ```
 
 This validates:
+
 - **OAuth 2.1 Integration**: JWT secret validation, client registration, state parameter handling
 - **Security Testing**: Authentication bypass protection, development vs production modes
 - **MCP Communication**: End-to-end stdio and SSE transport
@@ -144,6 +158,7 @@ This validates:
 - **CORS and Headers**: Proper browser compatibility
 
 Run specific OAuth tests:
+
 ```bash
 cd integration
 go test -v -run TestOAuthFlowIntegration
@@ -152,6 +167,7 @@ go test -v -run TestOAuthFlowIntegration
 ## Claude.ai integration
 
 Add these MCP server URLs to Claude.ai:
+
 ```
 https://mcp.yourcompany.com/notion/sse
 https://mcp.yourcompany.com/postgres/sse
@@ -192,6 +208,7 @@ For production, use a load balancer with HTTPS termination and mount Docker sock
 All authorization flows require PKCE. Users must belong to Google Workspace domains in the `allowed_domains` list. Tokens are scoped to MCP endpoints and expire based on `token_ttl` configuration.
 
 The system includes protection against:
+
 - Authentication bypass attempts
 - HTTP header injection
 - Path traversal attacks
@@ -204,6 +221,7 @@ The system includes protection against:
 OAuth client data can be stored using different backends:
 
 ### Memory Storage (Development)
+
 ```json
 {
   "oauth": {
@@ -211,21 +229,24 @@ OAuth client data can be stored using different backends:
   }
 }
 ```
+
 - Default option, suitable for development and testing
 - All client registrations lost on restart
 - Fast, no external dependencies
 
 ### Firestore Storage (Production)
+
 ```json
 {
   "oauth": {
     "storage": "firestore",
     "gcp_project": "your-gcp-project",
-    "firestore_database": "my-firestore-db",      // Optional, defaults to "(default)"
+    "firestore_database": "my-firestore-db", // Optional, defaults to "(default)"
     "firestore_collection": "custom_oauth_clients" // Optional, defaults to "mcp_front_oauth_clients"
   }
 }
 ```
+
 - Production-ready persistent storage
 - Requires GCP Firestore enabled in your project
 - Automatic authentication via service accounts or ADC
@@ -238,13 +259,14 @@ OAuth client data can be stored using different backends:
 mcp-front is built as a single Go binary with clean separation of concerns:
 
 - `main.go` - Application entry point and configuration loading
-- `http.go` - HTTP server with structured logging and CORS middleware  
+- `http.go` - HTTP server with structured logging and CORS middleware
 - `client.go` - MCP client implementation with stdio/SSE bridge
 - `oauth/` - OAuth 2.1 server implementation with fosite
 - `internal/` - Centralized structured logging with Go's slog
 - `integration/` - Comprehensive test suite with OAuth flow validation
 
 The OAuth implementation uses:
+
 - [ory/fosite](https://github.com/ory/fosite) for OAuth 2.1 compliance
 - Google OAuth for user authentication with domain validation
 - In-memory storage with thread-safe client management
@@ -256,6 +278,7 @@ The OAuth implementation uses:
 ## Project Status
 
 ✅ **Production Ready Features:**
+
 - OAuth 2.1 with PKCE support and fosite compliance
 - Claude.ai and MCP Inspector compatibility (tested)
 - Dynamic client registration with public client support
@@ -270,6 +293,7 @@ The OAuth implementation uses:
 - GCP domain validation with Google Workspace integration
 
 🔧 **Testing & Development:**
+
 - OAuth flow integration tests covering JWT validation, client registration, state handling
 - Environment-based test scenarios (MCP_FRONT_ENV)
 - Mock database setup with Docker Compose
