@@ -12,6 +12,18 @@ NC='\033[0m' # No Color
 # Change to integration directory
 cd "$(dirname "$0")"
 
+# Check if we're in a terminal with proper capabilities
+is_terminal() {
+    [ -t 1 ] && [ -n "$TERM" ]
+}
+
+# Safe tput wrapper
+safe_tput() {
+    if is_terminal; then
+        tput "$@" 2>/dev/null || true
+    fi
+}
+
 # Docker compose command wrapper
 docker_compose() {
     if docker compose version &>/dev/null 2>&1; then
@@ -72,7 +84,7 @@ show_animation() {
     local frame=0
     
     # Hide cursor
-    tput civis
+    safe_tput civis
     
     while true; do
         printf "\r  ${spinners[$((frame % ${#spinners[@]}))]} Running tests..."
@@ -86,27 +98,36 @@ run_tests() {
     # Create a log file for mcp-front output
     export MCP_LOG_FILE="/tmp/mcp-front-test.log"
     
-    # Start animation in background
-    show_animation &
-    local anim_pid=$!
+    # Start animation in background (skip in CI)
+    local anim_pid=""
+    if is_terminal; then
+        show_animation &
+        anim_pid=$!
+    else
+        echo "  Running tests..."
+    fi
     
     # Run tests, capturing output
     if go test -timeout 15m &>/tmp/test-output.log; then
         # Kill animation and clear line
-        kill $anim_pid 2>/dev/null || true
-        wait $anim_pid 2>/dev/null || true
-        printf "\r\033[K"
-        tput cnorm  # Show cursor again
+        if [ -n "$anim_pid" ]; then
+            kill $anim_pid 2>/dev/null || true
+            wait $anim_pid 2>/dev/null || true
+            printf "\r\033[K"
+        fi
+        safe_tput cnorm  # Show cursor again
         
         # Success - print minimal output
         echo -e "${GREEN}✓ All tests passed${NC}"
         return 0
     else
         # Kill animation and clear line
-        kill $anim_pid 2>/dev/null || true
-        wait $anim_pid 2>/dev/null || true
-        printf "\r\033[K"
-        tput cnorm  # Show cursor again
+        if [ -n "$anim_pid" ]; then
+            kill $anim_pid 2>/dev/null || true
+            wait $anim_pid 2>/dev/null || true
+            printf "\r\033[K"
+        fi
+        safe_tput cnorm  # Show cursor again
         # Failure - show details
         echo -e "${RED}❌ Tests failed${NC}"
         echo ""
