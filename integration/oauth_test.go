@@ -192,7 +192,6 @@ func testJWTSecretValidation(t *testing.T) {
 			} else {
 				if !healthy {
 					t.Error("Expected success with valid JWT secret but server failed to start")
-				} else {
 				}
 			}
 		})
@@ -664,7 +663,7 @@ func registerTestClient(t *testing.T) string {
 	}
 
 	var clientResp map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&clientResp)
+	_ = json.NewDecoder(resp.Body).Decode(&clientResp)
 	return clientResp["client_id"].(string)
 }
 

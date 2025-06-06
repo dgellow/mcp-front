@@ -371,7 +371,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // DebugClientsHandler shows all registered clients (for debugging)
@@ -395,7 +395,7 @@ func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // ValidateTokenMiddleware creates middleware that validates OAuth tokens

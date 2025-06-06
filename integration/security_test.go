@@ -29,8 +29,8 @@ func TestSecurityScenarios(t *testing.T) {
 	}
 	defer func() {
 		if mcpCmd.Process != nil {
-			mcpCmd.Process.Kill()
-			mcpCmd.Wait()
+			_ = mcpCmd.Process.Kill()
+			_ = mcpCmd.Wait()
 		}
 	}()
 
@@ -286,7 +286,6 @@ func TestSecurityScenarios(t *testing.T) {
 					t.Errorf("❌ Valid auth '%s' should return 200, got %d", tc.authHeader, resp.StatusCode)
 				} else if !tc.shouldPass && resp.StatusCode != 401 {
 					t.Errorf("❌ Invalid auth '%s' should return 401, got %d", tc.authHeader, resp.StatusCode)
-				} else {
 				}
 			})
 		}
@@ -296,7 +295,7 @@ func TestSecurityScenarios(t *testing.T) {
 		// Test:
 
 		client := NewMCPClient("http://localhost:8080")
-		client.Authenticate()
+		_ = client.Authenticate()
 
 		successCount := 0
 		errorCount := 0
@@ -306,16 +305,12 @@ func TestSecurityScenarios(t *testing.T) {
 			err := client.ValidateBackendConnectivity()
 			if err != nil {
 				errorCount++
-				if strings.Contains(err.Error(), "rate") || strings.Contains(err.Error(), "limit") {
-				}
 			} else {
 				successCount++
 			}
 		}
 
-		// Rapid requests completed
-		if successCount > 0 {
-		}
+		// Rapid requests completed - no rate limiting expected in this implementation
 	})
 }
 
@@ -330,7 +325,7 @@ func TestFailureScenarios(t *testing.T) {
 		}
 		defer func() {
 			downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-			downCmd.Run()
+			_ = downCmd.Run()
 		}()
 
 		time.Sleep(10 * time.Second)
@@ -341,8 +336,8 @@ func TestFailureScenarios(t *testing.T) {
 		}
 		defer func() {
 			if mcpCmd.Process != nil {
-				mcpCmd.Process.Kill()
-				mcpCmd.Wait()
+				_ = mcpCmd.Process.Kill()
+				_ = mcpCmd.Wait()
 			}
 		}()
 
@@ -380,7 +375,6 @@ func TestFailureScenarios(t *testing.T) {
 
 				if resp.StatusCode != tc.expected {
 					t.Errorf("❌ Token '%s': expected %d, got %d", tc.name, tc.expected, resp.StatusCode)
-				} else {
 				}
 			})
 		}

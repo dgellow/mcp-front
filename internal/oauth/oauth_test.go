@@ -216,7 +216,7 @@ func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 	}
 
 	var registerResp map[string]interface{}
-	json.NewDecoder(w.Body).Decode(&registerResp)
+	_ = json.NewDecoder(w.Body).Decode(&registerResp)
 	clientID := registerResp["client_id"].(string)
 
 	// Check debug endpoint
@@ -230,7 +230,7 @@ func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 	}
 
 	var debugResp map[string]interface{}
-	json.NewDecoder(w.Body).Decode(&debugResp)
+	_ = json.NewDecoder(w.Body).Decode(&debugResp)
 
 	if total, ok := debugResp["total_clients"].(float64); !ok || total != 1 {
 		t.Errorf("Expected 1 client, got %v", debugResp["total_clients"])
