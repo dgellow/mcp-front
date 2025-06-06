@@ -43,7 +43,9 @@ func newStorage() *Storage {
 // generateState creates a cryptographically secure state parameter
 func (s *Storage) generateState() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(err) // This should never happen with crypto/rand
+	}
 	return base64.URLEncoding.EncodeToString(b)
 }
 

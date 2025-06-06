@@ -136,9 +136,9 @@ func loggerMiddleware(prefix string) MiddlewareFunc {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			wrapped := wrapResponseWriter(w)
-			
+
 			next.ServeHTTP(wrapped, r)
-			
+
 			// Log request with response details
 			internal.LogInfoWithFields(prefix, "request", map[string]interface{}{
 				"method":      r.Method,
@@ -255,7 +255,7 @@ func Start(cfg *config.Config) error {
 			corsMiddleware(),
 			loggerMiddleware("oauth"),
 		}
-		
+
 		httpMux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(oauthServer.WellKnownHandler), oauthMiddlewares...))
 		httpMux.Handle("/authorize", chainMiddleware(http.HandlerFunc(oauthServer.AuthorizeHandler), oauthMiddlewares...))
 		httpMux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(oauthServer.GoogleCallbackHandler), oauthMiddlewares...))
@@ -276,7 +276,7 @@ func Start(cfg *config.Config) error {
 	httpMux.Handle("/health", chainMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","service":"mcp-front"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","service":"mcp-front"}`))
 	}), loggerMiddleware("health")))
 
 	for name, clientConfig := range cfg.MCPServers {
@@ -326,7 +326,7 @@ func Start(cfg *config.Config) error {
 			// Add CORS as the FIRST middleware to handle OPTIONS before auth
 			middlewares = append(middlewares, corsMiddleware())
 			middlewares = append(middlewares, recoverMiddleware(currentName))
-			
+
 			// Always add logging middleware for request tracking
 			middlewares = append(middlewares, loggerMiddleware(currentName))
 

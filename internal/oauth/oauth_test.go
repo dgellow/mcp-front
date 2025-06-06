@@ -139,8 +139,8 @@ func TestRegisterHandler(t *testing.T) {
 
 	server.RegisterHandler(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
 	}
 
 	var response map[string]interface{}
@@ -211,7 +211,7 @@ func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 
 	server.RegisterHandler(w, req)
 
-	if w.Code != http.StatusOK {
+	if w.Code != http.StatusCreated {
 		t.Fatalf("Register failed with status %d: %s", w.Code, w.Body.String())
 	}
 

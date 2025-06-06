@@ -17,7 +17,7 @@ func TestSecurityScenarios(t *testing.T) {
 	}
 	defer func() {
 		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-		downCmd.Run()
+		_ = downCmd.Run()
 	}()
 
 	time.Sleep(10 * time.Second)
@@ -105,7 +105,7 @@ func TestSecurityScenarios(t *testing.T) {
 		// Test:
 
 		client := NewMCPClient("http://localhost:8080")
-		client.Authenticate()
+		_ = client.Authenticate()
 
 		// Validate backend connectivity first
 		if err := client.ValidateBackendConnectivity(); err != nil {
@@ -208,7 +208,6 @@ func TestSecurityScenarios(t *testing.T) {
 			// Should return 404 or 403, NOT 200 with sensitive content
 			if resp.StatusCode == 200 {
 				t.Errorf("❌ Path traversal may have succeeded: %s returned 200", path)
-			} else {
 			}
 		}
 	})

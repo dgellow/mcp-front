@@ -42,7 +42,7 @@ func TestOAuthIntegration(t *testing.T) {
 		t.Fatalf("Failed to start mock GCP server: %v", err)
 	}
 	t.Cleanup(func() {
-		mockGCP.Stop()
+		_ = mockGCP.Stop()
 	})
 
 	// Run all OAuth test scenarios
@@ -81,8 +81,8 @@ func testBasicOAuthFlow(t *testing.T) {
 	}
 	defer func() {
 		if mcpCmd.Process != nil {
-			mcpCmd.Process.Kill()
-			mcpCmd.Wait()
+			_ = mcpCmd.Process.Kill()
+			_ = mcpCmd.Wait()
 		}
 	}()
 
@@ -181,14 +181,13 @@ func testJWTSecretValidation(t *testing.T) {
 
 			// Clean up
 			if mcpCmd.Process != nil {
-				mcpCmd.Process.Kill()
-				mcpCmd.Wait()
+				_ = mcpCmd.Process.Kill()
+				_ = mcpCmd.Wait()
 			}
 
 			if tt.shouldFail {
 				if healthy && !errorFound {
 					t.Error("Expected failure with short JWT secret but server started successfully")
-				} else {
 				}
 			} else {
 				if !healthy {
@@ -274,7 +273,7 @@ func testClientRegistration(t *testing.T) {
 			defer resp.Body.Close()
 
 			var clientResp map[string]interface{}
-			json.NewDecoder(resp.Body).Decode(&clientResp)
+			_ = json.NewDecoder(resp.Body).Decode(&clientResp)
 			clientIDs = append(clientIDs, clientResp["client_id"].(string))
 		}
 
@@ -489,7 +488,9 @@ func testOAuthEndpoints(t *testing.T) {
 		}
 
 		var discovery map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&discovery)
+		if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
+			t.Fatalf("Failed to decode discovery response: %v", err)
+		}
 
 		// Verify all required fields
 		required := []string{
@@ -522,7 +523,9 @@ func testOAuthEndpoints(t *testing.T) {
 		}
 
 		var health map[string]string
-		json.NewDecoder(resp.Body).Decode(&health)
+		if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+			t.Fatalf("Failed to decode health response: %v", err)
+		}
 		if health["status"] != "ok" {
 			t.Errorf("Expected status 'ok', got '%s'", health["status"])
 		}
@@ -611,8 +614,8 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 
 func stopServer(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 	}
 }
 

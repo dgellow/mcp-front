@@ -86,13 +86,13 @@ type OAuthAuthConfig struct {
 	GCPProject          interface{} `json:"gcpProject"` // string or EnvRef
 	AllowedDomains      []string    `json:"allowedDomains"`
 	TokenTTL            string      `json:"tokenTtl"`
-	Storage             string      `json:"storage"`                      // "memory" or "firestore"
+	Storage             string      `json:"storage"`                       // "memory" or "firestore"
 	FirestoreDatabase   string      `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name (default: "(default)")
 	FirestoreCollection string      `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name (default: "mcp_front_oauth_clients")
-	GoogleClientID      interface{} `json:"googleClientId"`               // string or EnvRef
-	GoogleClientSecret  interface{} `json:"googleClientSecret"`           // EnvRef only!
-	GoogleRedirectURI   interface{} `json:"googleRedirectUri"`            // string or EnvRef
-	JWTSecret           interface{} `json:"jwtSecret"`                    // EnvRef only!
+	GoogleClientID      interface{} `json:"googleClientId"`                // string or EnvRef
+	GoogleClientSecret  interface{} `json:"googleClientSecret"`            // EnvRef only!
+	GoogleRedirectURI   interface{} `json:"googleRedirectUri"`             // string or EnvRef
+	JWTSecret           interface{} `json:"jwtSecret"`                     // EnvRef only!
 }
 
 // BearerTokenAuthConfig represents bearer token authentication

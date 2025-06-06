@@ -173,7 +173,7 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(metadata)
+	_ = json.NewEncoder(w).Encode(metadata)
 }
 
 // AuthorizeHandler handles OAuth 2.0 authorization requests
@@ -200,7 +200,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 		r.URL.RawQuery = q.Encode()
 		// Also update the form values
 		if r.Form == nil {
-			r.ParseForm()
+			_ = r.ParseForm()
 		}
 		r.Form.Set("state", generatedState)
 	}

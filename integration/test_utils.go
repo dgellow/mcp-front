@@ -193,7 +193,7 @@ func NewMockGCPServer(port string) *MockGCPServer {
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "test-access-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -202,7 +202,7 @@ func NewMockGCPServer(port string) *MockGCPServer {
 
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"email": "test@test.com",
 			"hd":    "test.com",
 		})
@@ -298,16 +298,15 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 // Cleanup stops all test environment components
 func (env *TestEnvironment) Cleanup() {
 	if env.mcpCmd != nil && env.mcpCmd.Process != nil {
-		env.mcpCmd.Process.Kill()
+		_ = env.mcpCmd.Process.Kill()
 	}
 
 	if env.mockGCP != nil {
-		env.mockGCP.Stop()
+		_ = env.mockGCP.Stop()
 	}
 
 	if env.dbCmd != nil {
 		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-		downCmd.Run()
+		_ = downCmd.Run()
 	}
 }
-

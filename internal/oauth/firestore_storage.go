@@ -87,14 +87,14 @@ func FromFositeClient(client fosite.Client, createdAt int64) *OAuthClientEntity 
 func newFirestoreStorage(ctx context.Context, projectID, database, collection string) (*FirestoreStorage, error) {
 	var client *firestore.Client
 	var err error
-	
+
 	// Firestore client with custom database
 	if database != "" && database != "(default)" {
 		client, err = firestore.NewClientWithDatabase(ctx, projectID, database)
 	} else {
 		client, err = firestore.NewClient(ctx, projectID)
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Firestore client: %w", err)
 	}
@@ -151,7 +151,9 @@ func (s *FirestoreStorage) loadClientsFromFirestore(ctx context.Context) error {
 // generateState creates a cryptographically secure state parameter
 func (s *FirestoreStorage) generateState() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(err) // This should never happen with crypto/rand
+	}
 	return base64.URLEncoding.EncodeToString(b)
 }
 

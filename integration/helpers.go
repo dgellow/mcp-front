@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 // TestMain provides test suite setup and teardown
 func TestMain(m *testing.M) {
 	flag.Parse()

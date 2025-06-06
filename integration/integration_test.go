@@ -36,7 +36,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatalf("Failed to start mock GCP server: %v", err)
 	}
 	t.Cleanup(func() {
-		mockGCP.Stop()
+		_ = mockGCP.Stop()
 	})
 
 	// Start mcp-front
@@ -65,8 +65,8 @@ func TestIntegration(t *testing.T) {
 	// Ensure mcp-front is stopped on cleanup
 	t.Cleanup(func() {
 		if mcpCmd.Process != nil {
-			mcpCmd.Process.Kill()
-			mcpCmd.Wait()
+			_ = mcpCmd.Process.Kill()
+			_ = mcpCmd.Wait()
 		}
 	})
 

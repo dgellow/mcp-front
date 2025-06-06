@@ -86,7 +86,6 @@ func resolveEnvRef(value interface{}) (interface{}, error) {
 	}
 }
 
-
 // parseAuthConfig parses the auth configuration with proper type discrimination
 func parseAuthConfig(authRaw interface{}) (interface{}, error) {
 	authMap, ok := authRaw.(map[string]interface{})

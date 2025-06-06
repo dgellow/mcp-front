@@ -37,7 +37,7 @@ func TestCORSMiddleware(t *testing.T) {
 	corsHandler := corsMiddleware()
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 	handler := corsHandler(testHandler)
 
@@ -74,7 +74,7 @@ func TestCORSOptionsRequest(t *testing.T) {
 	corsHandler := corsMiddleware()
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 	handler := corsHandler(testHandler)
 
