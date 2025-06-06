@@ -69,6 +69,12 @@ jobs:
     - name: Build Docker image for testing
       run: docker build -t mcp-front:test .
 
+    - name: Verify Docker Compose
+      run: |
+        docker --version
+        docker compose version || echo "Docker Compose v2 not available"
+        which docker-compose || echo "docker-compose command not found"
+
     - name: Run integration tests
       env:
         GOOGLE_CLIENT_ID: test-client-id
