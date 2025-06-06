@@ -1,0 +1,33 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="shield-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366F1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B5CF6;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Shield shape -->
+  <path d="M20 2 L35 8 L35 20 C35 28 20 38 20 38 C20 38 5 28 5 20 L5 8 L20 2 Z" 
+        fill="url(#shield-gradient)" 
+        stroke="#4C1D95" 
+        stroke-width="1"
+        filter="url(#glow)"/>
+  
+  <!-- Lock icon -->
+  <g transform="translate(20, 20)">
+    <rect x="-6" y="-3" width="12" height="10" rx="1" fill="white" opacity="0.9"/>
+    <path d="M-4 -3 L-4 -6 A4 4 0 0 1 4 -6 L4 -3" 
+          fill="none" 
+          stroke="white" 
+          stroke-width="2"
+          stroke-linecap="round"/>
+    <circle cx="0" cy="2" r="1.5" fill="#4C1D95"/>
+  </g>
+</svg>

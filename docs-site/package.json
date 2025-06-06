@@ -1,0 +1,22 @@
+{
+  "name": "mcp-front-docs",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Documentation for MCP Front - OAuth 2.1 proxy for Model Context Protocol",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "deploy": "npm run build && gh-pages -d dist"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.34.3",
+    "astro": "^5.6.1",
+    "sharp": "^0.32.5"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.0.0"
+  }
+}

@@ -1,0 +1,126 @@
+---
+title: MCP Front Documentation
+description: OAuth 2.1 authenticated proxy for Model Context Protocol servers
+template: splash
+hero:
+  title: MCP Front
+  tagline: Secure OAuth 2.1 proxy for Model Context Protocol servers
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get Started
+      link: /mcp-front/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/dgellow/mcp-front
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What is MCP Front?
+
+MCP Front is a secure proxy server that adds OAuth 2.1 authentication to Model Context Protocol (MCP) servers. It enables Claude.ai to safely access your company's internal resources while maintaining strict security boundaries.
+
+<CardGrid stagger>
+  <Card title="🔐 OAuth 2.1 Authentication" icon="shield">
+    Industry-standard OAuth 2.1 with PKCE support for secure authentication
+  </Card>
+  <Card title="🏢 Enterprise Ready" icon="building">
+    Google Workspace integration with domain restrictions and Firestore persistence
+  </Card>
+  <Card title="🐳 Docker Native" icon="container">
+    Production-ready Docker images with multi-stage builds and health checks
+  </Card>
+  <Card title="⚡ High Performance" icon="rocket">
+    Built with Go for minimal resource usage and maximum throughput
+  </Card>
+</CardGrid>
+
+## Architecture Overview
+
+<div class="architecture-diagram">
+  <img src="/mcp-front/architecture.svg" alt="MCP Front Architecture" />
+</div>
+
+MCP Front acts as a protective shield between Claude.ai and your internal MCP servers:
+
+1. **Claude.ai** connects to MCP Front using OAuth 2.1
+2. **MCP Front** validates the authentication and checks permissions
+3. **Authorized requests** are proxied to the appropriate MCP servers
+4. **MCP servers** can be stdio-based (Docker) or HTTP-based services
+
+## Key Features
+
+### 🛡️ Security First
+- OAuth 2.1 with PKCE for maximum security
+- JWT tokens with configurable TTL
+- Domain-based access restrictions
+- No credentials stored in Claude.ai
+
+### 🔧 Flexible Authentication
+- **Bearer Token**: Simple token-based auth for development
+- **OAuth 2.1**: Full OAuth flow for production environments
+- **Google Workspace**: Enterprise SSO integration
+
+### 📦 Easy Deployment
+- Single binary or Docker container
+- Docker Compose for complete stack
+- Google Cloud Run compatible
+- Comprehensive health checks
+
+### 🎯 MCP Protocol Support
+- Server-Sent Events (SSE) for real-time streaming
+- Both stdio and HTTP transport protocols
+- Automatic reconnection handling
+- Request/response correlation
+
+## Quick Start
+
+```bash
+# Using Docker
+docker run -p 8080:8080 \
+  -e GOOGLE_CLIENT_ID=your-client-id \
+  -e GOOGLE_CLIENT_SECRET=your-secret \
+  -e JWT_SECRET=your-jwt-secret \
+  -v ./config.json:/config.json \
+  ghcr.io/dgellow/mcp-front:latest
+
+# Using Docker Compose
+docker-compose up -d
+```
+
+## Use Cases
+
+<CardGrid>
+  <Card title="Database Access" icon="database">
+    Securely query internal databases through Claude.ai while maintaining audit trails
+  </Card>
+  <Card title="API Integration" icon="puzzle">
+    Connect Claude.ai to internal APIs with proper authentication and rate limiting
+  </Card>
+  <Card title="Tool Automation" icon="setting">
+    Execute internal tools and scripts with controlled permissions
+  </Card>
+  <Card title="Knowledge Base" icon="document">
+    Access company documentation and knowledge bases securely
+  </Card>
+</CardGrid>
+
+## Next Steps
+
+<CardGrid>
+  <Card title="Getting Started" icon="rocket">
+    [Set up MCP Front](/mcp-front/getting-started/) in your environment
+  </Card>
+  <Card title="Configuration Guide" icon="setting">
+    [Configure authentication](/mcp-front/config/overview/) and MCP servers
+  </Card>
+  <Card title="OAuth Setup" icon="shield">
+    [Set up OAuth 2.1](/mcp-front/oauth/overview/) with Google Workspace
+  </Card>
+  <Card title="Deploy to Production" icon="cloud">
+    [Deploy to production](/mcp-front/deployment/production/) with best practices
+  </Card>
+</CardGrid>
