@@ -8,11 +8,11 @@ export default defineConfig({
 	base: '/mcp-front',
 	integrations: [
 		starlight({
-			title: 'MCP Front',
+			title: '',
 			description: 'OAuth 2.1 authenticated proxy for Model Context Protocol servers',
 			logo: {
 				alt: 'MCP Front Logo',
-				src: './src/assets/animated-logo.svg',
+				src: './src/assets/logo.svg',
 			},
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/dgellow/mcp-front' },
