@@ -6,10 +6,6 @@ Production-ready OAuth 2.1 authentication proxy for multiple MCP (Model Context 
 
 ![mcp-front Architecture](docs/architecture.svg)
 
-[![Documentation](https://img.shields.io/badge/docs-starlight-blueviolet)](https://dgellow.github.io/mcp-front/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dgellow/mcp-front)](https://goreportcard.com/report/github.com/dgellow/mcp-front)
-[![License](https://img.shields.io/github/license/dgellow/mcp-front)](LICENSE)
-
 </div>
 
 ## 📚 Documentation
