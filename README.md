@@ -8,15 +8,6 @@ Production-ready OAuth 2.1 authentication proxy for multiple MCP (Model Context 
 
 </div>
 
-## 📚 Documentation
-
-Full documentation is available at **[dgellow.github.io/mcp-front](https://dgellow.github.io/mcp-front/)**
-
-- [Getting Started Guide](https://dgellow.github.io/mcp-front/getting-started/)
-- [Configuration Reference](https://dgellow.github.io/mcp-front/config/overview/)
-- [OAuth 2.1 Setup](https://dgellow.github.io/mcp-front/oauth/overview/)
-- [API Documentation](https://dgellow.github.io/mcp-front/api/endpoints/)
-- [Deployment Guide](https://dgellow.github.io/mcp-front/deployment/docker/)
 
 ## How it works
 
