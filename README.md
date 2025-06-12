@@ -1,6 +1,8 @@
 # mcp-front
 
-> **This project is a work in progress and IS NOT production ready.**
+> **This project is a work in progress and should not be considered production ready.**
+> Though I'm fairly confident the overall architecture is sound, and I myself rely on the implementation, so it _should work :tm:_.
+> But it's definitely alpha software :)
 
 OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
 
