@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -74,21 +75,23 @@ func validateProxyConfig(proxy *ProxyConfig, mcpServers map[string]*MCPClientCon
 	var errors ValidationErrors
 
 	// Validate baseURL
-	baseURL := fmt.Sprintf("%v", proxy.BaseURL)
-	if baseURL == "" || baseURL == "<nil>" {
+	if proxy.BaseURL == nil {
 		errors = append(errors, ValidationError{Field: "proxy.baseURL", Message: "baseURL is required"})
 	} else {
+		baseURL := proxy.BaseURL.String()
 		if _, err := url.Parse(baseURL); err != nil {
 			errors = append(errors, ValidationError{Field: "proxy.baseURL", Message: fmt.Sprintf("invalid URL: %v", err)})
 		}
 	}
 
 	// Validate addr
-	addr := fmt.Sprintf("%v", proxy.Addr)
-	if addr == "" || addr == "<nil>" {
+	if proxy.Addr == nil {
 		errors = append(errors, ValidationError{Field: "proxy.addr", Message: "address is required"})
-	} else if !strings.HasPrefix(addr, ":") {
-		errors = append(errors, ValidationError{Field: "proxy.addr", Message: "address must start with ':' (e.g., ':8080')"})
+	} else {
+		addr := proxy.Addr.String()
+		if !strings.HasPrefix(addr, ":") {
+			errors = append(errors, ValidationError{Field: "proxy.addr", Message: "address must start with ':' (e.g., ':8080')"})
+		}
 	}
 
 	// Validate name
@@ -139,10 +142,10 @@ func validateOAuthAuth(auth *OAuthAuthConfig) error {
 	}
 
 	// Validate issuer
-	issuer := fmt.Sprintf("%v", auth.Issuer)
-	if issuer == "" || issuer == "<nil>" {
+	if auth.Issuer == nil {
 		errors = append(errors, ValidationError{Field: "proxy.auth.issuer", Message: "issuer is required"})
 	} else {
+		issuer := auth.Issuer.String()
 		parsedURL, err := url.Parse(issuer)
 		if err != nil {
 			errors = append(errors, ValidationError{Field: "proxy.auth.issuer", Message: fmt.Sprintf("invalid issuer URL: %v", err)})
@@ -155,8 +158,7 @@ func validateOAuthAuth(auth *OAuthAuthConfig) error {
 	}
 
 	// Validate GCP project
-	gcpProject := fmt.Sprintf("%v", auth.GCPProject)
-	if gcpProject == "" || gcpProject == "<nil>" {
+	if auth.GCPProject == nil {
 		errors = append(errors, ValidationError{Field: "proxy.auth.gcpProject", Message: "GCP project ID is required"})
 	}
 
@@ -193,17 +195,16 @@ func validateOAuthAuth(auth *OAuthAuthConfig) error {
 	}
 
 	// Validate Google OAuth settings
-	clientID := fmt.Sprintf("%v", auth.GoogleClientID)
-	if clientID == "" || clientID == "<nil>" {
+	if auth.GoogleClientID == nil {
 		errors = append(errors, ValidationError{Field: "proxy.auth.google_client_id", Message: "Google client ID is required"})
 	}
 
 	// Client secret validation happens in validateRawConfig before env resolution
 
-	redirectURI := fmt.Sprintf("%v", auth.GoogleRedirectURI)
-	if redirectURI == "" || redirectURI == "<nil>" {
+	if auth.GoogleRedirectURI == nil {
 		errors = append(errors, ValidationError{Field: "proxy.auth.googleRedirectUri", Message: "Google redirect URI is required"})
 	} else {
+		redirectURI := auth.GoogleRedirectURI.String()
 		if _, err := url.Parse(redirectURI); err != nil {
 			errors = append(errors, ValidationError{Field: "proxy.auth.googleRedirectUri", Message: fmt.Sprintf("invalid redirect URI: %v", err)})
 		}
@@ -337,12 +338,14 @@ func validateMCPClientConfig(name string, config *MCPClientConfig) error {
 		}
 
 		// Validate environment variables
-		for key, value := range config.Env {
-			if key == "" {
-				errors = append(errors, ValidationError{Field: fmt.Sprintf("mcpServers.%s.env", name), Message: "environment variable key cannot be empty"})
-			}
-			if value == "" {
-				errors = append(errors, ValidationError{Field: fmt.Sprintf("mcpServers.%s.env.%s", name, key), Message: "environment variable value cannot be empty"})
+		if config.Env != nil {
+			for key, value := range config.Env {
+				if key == "" {
+					errors = append(errors, ValidationError{Field: fmt.Sprintf("mcpServers.%s.env", name), Message: "environment variable key cannot be empty"})
+				}
+				if value == nil {
+					errors = append(errors, ValidationError{Field: fmt.Sprintf("mcpServers.%s.env.%s", name, key), Message: "environment variable value cannot be nil"})
+				}
 			}
 		}
 	}
@@ -383,6 +386,19 @@ func validateMCPClientConfig(name string, config *MCPClientConfig) error {
 					errors = append(errors, ValidationError{Field: fmt.Sprintf("mcpServers.%s.options.toolFilter.list[%d]", name, i), Message: "tool name cannot be empty"})
 				}
 			}
+		}
+	}
+
+	// Validate user token configuration
+	if config.RequiresUserToken && config.TokenSetup != nil && config.TokenSetup.TokenFormat != "" {
+		regex, err := regexp.Compile(config.TokenSetup.TokenFormat)
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("mcpServers.%s.tokenSetup.tokenFormat", name),
+				Message: fmt.Sprintf("invalid regex pattern: %v", err),
+			})
+		} else {
+			config.TokenSetup.CompiledRegex = regex
 		}
 	}
 

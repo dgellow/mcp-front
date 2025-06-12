@@ -14,10 +14,30 @@ func ParseMCPClientConfig(conf *MCPClientConfig) (any, error) {
 		if conf.Command == "" {
 			return nil, errors.New("command is required for stdio transport")
 		}
+		
+		// For regular parsing (non-user specific), resolve env vars only
+		env := make(map[string]string)
+		if conf.Env != nil {
+			for k, v := range conf.Env {
+				if v.IsUserTokenRef() {
+					return nil, fmt.Errorf("user token references not allowed in global config for %s", k)
+				}
+				env[k] = v.String()
+			}
+		}
+		
+		args := make([]string, 0, len(conf.Args))
+		for i, v := range conf.Args {
+			if v.IsUserTokenRef() {
+				return nil, fmt.Errorf("user token references not allowed in global config at args[%d]", i)
+			}
+			args = append(args, v.String())
+		}
+		
 		return &StdioMCPClientConfig{
 			Command: conf.Command,
-			Env:     conf.Env,
-			Args:    conf.Args,
+			Env:     env,
+			Args:    args,
 		}, nil
 	}
 	if conf.URL != "" {
@@ -37,88 +57,7 @@ func ParseMCPClientConfig(conf *MCPClientConfig) (any, error) {
 	return nil, errors.New("invalid server type")
 }
 
-// resolveEnvRef resolves environment variable references in a value
-func resolveEnvRef(value interface{}) (interface{}, error) {
-	if value == nil {
-		return nil, nil
-	}
 
-	switch v := value.(type) {
-	case map[string]interface{}:
-		// Check if this is an EnvRef
-		if envName, ok := v["$env"].(string); ok {
-			envValue := os.Getenv(envName)
-			if envValue == "" {
-				if def, hasDefault := v["default"]; hasDefault {
-					return def, nil
-				}
-				return nil, fmt.Errorf("required environment variable %s not set", envName)
-			}
-			return envValue, nil
-		}
-
-		// Otherwise, recursively resolve nested objects
-		result := make(map[string]interface{})
-		for k, val := range v {
-			resolved, err := resolveEnvRef(val)
-			if err != nil {
-				return nil, fmt.Errorf("resolving %s: %w", k, err)
-			}
-			result[k] = resolved
-		}
-		return result, nil
-
-	case []interface{}:
-		// Handle arrays
-		result := make([]interface{}, len(v))
-		for i, item := range v {
-			resolved, err := resolveEnvRef(item)
-			if err != nil {
-				return nil, fmt.Errorf("resolving index %d: %w", i, err)
-			}
-			result[i] = resolved
-		}
-		return result, nil
-
-	default:
-		// Return primitives as-is
-		return value, nil
-	}
-}
-
-// parseAuthConfig parses the auth configuration with proper type discrimination
-func parseAuthConfig(authRaw interface{}) (interface{}, error) {
-	authMap, ok := authRaw.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("auth must be an object")
-	}
-
-	kind, ok := authMap["kind"].(string)
-	if !ok {
-		return nil, fmt.Errorf("auth.kind is required")
-	}
-
-	switch AuthKind(kind) {
-	case AuthKindOAuth:
-		var oauth OAuthAuthConfig
-		jsonBytes, _ := json.Marshal(authMap)
-		if err := json.Unmarshal(jsonBytes, &oauth); err != nil {
-			return nil, fmt.Errorf("parsing OAuth config: %w", err)
-		}
-		return &oauth, nil
-
-	case AuthKindBearerToken:
-		var bearer BearerTokenAuthConfig
-		jsonBytes, _ := json.Marshal(authMap)
-		if err := json.Unmarshal(jsonBytes, &bearer); err != nil {
-			return nil, fmt.Errorf("parsing bearer token config: %w", err)
-		}
-		return &bearer, nil
-
-	default:
-		return nil, fmt.Errorf("unknown auth kind: %s", kind)
-	}
-}
 
 // validateRawConfig validates the config structure before environment resolution
 func validateRawConfig(rawConfig map[string]interface{}) error {
@@ -139,6 +78,15 @@ func validateRawConfig(rawConfig map[string]interface{}) error {
 						return fmt.Errorf("jwtSecret must use environment variable reference for security")
 					}
 				}
+				// Check encryptionKey only if using non-memory storage
+				if storage, ok := auth["storage"].(string); ok && storage != "memory" && storage != "" {
+					if secret, ok := auth["encryptionKey"]; ok {
+						// Check if it's a string (bad) or a map (good - env ref)
+						if _, isString := secret.(string); isString {
+							return fmt.Errorf("encryptionKey must use environment variable reference for security when using %s storage", storage)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -153,7 +101,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	// Parse as raw JSON first to handle env refs
+	// First parse to check version and validate raw structure
 	var rawConfig map[string]interface{}
 	if err := json.Unmarshal(data, &rawConfig); err != nil {
 		return nil, fmt.Errorf("parsing config JSON: %w", err)
@@ -173,32 +121,79 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// Resolve environment variables
-	resolved, err := resolveEnvRef(rawConfig)
-	if err != nil {
-		return nil, fmt.Errorf("resolving environment variables: %w", err)
-	}
-	resolvedMap := resolved.(map[string]interface{})
-
-	// Parse into Config
+	// Parse directly into typed Config struct
 	var config Config
-	resolvedBytes, _ := json.Marshal(resolvedMap)
-	if err := json.Unmarshal(resolvedBytes, &config); err != nil {
-		return nil, fmt.Errorf("parsing resolved config: %w", err)
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	// Parse auth config with proper type
-	if proxyMap, ok := resolvedMap["proxy"].(map[string]interface{}); ok {
-		if authRaw, ok := proxyMap["auth"]; ok {
-			auth, err := parseAuthConfig(authRaw)
-			if err != nil {
-				return nil, fmt.Errorf("parsing auth config: %w", err)
-			}
-			config.Proxy.Auth = auth
+	// Resolve environment variables in ConfigValue fields
+	if config.Proxy.BaseURL != nil {
+		if err := config.Proxy.BaseURL.ResolveEnv(); err != nil {
+			return nil, fmt.Errorf("resolving proxy.baseURL: %w", err)
+		}
+	}
+	if config.Proxy.Addr != nil {
+		if err := config.Proxy.Addr.ResolveEnv(); err != nil {
+			return nil, fmt.Errorf("resolving proxy.addr: %w", err)
 		}
 	}
 
-	// Validate config (skip secret validation since we already did it in validateRawConfig)
+	// Resolve OAuth config env vars
+	if oauth, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
+		if oauth.Issuer != nil {
+			if err := oauth.Issuer.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.issuer: %w", err)
+			}
+		}
+		if oauth.GCPProject != nil {
+			if err := oauth.GCPProject.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.gcpProject: %w", err)
+			}
+		}
+		if oauth.GoogleClientID != nil {
+			if err := oauth.GoogleClientID.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.googleClientId: %w", err)
+			}
+		}
+		if oauth.GoogleClientSecret != nil {
+			if err := oauth.GoogleClientSecret.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.googleClientSecret: %w", err)
+			}
+		}
+		if oauth.GoogleRedirectURI != nil {
+			if err := oauth.GoogleRedirectURI.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.googleRedirectUri: %w", err)
+			}
+		}
+		if oauth.JWTSecret != nil {
+			if err := oauth.JWTSecret.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.jwtSecret: %w", err)
+			}
+		}
+		if oauth.EncryptionKey != nil {
+			if err := oauth.EncryptionKey.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving oauth.encryptionKey: %w", err)
+			}
+		}
+	}
+
+	// Resolve MCP server config env vars (but not user tokens)
+	for name, server := range config.MCPServers {
+		if server.Env != nil {
+			if err := server.Env.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving env for server %s: %w", name, err)
+			}
+		}
+		if server.Args != nil {
+			if err := server.Args.ResolveEnv(); err != nil {
+				return nil, fmt.Errorf("resolving args for server %s: %w", name, err)
+			}
+		}
+	}
+
+
+	// Validate config
 	if err := ValidateConfig(&config); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
