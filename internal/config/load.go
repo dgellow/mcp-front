@@ -1,0 +1,198 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+)
+
+// Load loads and processes the config with immediate env var resolution
+func Load(path string) (*Config, error) {
+	// Read config file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading config file: %w", err)
+	}
+
+	// First parse to check version and validate raw structure
+	var rawConfig map[string]interface{}
+	if err := json.Unmarshal(data, &rawConfig); err != nil {
+		return nil, fmt.Errorf("parsing config JSON: %w", err)
+	}
+
+	// Check version
+	version, ok := rawConfig["version"].(string)
+	if !ok {
+		return nil, fmt.Errorf("config version is required")
+	}
+	if !strings.HasPrefix(version, "v0.0.1-DEV_EDITION") {
+		return nil, fmt.Errorf("unsupported config version: %s", version)
+	}
+
+	// Validate raw config structure (before env resolution)
+	if err := validateRawConfig(rawConfig); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	// Parse directly into typed Config struct
+	// The custom UnmarshalJSON methods will resolve env vars immediately
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+
+	// Validate the resolved config
+	if err := ValidateConfig(&config); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	// Process auth tokens for bearer token mode
+	if auth, ok := config.Proxy.Auth.(*BearerTokenAuthConfig); ok {
+		// Distribute tokens to servers
+		for serverName, tokens := range auth.Tokens {
+			if server, ok := config.MCPServers[serverName]; ok {
+				if server.Options == nil {
+					server.Options = &Options{}
+				}
+				server.Options.AuthTokens = tokens
+			}
+		}
+	}
+
+	return &config, nil
+}
+
+// validateRawConfig validates the config structure before environment resolution
+func validateRawConfig(rawConfig map[string]interface{}) error {
+	// Check if OAuth auth is configured
+	if proxy, ok := rawConfig["proxy"].(map[string]interface{}); ok {
+		if auth, ok := proxy["auth"].(map[string]interface{}); ok {
+			if kind, ok := auth["kind"].(string); ok && kind == "oauth" {
+				// Validate that secrets use env refs
+				secrets := []struct {
+					name     string
+					required bool
+				}{
+					{"googleClientSecret", true},
+					{"jwtSecret", true},
+					{"encryptionKey", false}, // Only required for non-memory storage
+				}
+
+				for _, secret := range secrets {
+					if value, exists := auth[secret.name]; exists {
+						// Check if it's a string (bad) or a map (good - env ref)
+						if _, isString := value.(string); isString {
+							return fmt.Errorf("%s must use environment variable reference for security", secret.name)
+						}
+						// Verify it's an env ref
+						if refMap, isMap := value.(map[string]interface{}); isMap {
+							if _, hasEnv := refMap["$env"]; !hasEnv {
+								return fmt.Errorf("%s must use {\"$env\": \"VAR_NAME\"} format", secret.name)
+							}
+						}
+					} else if secret.required {
+						// For encryptionKey, only required if not using memory storage
+						if secret.name == "encryptionKey" {
+							if storage, ok := auth["storage"].(string); ok && storage != "memory" && storage != "" {
+								return fmt.Errorf("%s is required when using %s storage", secret.name, storage)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateConfig validates the resolved configuration
+func ValidateConfig(config *Config) error {
+	// Validate proxy config
+	if config.Proxy.BaseURL == "" {
+		return fmt.Errorf("proxy.baseURL is required")
+	}
+	if config.Proxy.Addr == "" {
+		return fmt.Errorf("proxy.addr is required")
+	}
+
+	// Validate OAuth config if present
+	if oauth, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
+		if err := validateOAuthConfig(oauth); err != nil {
+			return fmt.Errorf("oauth config: %w", err)
+		}
+	}
+
+	// Validate MCP servers
+	for name, server := range config.MCPServers {
+		if err := validateMCPServer(name, server); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func validateOAuthConfig(oauth *OAuthAuthConfig) error {
+	if oauth.Issuer == "" {
+		return fmt.Errorf("issuer is required")
+	}
+	if oauth.GoogleClientID == "" {
+		return fmt.Errorf("googleClientId is required")
+	}
+	if oauth.GoogleClientSecret == "" {
+		return fmt.Errorf("googleClientSecret is required")
+	}
+	if oauth.GoogleRedirectURI == "" {
+		return fmt.Errorf("googleRedirectUri is required")
+	}
+	if len(oauth.JWTSecret) < 32 {
+		return fmt.Errorf("jwtSecret must be at least 32 bytes")
+	}
+	if len(oauth.AllowedDomains) == 0 {
+		return fmt.Errorf("at least one allowed domain is required")
+	}
+	if oauth.Storage == "firestore" {
+		if oauth.GCPProject == "" {
+			return fmt.Errorf("gcpProject is required when using firestore storage")
+		}
+		if len(oauth.EncryptionKey) != 32 {
+			return fmt.Errorf("encryptionKey must be exactly 32 bytes when using firestore storage")
+		}
+	}
+	return nil
+}
+
+func validateMCPServer(name string, server *MCPClientConfig) error {
+	// Transport type is required
+	if server.TransportType == "" {
+		return fmt.Errorf("server %s must specify transportType (stdio, sse, or streamable-http)", name)
+	}
+
+	// Validate based on transport type
+	switch server.TransportType {
+	case MCPClientTypeStdio:
+		if server.Command == "" {
+			return fmt.Errorf("server %s with stdio transport must have command", name)
+		}
+		if server.URL != "" {
+			return fmt.Errorf("server %s with stdio transport cannot have url", name)
+		}
+	case MCPClientTypeSSE, MCPClientTypeStreamable:
+		if server.URL == "" {
+			return fmt.Errorf("server %s with %s transport must have url", name, server.TransportType)
+		}
+		if server.Command != "" {
+			return fmt.Errorf("server %s with %s transport cannot have command", name, server.TransportType)
+		}
+	default:
+		return fmt.Errorf("server %s has invalid transportType: %s", name, server.TransportType)
+	}
+
+	// Validate token setup if required
+	if server.RequiresUserToken && server.TokenSetup == nil {
+		return fmt.Errorf("server %s requires user token but has no tokenSetup", name)
+	}
+
+	return nil
+}
