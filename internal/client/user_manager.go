@@ -8,6 +8,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // UserMCPManager manages per-user MCP server instances
@@ -19,10 +20,11 @@ type UserMCPManager struct {
 
 // UserInstance represents a user-specific MCP server instance
 type UserInstance struct {
-	client   *Client
-	lastUsed time.Time
-	user     string
-	server   string
+	client    *Client
+	sseServer *Server  // Complete SSE server (includes MCPServer + SSEServer)
+	lastUsed  time.Time
+	user      string
+	server    string
 }
 
 // NewUserMCPManager creates a new manager for user MCP instances
@@ -61,13 +63,16 @@ func (m *UserMCPManager) cleanupExpired() {
 			if instance.client != nil {
 				_ = instance.client.Close()
 			}
+			if instance.sseServer != nil {
+				_ = instance.sseServer.Close()
+			}
 			delete(m.instances, key)
 		}
 	}
 }
 
-// GetOrCreateInstance gets an existing instance or creates a new one for SSE servers
-func (m *UserMCPManager) GetOrCreateInstance(ctx context.Context, user, serverName string, config *config.MCPClientConfig, userToken string) (*Client, error) {
+// GetOrCreateSSEServer gets an existing SSE server instance or creates a new one
+func (m *UserMCPManager) GetOrCreateSSEServer(ctx context.Context, user, serverName string, config *config.MCPClientConfig, userToken string, info mcp.Implementation, setupBaseURL string) (*Server, error) {
 	key := fmt.Sprintf("%s:%s", user, serverName)
 
 	// Try to get existing instance
@@ -75,11 +80,11 @@ func (m *UserMCPManager) GetOrCreateInstance(ctx context.Context, user, serverNa
 	if instance, exists := m.instances[key]; exists {
 		instance.lastUsed = time.Now()
 		m.mu.RUnlock()
-		internal.LogInfoWithFields("mcp-manager", "Reusing existing instance", map[string]interface{}{
+		internal.LogInfoWithFields("mcp-manager", "Reusing existing SSE server", map[string]interface{}{
 			"user":   user,
 			"server": serverName,
 		})
-		return instance.client, nil
+		return instance.sseServer, nil
 	}
 	m.mu.RUnlock()
 
@@ -90,10 +95,10 @@ func (m *UserMCPManager) GetOrCreateInstance(ctx context.Context, user, serverNa
 	// Double-check after acquiring write lock
 	if instance, exists := m.instances[key]; exists {
 		instance.lastUsed = time.Now()
-		return instance.client, nil
+		return instance.sseServer, nil
 	}
 
-	internal.LogInfoWithFields("mcp-manager", "Creating new instance", map[string]interface{}{
+	internal.LogInfoWithFields("mcp-manager", "Creating new SSE server instance", map[string]interface{}{
 		"user":   user,
 		"server": serverName,
 	})
@@ -104,15 +109,26 @@ func (m *UserMCPManager) GetOrCreateInstance(ctx context.Context, user, serverNa
 		return nil, fmt.Errorf("failed to create MCP client: %w", err)
 	}
 
-	m.instances[key] = &UserInstance{
-		client:   client,
-		lastUsed: time.Now(),
-		user:     user,
-		server:   serverName,
+	// Create SSE server
+	sseServer := NewMCPServer(serverName, "dev", setupBaseURL, config)
+	
+	// Connect client to SSE server
+	if err := client.AddToMCPServer(ctx, info, sseServer.MCPServer); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to connect client to SSE server: %w", err)
 	}
 
-	return client, nil
+	m.instances[key] = &UserInstance{
+		client:    client,
+		sseServer: sseServer,
+		lastUsed:  time.Now(),
+		user:      user,
+		server:    serverName,
+	}
+
+	return sseServer, nil
 }
+
 
 // CreateStdioInstance creates a fresh instance for stdio servers (one-shot execution)
 func (m *UserMCPManager) CreateStdioInstance(ctx context.Context, user, serverName string, config *config.MCPClientConfig, userToken string) (*Client, error) {
