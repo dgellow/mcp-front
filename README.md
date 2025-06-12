@@ -1,6 +1,8 @@
 # mcp-front
 
-Production-ready OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
+> **This project is a work in progress and IS NOT production ready.**
+
+OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
 
 <div align="center">
 
