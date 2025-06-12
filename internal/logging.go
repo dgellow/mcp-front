@@ -107,6 +107,15 @@ func LogErrorWithFields(component, message string, fields map[string]interface{}
 	logger.Error(message, args...)
 }
 
+func LogWarnWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	logger.Warn(message, args...)
+}
+
 func LogTraceWithFields(component, message string, fields map[string]interface{}) {
 	args := make([]any, 0, len(fields)*2+2)
 	args = append(args, "component", component)
