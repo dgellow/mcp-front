@@ -3,6 +3,8 @@
 > **This project is a work in progress and should not be considered production ready.**
 > Though I'm fairly confident the overall architecture is sound, and I myself rely on the implementation, so it _should work :tm:_.
 > But it's definitely alpha software :)
+>
+> Also, don't rely too much on the docs, they drift fairly quickly, I do not always keep them updated when doing changes or adding/removing features. They are mostly here to anchor me and help me stay focus on my initial vision.
 
 OAuth 2.1 authentication proxy for multiple MCP (Model Context Protocol) servers. Enables secure Claude.ai integration with comprehensive testing.
 
