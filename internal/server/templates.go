@@ -188,13 +188,24 @@ var tokenPageTemplate = template.Must(template.New("tokens").Parse(`
         <div class="service">
             <div class="service-header">
                 <h2>{{.DisplayName}}</h2>
-                {{if .HasToken}}
-                <span class="status configured">✓ Configured</span>
+                {{if .RequiresToken}}
+                    {{if .HasToken}}
+                    <span class="status configured">✓ Configured</span>
+                    {{else}}
+                    <span class="status not-configured">Not configured</span>
+                    {{end}}
                 {{else}}
-                <span class="status not-configured">Not configured</span>
+                    {{if eq .AuthType "oauth"}}
+                    <span class="status configured">OAuth authenticated</span>
+                    {{else if eq .AuthType "bearer"}}
+                    <span class="status configured">Server credentials</span>
+                    {{else}}
+                    <span class="status configured">No auth required</span>
+                    {{end}}
                 {{end}}
             </div>
             
+            {{if .RequiresToken}}
             <div class="instructions">
                 <p>{{.Instructions}}</p>
                 {{if .HelpURL}}
@@ -207,7 +218,7 @@ var tokenPageTemplate = template.Must(template.New("tokens").Parse(`
                 <input type="password" 
                        name="token" 
                        placeholder="{{if .HasToken}}Enter new token to update{{else}}Enter your {{.DisplayName}} token{{end}}"
-                       {{if .TokenFormat}}pattern="{{.TokenFormat}}"{{end}}
+                       {{if .TokenFormat}}pattern="{{.TokenFormat}}" title="Token must match pattern: {{.TokenFormat}}"{{end}}
                        required>
                 <button type="submit" class="primary">
                     {{if .HasToken}}Update Token{{else}}Save Token{{end}}
@@ -219,6 +230,17 @@ var tokenPageTemplate = template.Must(template.New("tokens").Parse(`
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <button type="submit" class="danger">Remove Token</button>
             </form>
+            {{end}}
+            {{else}}
+            <div class="instructions">
+                {{if eq .AuthType "oauth"}}
+                <p>This service is authenticated via OAuth. Your access is managed through your Google account.</p>
+                {{else if eq .AuthType "bearer"}}
+                <p>This service uses server-side API credentials. No personal token required.</p>
+                {{else}}
+                <p>This service doesn't require authentication.</p>
+                {{end}}
+            </div>
             {{end}}
         </div>
         {{end}}
@@ -238,10 +260,12 @@ type TokenPageData struct {
 
 // ServiceTokenData represents a single service in the token page
 type ServiceTokenData struct {
-	Name         string
-	DisplayName  string
-	Instructions string
-	HelpURL      string
-	TokenFormat  string
-	HasToken     bool
+	Name          string
+	DisplayName   string
+	Instructions  string
+	HelpURL       string
+	TokenFormat   string
+	HasToken      bool
+	RequiresToken bool
+	AuthType      string // "oauth", "bearer", or "none"
 }

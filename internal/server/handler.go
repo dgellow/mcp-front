@@ -5,39 +5,32 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path"
-	"strings"
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
-	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/mark3labs/mcp-go/mcp"
 )
-
-// Middleware types and functions are defined in server.go
 
 // Server represents the MCP proxy server
 type Server struct {
 	mux          *http.ServeMux
 	config       *config.Config
 	oauthServer  *oauth.Server
-	userManager  *client.UserMCPManager
 }
 
 // NewServer creates a new MCP proxy server handler
 func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
-	baseURL, err := url.Parse(cfg.Proxy.BaseURL.String())
+	baseURL, err := url.Parse(cfg.Proxy.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base URL: %w", err)
 	}
 
 	mux := http.NewServeMux()
 	s := &Server{
-		mux:         mux,
-		config:      cfg,
-		userManager: client.NewUserMCPManager(15 * time.Minute),
+		mux:    mux,
+		config: cfg,
 	}
 
 	info := mcp.Implementation{
@@ -49,27 +42,23 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
 		internal.LogDebug("initializing OAuth 2.1 server")
 
-		// Validate required OAuth fields
-		if oauthAuth.Issuer == nil || oauthAuth.TokenTTL == "" {
-			return nil, fmt.Errorf("OAuth configuration missing required fields: issuer and token_ttl are required")
-		}
-
+		// Parse TTL duration
 		ttl, err := time.ParseDuration(oauthAuth.TokenTTL)
 		if err != nil {
 			return nil, fmt.Errorf("parsing OAuth token TTL: %w", err)
 		}
 
 		oauthConfig := oauth.Config{
-			Issuer:              oauthAuth.Issuer.String(),
+			Issuer:              oauthAuth.Issuer,
 			TokenTTL:            ttl,
 			AllowedDomains:      oauthAuth.AllowedDomains,
-			GoogleClientID:      oauthAuth.GoogleClientID.String(),
-			GoogleClientSecret:  oauthAuth.GoogleClientSecret.String(),
-			GoogleRedirectURI:   oauthAuth.GoogleRedirectURI.String(),
-			JWTSecret:           oauthAuth.JWTSecret.String(),
-			EncryptionKey:       oauthAuth.EncryptionKey.String(),
+			GoogleClientID:      oauthAuth.GoogleClientID,
+			GoogleClientSecret:  oauthAuth.GoogleClientSecret,
+			GoogleRedirectURI:   oauthAuth.GoogleRedirectURI,
+			JWTSecret:           oauthAuth.JWTSecret,
+			EncryptionKey:       oauthAuth.EncryptionKey,
 			StorageType:         oauthAuth.Storage,
-			GCPProjectID:        oauthAuth.GCPProject.String(),
+			GCPProjectID:        oauthAuth.GCPProject,
 			FirestoreDatabase:   oauthAuth.FirestoreDatabase,
 			FirestoreCollection: oauthAuth.FirestoreCollection,
 		}
@@ -99,72 +88,70 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			loggerMiddleware("tokens"),
 			s.oauthServer.ValidateTokenMiddleware(),
 		}
-		
-		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
-		mux.HandleFunc("/my/tokens/", func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, "/delete") {
-				chainMiddleware(http.HandlerFunc(tokenHandlers.DeleteTokenHandler), tokenMiddlewares...).ServeHTTP(w, r)
-			} else {
-				chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...).ServeHTTP(w, r)
-			}
-		})
 
-		internal.LogInfoWithFields("oauth", "OAuth 2.1 server initialized", map[string]interface{}{
-			"issuer": oauthAuth.Issuer.String(),
-		})
+		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
+		mux.Handle("/my/tokens/", http.StripPrefix("/my/tokens/", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...)))
 	}
 
-	// Add health check endpoint
-	mux.Handle("/health", chainMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","service":"mcp-front"}`))
-	}), loggerMiddleware("health")))
+	// Setup MCP server endpoints
+	for serverName, serverConfig := range cfg.MCPServers {
+		// Build path like /notion/sse
+		ssePathPrefix := "/" + serverName + "/sse"
+		stdioPath := "/" + serverName + "/stdio"
 
-	// Register MCP server endpoints
-	for name, clientConfig := range cfg.MCPServers {
-		// Create handler for this MCP server
+		internal.LogInfoWithFields("server", "Registering MCP server", map[string]interface{}{
+			"name":          serverName,
+			"sse_path":      ssePathPrefix,
+			"stdio_path":    stdioPath,
+			"requires_user_token": serverConfig.RequiresUserToken,
+		})
+
+		// Create handler
+		var tokenStore oauth.UserTokenStore
+		if s.oauthServer != nil {
+			tokenStore = s.oauthServer.GetUserTokenStore()
+		}
+		
 		handler := NewMCPHandler(
-			name,
-			clientConfig,
-			s.userManager,
-			s.oauthServer,
-			cfg.Proxy.BaseURL.String(),
+			serverName,
+			serverConfig,
+			tokenStore,
+			baseURL.String(),
 			info,
 		)
 
-		// Set up middleware chain
-		middlewares := make([]MiddlewareFunc, 0)
+		// Setup middlewares
+		var middlewares []MiddlewareFunc
 		middlewares = append(middlewares, corsMiddleware())
-		middlewares = append(middlewares, recoverMiddleware(name))
-		middlewares = append(middlewares, loggerMiddleware(name))
+		middlewares = append(middlewares, loggerMiddleware("mcp"))
+		middlewares = append(middlewares, recoverMiddleware("mcp"))
 
-		// Add authentication middleware
+		// Add auth middleware based on configuration
 		if s.oauthServer != nil {
+			// OAuth authentication
 			middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
-		} else if clientConfig.Options != nil && len(clientConfig.Options.AuthTokens) > 0 {
-			middlewares = append(middlewares, newAuthMiddleware(clientConfig.Options.AuthTokens))
+		} else if serverConfig.Options != nil && len(serverConfig.Options.AuthTokens) > 0 {
+			// Bearer token authentication
+			middlewares = append(middlewares, newAuthMiddleware(serverConfig.Options.AuthTokens))
 		}
 
-		// Build route path
-		mcpRoute := path.Join(baseURL.Path, name)
-		if !strings.HasPrefix(mcpRoute, "/") {
-			mcpRoute = "/" + mcpRoute
-		}
-		if !strings.HasSuffix(mcpRoute, "/") {
-			mcpRoute += "/"
-		}
-
-		internal.LogTraceWithFields(name, "registering route", map[string]interface{}{
-			"route":               mcpRoute,
-			"middleware_count":    len(middlewares),
-			"requires_user_token": clientConfig.RequiresUserToken,
-		})
+		// Register handler
+		mux.Handle(ssePathPrefix, chainMiddleware(handler, middlewares...))
 		
-		// Register the handler with middleware chain
-		mux.Handle(mcpRoute, chainMiddleware(handler, middlewares...))
+		// For backward compatibility, also register without /sse suffix for SSE servers
+		if serverConfig.URL != "" {
+			ssePath := "/" + serverName
+			mux.Handle(ssePath, chainMiddleware(handler, middlewares...))
+		}
 	}
 
+	// Health check endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	internal.LogInfoWithFields("server", "MCP proxy server initialized", nil)
 	return s, nil
 }
 
@@ -172,3 +159,4 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
+

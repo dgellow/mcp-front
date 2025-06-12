@@ -99,7 +99,7 @@ func main() {
 		internal.LogError("Failed to load config: %v", err)
 		os.Exit(1)
 	}
-	err = server.Start(cfg)
+	err = server.Run(cfg)
 	if err != nil {
 		internal.LogError("Failed to start server: %v", err)
 		os.Exit(1)

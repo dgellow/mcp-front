@@ -70,29 +70,39 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 	var services []ServiceTokenData
 
 	for name, config := range h.mcpServers {
-		if !config.RequiresUserToken {
-			continue
-		}
-
 		service := ServiceTokenData{
 			Name:        name,
 			DisplayName: name,
-			Instructions: fmt.Sprintf("Please create a %s API token", name),
 		}
 
-		if config.TokenSetup != nil {
-			if config.TokenSetup.DisplayName != "" {
-				service.DisplayName = config.TokenSetup.DisplayName
-			}
-			if config.TokenSetup.Instructions != "" {
-				service.Instructions = config.TokenSetup.Instructions
-			}
-			service.HelpURL = config.TokenSetup.HelpURL
-			service.TokenFormat = config.TokenSetup.TokenFormat
-		}
+		// Determine authentication type
+		if config.RequiresUserToken {
+			service.RequiresToken = true
+			service.Instructions = fmt.Sprintf("Please create a %s API token", name)
 
-		_, err := tokenStore.GetUserToken(r.Context(), userEmail, name)
-		service.HasToken = err == nil
+			if config.TokenSetup != nil {
+				if config.TokenSetup.DisplayName != "" {
+					service.DisplayName = config.TokenSetup.DisplayName
+				}
+				if config.TokenSetup.Instructions != "" {
+					service.Instructions = config.TokenSetup.Instructions
+				}
+				service.HelpURL = config.TokenSetup.HelpURL
+				service.TokenFormat = config.TokenSetup.TokenFormat
+			}
+
+			_, err := tokenStore.GetUserToken(r.Context(), userEmail, name)
+			service.HasToken = err == nil
+		} else {
+			// Determine if it's OAuth authenticated or uses bearer tokens
+			if h.oauthServer != nil {
+				service.AuthType = "oauth"
+			} else if config.Options != nil && len(config.Options.AuthTokens) > 0 {
+				service.AuthType = "bearer"
+			} else {
+				service.AuthType = "none"
+			}
+		}
 
 		services = append(services, service)
 	}
@@ -168,10 +178,28 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 
 	if serviceConfig.TokenSetup != nil && serviceConfig.TokenSetup.CompiledRegex != nil {
 		if !serviceConfig.TokenSetup.CompiledRegex.MatchString(token) {
-			helpMsg := "Token format is invalid"
-			if serviceConfig.TokenSetup.DisplayName != "" && serviceConfig.TokenSetup.HelpURL != "" {
-				helpMsg = fmt.Sprintf("Invalid %s token format. Please check the documentation at %s", 
-					serviceConfig.TokenSetup.DisplayName, serviceConfig.TokenSetup.HelpURL)
+			var helpMsg string
+			displayName := serviceName
+			if serviceConfig.TokenSetup.DisplayName != "" {
+				displayName = serviceConfig.TokenSetup.DisplayName
+			}
+
+			// Provide specific error messages based on common token patterns
+			switch {
+			case serviceConfig.TokenSetup.TokenFormat == "^[A-Za-z0-9_-]+$":
+				helpMsg = fmt.Sprintf("%s token must contain only letters, numbers, underscores, and hyphens", displayName)
+			case strings.Contains(serviceConfig.TokenSetup.TokenFormat, "^[A-Fa-f0-9]{64}$"):
+				helpMsg = fmt.Sprintf("%s token must be a 64-character hexadecimal string", displayName)
+			case strings.Contains(serviceConfig.TokenSetup.TokenFormat, "Bearer "):
+				helpMsg = fmt.Sprintf("%s token should not include 'Bearer' prefix - just the token value", displayName)
+			default:
+				if serviceConfig.TokenSetup.HelpURL != "" {
+					helpMsg = fmt.Sprintf("Invalid %s token format. Please check the required format at %s", 
+						displayName, serviceConfig.TokenSetup.HelpURL)
+				} else {
+					helpMsg = fmt.Sprintf("Invalid %s token format. Expected pattern: %s", 
+						displayName, serviceConfig.TokenSetup.TokenFormat)
+				}
 			}
 			redirectWithMessage(w, r, helpMsg, "error")
 			return

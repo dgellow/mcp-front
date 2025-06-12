@@ -3,29 +3,12 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"time"
 )
 
-// Legacy types that are still used in the new config
-
-type StdioMCPClientConfig struct {
-	Command string            `json:"command"`
-	Env     map[string]string `json:"env"`
-	Args    []string          `json:"args"`
-}
-
-type SSEMCPClientConfig struct {
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
-}
-
-type StreamableMCPClientConfig struct {
-	URL     string            `json:"url"`
-	Headers map[string]string `json:"headers"`
-	Timeout time.Duration     `json:"timeout"`
-}
-
+// MCPClientType represents the transport type for MCP clients
 type MCPClientType string
 
 const (
@@ -34,6 +17,15 @@ const (
 	MCPClientTypeStreamable MCPClientType = "streamable-http"
 )
 
+// AuthKind represents the type of authentication
+type AuthKind string
+
+const (
+	AuthKindOAuth       AuthKind = "oauth"
+	AuthKindBearerToken AuthKind = "bearerToken"
+)
+
+// ToolFilterMode for tool filtering
 type ToolFilterMode string
 
 const (
@@ -41,24 +33,66 @@ const (
 	ToolFilterModeBlock ToolFilterMode = "block"
 )
 
+// ToolFilterConfig configures tool filtering
 type ToolFilterConfig struct {
 	Mode ToolFilterMode `json:"mode,omitempty"`
 	List []string       `json:"list,omitempty"`
 }
 
+// Options for MCP client configuration
 type Options struct {
 	PanicIfInvalid *bool             `json:"panicIfInvalid,omitempty"`
 	AuthTokens     []string          `json:"authTokens,omitempty"`
 	ToolFilter     *ToolFilterConfig `json:"toolFilter,omitempty"`
 }
 
+// TokenSetupConfig provides information for users to set up their tokens
+type TokenSetupConfig struct {
+	DisplayName   string         `json:"displayName"`
+	Instructions  string         `json:"instructions"`
+	HelpURL       string         `json:"helpUrl,omitempty"`
+	TokenFormat   string         `json:"tokenFormat,omitempty"`
+	CompiledRegex *regexp.Regexp `json:"-"`
+}
+
+// BearerTokenAuthConfig represents bearer token authentication
+type BearerTokenAuthConfig struct {
+	Kind   AuthKind            `json:"kind"`
+	Tokens map[string][]string `json:"tokens"` // server name -> tokens
+}
+
+// MCPClientConfig represents the configuration for an MCP client after parsing.
+// 
+// Environment variable references using {"$env": "VAR_NAME"} syntax are resolved
+// at config load time. This explicit JSON syntax was chosen over bash-like $VAR
+// substitution for important security reasons:
+//
+// 1. Shell Safety: Config files are often manipulated in shell contexts (startup
+//    scripts, CI/CD pipelines). Using $VAR could lead to accidental expansion by
+//    the shell before the config is parsed.
+//
+// 2. Unambiguous Intent: {"$env": "X"} clearly indicates this is a reference to
+//    be resolved by our application, not a literal string containing $.
+//
+// 3. Nested Value Safety: If an environment variable value contains $, it won't
+//    be accidentally re-expanded.
+//
+// 4. Type Safety: The JSON structure allows us to validate references at parse
+//    time rather than discovering invalid patterns at runtime.
+//
+// User token references using {"$userToken": "...{{token}}..."} follow the same
+// pattern but are resolved at request time with the authenticated user's token.
 type MCPClientConfig struct {
 	TransportType MCPClientType `json:"transportType,omitempty"`
 
 	// Stdio
-	Command string           `json:"command,omitempty"`
-	Args    ConfigValueSlice `json:"args,omitempty"`
-	Env     ConfigValueMap   `json:"env,omitempty"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+
+	// Track which values need user token substitution
+	EnvNeedsToken map[string]bool `json:"-"`
+	ArgsNeedToken []bool          `json:"-"`
 
 	// SSE or Streamable HTTP
 	URL     string            `json:"url,omitempty"`
@@ -72,115 +106,106 @@ type MCPClientConfig struct {
 	TokenSetup        *TokenSetupConfig `json:"tokenSetup,omitempty"`
 }
 
-// TokenSetupConfig provides information for users to set up their tokens
-type TokenSetupConfig struct {
-	DisplayName   string         `json:"displayName"`
-	Instructions  string         `json:"instructions"`
-	HelpURL       string         `json:"helpUrl,omitempty"`
-	TokenFormat   string         `json:"tokenFormat,omitempty"`
-	CompiledRegex *regexp.Regexp `json:"-"`
-}
-
-
-// AuthKind represents the type of authentication
-type AuthKind string
-
-const (
-	AuthKindOAuth       AuthKind = "oauth"
-	AuthKindBearerToken AuthKind = "bearerToken"
-)
-
-// OAuthAuthConfig represents OAuth 2.1 configuration
+// OAuthAuthConfig represents OAuth 2.1 configuration with resolved values
 type OAuthAuthConfig struct {
-	Kind                AuthKind      `json:"kind"`
-	Issuer              *ConfigValue  `json:"issuer"`
-	GCPProject          *ConfigValue  `json:"gcpProject"`
-	AllowedDomains      []string      `json:"allowedDomains"`
-	TokenTTL            string        `json:"tokenTtl"`
-	Storage             string        `json:"storage"`                       // "memory" or "firestore"
-	FirestoreDatabase   string        `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name (default: "(default)")
-	FirestoreCollection string        `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name (default: "mcp_front_oauth_clients")
-	GoogleClientID      *ConfigValue  `json:"googleClientId"`
-	GoogleClientSecret  *ConfigValue  `json:"googleClientSecret"`            // EnvRef only!
-	GoogleRedirectURI   *ConfigValue  `json:"googleRedirectUri"`
-	JWTSecret           *ConfigValue  `json:"jwtSecret"`                     // EnvRef only!
-	EncryptionKey       *ConfigValue  `json:"encryptionKey"`                 // EnvRef only!
+	Kind                AuthKind `json:"kind"`
+	Issuer              string   `json:"issuer"`
+	GCPProject          string   `json:"gcpProject"`
+	AllowedDomains      []string `json:"allowedDomains"`
+	TokenTTL            string   `json:"tokenTtl"`
+	Storage             string   `json:"storage"`                       // "memory" or "firestore"
+	FirestoreDatabase   string   `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name
+	FirestoreCollection string   `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name
+	GoogleClientID      string   `json:"googleClientId"`
+	GoogleClientSecret  string   `json:"googleClientSecret"`
+	GoogleRedirectURI   string   `json:"googleRedirectUri"`
+	JWTSecret           string   `json:"jwtSecret"`
+	EncryptionKey       string   `json:"encryptionKey"`
 }
 
-// BearerTokenAuthConfig represents bearer token authentication
-type BearerTokenAuthConfig struct {
-	Kind   AuthKind            `json:"kind"`
-	Tokens map[string][]string `json:"tokens"` // server name -> tokens
-}
-
-// ProxyConfig represents the proxy configuration
+// ProxyConfig represents the proxy configuration with resolved values
 type ProxyConfig struct {
-	BaseURL *ConfigValue `json:"baseURL"`
-	Addr    *ConfigValue `json:"addr"`
-	Name    string       `json:"name"`
-	Auth    interface{}  `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig, custom unmarshal
+	BaseURL string      `json:"baseURL"`
+	Addr    string      `json:"addr"`
+	Name    string      `json:"name"`
+	Auth    interface{} `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for ProxyConfig
-func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
-	// Use an alias to avoid recursion
-	type Alias ProxyConfig
-	aux := &struct {
-		Auth json.RawMessage `json:"auth"`
-		*Alias
-	}{
-		Alias: (*Alias)(p),
-	}
-	
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	
-	// Parse auth based on kind field
-	if aux.Auth != nil {
-		var authKind struct {
-			Kind string `json:"kind"`
-		}
-		if err := json.Unmarshal(aux.Auth, &authKind); err != nil {
-			return fmt.Errorf("parsing auth kind: %w", err)
-		}
-		
-		switch AuthKind(authKind.Kind) {
-		case AuthKindOAuth:
-			var oauth OAuthAuthConfig
-			if err := json.Unmarshal(aux.Auth, &oauth); err != nil {
-				return fmt.Errorf("parsing OAuth config: %w", err)
-			}
-			p.Auth = &oauth
-		case AuthKindBearerToken:
-			var bearer BearerTokenAuthConfig
-			if err := json.Unmarshal(aux.Auth, &bearer); err != nil {
-				return fmt.Errorf("parsing bearer token config: %w", err)
-			}
-			p.Auth = &bearer
-		default:
-			return fmt.Errorf("unknown auth kind: %s", authKind.Kind)
-		}
-	}
-	
-	return nil
-}
-
-// Config represents the new config structure
+// Config represents the config structure with resolved values
 type Config struct {
 	Version    string                      `json:"version"`
 	Proxy      ProxyConfig                 `json:"proxy"`
 	MCPServers map[string]*MCPClientConfig `json:"mcpServers"`
 }
 
-// Helper functions for optional bools
-func BoolOrDefault(ptr *bool, defaultValue bool) bool {
-	if ptr == nil {
-		return defaultValue
-	}
-	return *ptr
+// RawConfigValue represents a value that could be a string, env ref, or user token ref
+// This is only used during parsing, not in the final config
+type RawConfigValue struct {
+	value         string
+	needsUserToken bool
 }
 
-func BoolPtr(b bool) *bool {
-	return &b
+// parseConfigValue parses a JSON value that could be a string or reference object
+func parseConfigValue(raw json.RawMessage) (*RawConfigValue, error) {
+	// Try plain string first
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		return &RawConfigValue{value: str, needsUserToken: false}, nil
+	}
+
+	// Try reference object
+	var ref map[string]string
+	if err := json.Unmarshal(raw, &ref); err != nil {
+		return nil, fmt.Errorf("config value must be string or reference object")
+	}
+
+	// Check for $env reference
+	if envVar, ok := ref["$env"]; ok {
+		value := os.Getenv(envVar)
+		if value == "" {
+			return nil, fmt.Errorf("environment variable %s not set", envVar)
+		}
+		return &RawConfigValue{value: value, needsUserToken: false}, nil
+	}
+
+	// Check for $userToken reference
+	if template, ok := ref["$userToken"]; ok {
+		return &RawConfigValue{value: template, needsUserToken: true}, nil
+	}
+
+	return nil, fmt.Errorf("unknown reference type in config value")
+}
+
+// parseConfigValueSlice parses a slice that may contain references
+func parseConfigValueSlice(raw []json.RawMessage) ([]string, []bool, error) {
+	values := make([]string, len(raw))
+	needsToken := make([]bool, len(raw))
+
+	for i, item := range raw {
+		parsed, err := parseConfigValue(item)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parsing item %d: %w", i, err)
+		}
+		values[i] = parsed.value
+		needsToken[i] = parsed.needsUserToken
+	}
+
+	return values, needsToken, nil
+}
+
+// parseConfigValueMap parses a map that may contain references
+func parseConfigValueMap(raw map[string]json.RawMessage) (map[string]string, map[string]bool, error) {
+	values := make(map[string]string)
+	needsToken := make(map[string]bool)
+
+	for key, item := range raw {
+		parsed, err := parseConfigValue(item)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parsing key %s: %w", key, err)
+		}
+		values[key] = parsed.value
+		needsToken[key] = parsed.needsUserToken
+	}
+
+	return values, needsToken, nil
 }
