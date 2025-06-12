@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/dgellow/mcp-front/internal"
@@ -10,89 +12,38 @@ import (
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-// UserTokenGetter provides access to user tokens
-type UserTokenGetter interface {
-	GetUserToken(ctx context.Context, userEmail, serviceName string) (string, error)
-}
-
-// MCPClient represents an MCP client that can be added to servers and closed
-type MCPClient interface {
-	AddToMCPServer(ctx context.Context, info mcp.Implementation, mcpServer *server.MCPServer) error
-	Close() error
-}
-
-// UserMCPManager provides user-scoped MCP instances
-type UserMCPManager interface {
-	CreateStdioInstance(ctx context.Context, user, serverName string, config *config.MCPClientConfig, userToken string) (*client.Client, error)
-	GetOrCreateSSEServer(ctx context.Context, user, serverName string, config *config.MCPClientConfig, userToken string, info mcp.Implementation, setupBaseURL string) (*client.Server, error)
-}
-
-// MCPHandler handles MCP requests with per-user instance management
+// MCPHandler handles MCP requests with direct token resolution
 type MCPHandler struct {
-	serverName        string
-	serverConfig      *config.MCPClientConfig
-	userManager       UserMCPManager
-	userTokenStore    UserTokenGetter
-	setupBaseURL      string
-	info              mcp.Implementation
-	newMCPServerFunc  func(name, version, baseURL string, config *config.MCPClientConfig) *client.Server
+	serverName     string
+	serverConfig   *config.MCPClientConfig
+	tokenStore     oauth.UserTokenStore
+	setupBaseURL   string
+	info           mcp.Implementation
 }
 
-// newMCPHandler creates a new MCP handler (private, for testing)
-func newMCPHandler(
-	serverName string,
-	serverConfig *config.MCPClientConfig,
-	userManager UserMCPManager,
-	userTokenStore UserTokenGetter,
-	setupBaseURL string,
-	info mcp.Implementation,
-	newMCPServerFunc func(name, version, baseURL string, config *config.MCPClientConfig) *client.Server,
-) *MCPHandler {
-	return &MCPHandler{
-		serverName:       serverName,
-		serverConfig:     serverConfig,
-		userManager:      userManager,
-		userTokenStore:   userTokenStore,
-		setupBaseURL:     setupBaseURL,
-		info:             info,
-		newMCPServerFunc: newMCPServerFunc,
-	}
-}
-
-// NewMCPHandler creates a new MCP handler with default implementations (public)
+// NewMCPHandler creates a new MCP handler
 func NewMCPHandler(
 	serverName string,
 	serverConfig *config.MCPClientConfig,
-	userManager *client.UserMCPManager,
-	oauthServer *oauth.Server,
+	tokenStore oauth.UserTokenStore,
 	setupBaseURL string,
 	info mcp.Implementation,
 ) *MCPHandler {
-	var userTokenStore UserTokenGetter
-	if oauthServer != nil {
-		userTokenStore = oauthServer.GetUserTokenStore()
+	return &MCPHandler{
+		serverName:   serverName,
+		serverConfig: serverConfig,
+		tokenStore:   tokenStore,
+		setupBaseURL: setupBaseURL,
+		info:         info,
 	}
-	
-	return newMCPHandler(
-		serverName,
-		serverConfig,
-		userManager,
-		userTokenStore,
-		setupBaseURL,
-		info,
-		client.NewMCPServer, // default implementation
-	)
 }
 
-// ServeHTTP handles incoming MCP requests
 func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user email from context (set by OAuth middleware)
-	// We use per-user instances for all services, even those that don't require user tokens
+	// Get user from context (set by OAuth middleware)
 	userEmail, ok := oauth.GetUserFromContext(ctx)
 	if !ok {
 		internal.LogErrorWithFields("mcp", "No user email in context", map[string]interface{}{
@@ -102,18 +53,14 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine if this server requires user tokens
+	// Get user token if required
+	userToken := ""
 	if h.serverConfig.RequiresUserToken {
-
-		// Get user's token for this service
-		userToken, err := h.userTokenStore.GetUserToken(ctx, userEmail, h.serverName)
+		token, err := h.tokenStore.GetUserToken(ctx, userEmail, h.serverName)
 		if err != nil {
 			if errors.Is(err, oauth.ErrUserTokenNotFound) {
-				internal.LogInfoWithFields("mcp", "User has not configured token", map[string]interface{}{
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				sendTokenRequiredError(w, h.serverName, h.serverConfig, h.setupBaseURL)
+				// Send token setup instructions
+				h.sendTokenSetupInstructions(w, userEmail)
 				return
 			}
 			internal.LogErrorWithFields("mcp", "Failed to get user token", map[string]interface{}{
@@ -121,11 +68,12 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"user":    userEmail,
 				"service": h.serverName,
 			})
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
 			return
 		}
+		userToken = token
 
-		// Validate token format if specified
+		// Validate token format if configured
 		if h.serverConfig.TokenSetup != nil && h.serverConfig.TokenSetup.CompiledRegex != nil {
 			if !h.serverConfig.TokenSetup.CompiledRegex.MatchString(userToken) {
 				internal.LogWarnWithFields("mcp", "User token doesn't match expected format", map[string]interface{}{
@@ -134,108 +82,153 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 		}
+	}
 
-		if isStdioServer(h.serverConfig) {
-			// For stdio servers, we still need per-request instances but also need SSE bridging
-			// Create a new client instance for each request
-			mcpClient, err := h.userManager.CreateStdioInstance(ctx, userEmail, h.serverName, h.serverConfig, userToken)
-			if err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to create stdio instance", map[string]interface{}{
-					"error":   err.Error(),
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
-				return
-			}
-			defer mcpClient.Close()
-
-			// Create temporary SSE server for this request
-			server := h.newMCPServerFunc(h.serverName, "dev", h.setupBaseURL, h.serverConfig)
-			
-			// Connect client to server
-			if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to add client to server", map[string]interface{}{
-					"error":   err.Error(),
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				http.Error(w, "Failed to initialize service", http.StatusInternalServerError)
-				return
-			}
-
-			// Handle the SSE request
-			server.SSEServer.ServeHTTP(w, r)
-		} else {
-			// For SSE servers, get or create a cached SSE server instance
-			server, err := h.userManager.GetOrCreateSSEServer(ctx, userEmail, h.serverName, h.serverConfig, userToken, h.info, h.setupBaseURL)
-			if err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to get/create SSE server", map[string]interface{}{
-					"error":   err.Error(),
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
-				return
-			}
-
-			// Handle the SSE request using the cached server
-			server.SSEServer.ServeHTTP(w, r)
-		}
+	// Handle based on server type
+	if isStdioServer(h.serverConfig) {
+		h.handleStdioRequest(ctx, w, r, userEmail, userToken)
 	} else {
-		// For services that don't require user tokens, still use per-user instances for consistency
-		// but with empty user token
-		if isStdioServer(h.serverConfig) {
-			// For stdio servers, create a new client instance for each request
-			mcpClient, err := h.userManager.CreateStdioInstance(ctx, userEmail, h.serverName, h.serverConfig, "")
-			if err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to create stdio instance", map[string]interface{}{
-					"error":   err.Error(),
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
-				return
-			}
-			defer mcpClient.Close()
-
-			// Create temporary SSE server for this request
-			server := h.newMCPServerFunc(h.serverName, "dev", h.setupBaseURL, h.serverConfig)
-			
-			// Connect client to server
-			if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to add client to server", map[string]interface{}{
-					"error":   err.Error(),
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				http.Error(w, "Failed to initialize service", http.StatusInternalServerError)
-				return
-			}
-
-			// Handle the SSE request
-			server.SSEServer.ServeHTTP(w, r)
-		} else {
-			// For SSE servers, get or create a cached SSE server instance (no user token)
-			server, err := h.userManager.GetOrCreateSSEServer(ctx, userEmail, h.serverName, h.serverConfig, "", h.info, h.setupBaseURL)
-			if err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to get/create SSE server", map[string]interface{}{
-					"error":   err.Error(),
-					"user":    userEmail,
-					"service": h.serverName,
-				})
-				http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
-				return
-			}
-
-			// Handle the SSE request using the cached server
-			server.SSEServer.ServeHTTP(w, r)
-		}
+		h.handleSSERequest(ctx, w, r, userEmail, userToken)
 	}
 }
 
+func (h *MCPHandler) handleStdioRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail, userToken string) {
+	// Apply user token if needed
+	config := h.serverConfig
+	if userToken != "" && config.RequiresUserToken {
+		config = config.ApplyUserToken(userToken)
+	}
 
-// isStdioServer determines if this is a stdio-based server
-func isStdioServer(cfg *config.MCPClientConfig) bool {
-	return cfg.TransportType == config.MCPClientTypeStdio || cfg.Command != ""
+	// Create MCP client
+	mcpClient, err := client.NewMCPClient(h.serverName, config)
+	if err != nil {
+		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
+			"error":   err.Error(),
+			"user":    userEmail,
+			"service": h.serverName,
+		})
+		http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
+		return
+	}
+	defer mcpClient.Close()
+
+	// Create SSE server for this request
+	server := client.NewMCPServer(h.serverName, "dev", h.setupBaseURL, config)
+	
+	// Connect client to server
+	if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
+		internal.LogErrorWithFields("mcp", "Failed to connect client to server", map[string]interface{}{
+			"error":   err.Error(),
+			"user":    userEmail,
+			"service": h.serverName,
+		})
+		http.Error(w, "Failed to initialize service", http.StatusInternalServerError)
+		return
+	}
+
+	// Handle the SSE request
+	server.SSEServer.ServeHTTP(w, r)
 }
+
+func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail, userToken string) {
+	// Apply user token if needed
+	config := h.serverConfig
+	if userToken != "" && config.RequiresUserToken {
+		config = config.ApplyUserToken(userToken)
+	}
+
+	// Create MCP client
+	mcpClient, err := client.NewMCPClient(h.serverName, config)
+	if err != nil {
+		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
+			"error":   err.Error(),
+			"user":    userEmail,
+			"service": h.serverName,
+		})
+		http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
+		return
+	}
+	// Note: For SSE servers, we don't defer Close() because the connection is long-lived
+
+	// Create SSE server
+	server := client.NewMCPServer(h.serverName, "dev", h.setupBaseURL, config)
+	
+	// Connect client to server
+	if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
+		_ = mcpClient.Close()
+		internal.LogErrorWithFields("mcp", "Failed to connect client to server", map[string]interface{}{
+			"error":   err.Error(),
+			"user":    userEmail,
+			"service": h.serverName,
+		})
+		http.Error(w, "Failed to initialize service", http.StatusInternalServerError)
+		return
+	}
+
+	// Handle the SSE request
+	server.SSEServer.ServeHTTP(w, r)
+}
+
+func (h *MCPHandler) sendTokenSetupInstructions(w http.ResponseWriter, userEmail string) {
+	internal.LogInfoWithFields("mcp", "Sending token setup instructions", map[string]interface{}{
+		"user":    userEmail,
+		"service": h.serverName,
+	})
+
+	// Send SSE error event that Claude can understand
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK) // SSE requires 200 OK
+	
+	// Create error message with instructions
+	tokenSetupURL := fmt.Sprintf("%s/my/tokens", h.setupBaseURL)
+	
+	var errorMessage string
+	if h.serverConfig.TokenSetup != nil {
+		errorMessage = fmt.Sprintf(
+			"Token Required: %s requires a user token to access the API. "+
+			"Please visit %s to set up your %s token. %s",
+			h.serverConfig.TokenSetup.DisplayName,
+			tokenSetupURL,
+			h.serverConfig.TokenSetup.DisplayName,
+			h.serverConfig.TokenSetup.Instructions,
+		)
+	} else {
+		errorMessage = fmt.Sprintf(
+			"Token Required: This service requires a user token. "+
+			"Please visit %s to configure your token.",
+			tokenSetupURL,
+		)
+	}
+
+	// Send SSE error event
+	errorEvent := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"error": map[string]interface{}{
+			"code":    "token_required",
+			"message": errorMessage,
+			"data": map[string]interface{}{
+				"service":       h.serverName,
+				"tokenSetupUrl": tokenSetupURL,
+				"instructions": map[string]interface{}{
+					"ai": "CRITICAL: You MUST pass these error details EXACTLY as provided to the human. " +
+						  "You are FORBIDDEN from modifying URLs or instructions. " +
+						  "Tell the human they need to visit the tokenSetupUrl to configure their token.",
+					"human": errorMessage,
+				},
+			},
+		},
+	}
+	
+	// Marshal and send as SSE event
+	data, _ := json.Marshal(errorEvent)
+	fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
+	w.(http.Flusher).Flush()
+}
+
+// isStdioServer checks if this is a stdio-based server
+func isStdioServer(config *config.MCPClientConfig) bool {
+	return config.Command != ""
+}
+

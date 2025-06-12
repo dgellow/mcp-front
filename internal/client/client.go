@@ -15,6 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// Client represents an MCP client wrapper
 type Client struct {
 	name            string
 	needPing        bool
@@ -23,18 +24,21 @@ type Client struct {
 	options         *config.Options
 }
 
+// NewMCPClient creates a new MCP client
 func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
-	clientInfo, pErr := config.ParseMCPClientConfig(conf)
-	if pErr != nil {
-		return nil, pErr
-	}
-	switch v := clientInfo.(type) {
-	case *config.StdioMCPClientConfig:
-		envs := make([]string, 0, len(v.Env))
-		for kk, vv := range v.Env {
-			envs = append(envs, fmt.Sprintf("%s=%s", kk, vv))
+	// Determine transport type
+	if conf.Command != "" || conf.TransportType == config.MCPClientTypeStdio {
+		if conf.Command == "" {
+			return nil, errors.New("command is required for stdio transport")
 		}
-		mcpClient, err := client.NewStdioMCPClient(v.Command, envs, v.Args...)
+
+		// Convert env map to slice for stdio client
+		envs := make([]string, 0, len(conf.Env))
+		for k, v := range conf.Env {
+			envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		mcpClient, err := client.NewStdioMCPClient(conf.Command, envs, conf.Args...)
 		if err != nil {
 			return nil, err
 		}
@@ -44,45 +48,52 @@ func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
 			client:  mcpClient,
 			options: conf.Options,
 		}, nil
-	case *config.SSEMCPClientConfig:
-		var options []transport.ClientOption
-		if len(v.Headers) > 0 {
-			options = append(options, client.WithHeaders(v.Headers))
-		}
-		mcpClient, err := client.NewSSEMCPClient(v.URL, options...)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{
-			name:            name,
-			needPing:        true,
-			needManualStart: true,
-			client:          mcpClient,
-			options:         conf.Options,
-		}, nil
-	case *config.StreamableMCPClientConfig:
-		var options []transport.StreamableHTTPCOption
-		if len(v.Headers) > 0 {
-			options = append(options, transport.WithHTTPHeaders(v.Headers))
-		}
-		if v.Timeout > 0 {
-			options = append(options, transport.WithHTTPTimeout(v.Timeout))
-		}
-		mcpClient, err := client.NewStreamableHttpClient(v.URL, options...)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{
-			name:            name,
-			needPing:        true,
-			needManualStart: true,
-			client:          mcpClient,
-			options:         conf.Options,
-		}, nil
 	}
-	return nil, errors.New("invalid client type")
+
+	if conf.URL != "" {
+		if conf.TransportType == config.MCPClientTypeStreamable {
+			var options []transport.StreamableHTTPCOption
+			if len(conf.Headers) > 0 {
+				options = append(options, transport.WithHTTPHeaders(conf.Headers))
+			}
+			if conf.Timeout > 0 {
+				options = append(options, transport.WithHTTPTimeout(conf.Timeout))
+			}
+			mcpClient, err := client.NewStreamableHttpClient(conf.URL, options...)
+			if err != nil {
+				return nil, err
+			}
+			return &Client{
+				name:            name,
+				needPing:        true,
+				needManualStart: true,
+				client:          mcpClient,
+				options:         conf.Options,
+			}, nil
+		} else {
+			// SSE transport
+			var options []transport.ClientOption
+			if len(conf.Headers) > 0 {
+				options = append(options, client.WithHeaders(conf.Headers))
+			}
+			mcpClient, err := client.NewSSEMCPClient(conf.URL, options...)
+			if err != nil {
+				return nil, err
+			}
+			return &Client{
+				name:            name,
+				needPing:        true,
+				needManualStart: true,
+				client:          mcpClient,
+				options:         conf.Options,
+			}, nil
+		}
+	}
+
+	return nil, errors.New("invalid client type: must have either command or url")
 }
 
+// AddToMCPServer connects the client to an MCP server
 func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementation, mcpServer *server.MCPServer) error {
 	if c.needManualStart {
 		err := c.client.Start(ctx)
@@ -273,6 +284,7 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 	return nil
 }
 
+// Close closes the MCP client
 func (c *Client) Close() error {
 	if c.client != nil {
 		return c.client.Close()
@@ -280,20 +292,14 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// Server represents an MCP server with SSE transport
 type Server struct {
 	Tokens    []string
 	MCPServer *server.MCPServer
 	SSEServer *server.SSEServer
 }
 
-// Close cleans up the server resources
-func (s *Server) Close() error {
-	// FIXME: Need to check how to properly clean up SSEServer and MCPServer resources
-	// We should investigate the mcp-go library to see if there are shutdown methods
-	// or if we need to properly close HTTP connections, stop goroutines, etc.
-	return nil
-}
-
+// NewMCPServer creates a new MCP server
 func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientConfig) *Server {
 	serverOpts := []server.ServerOption{
 		server.WithResourceCapabilities(true, true),
@@ -320,4 +326,11 @@ func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientC
 	}
 
 	return srv
+}
+
+// Close closes the SSE server
+func (s *Server) Close() error {
+	// SSE server doesn't have a Close method in the current implementation
+	// This is a placeholder for future implementation
+	return nil
 }
