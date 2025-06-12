@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
+	fosite_storage "github.com/ory/fosite/storage"
 )
 
 // isDevelopmentMode checks if we're running in development mode
@@ -22,12 +24,50 @@ func isDevelopmentMode() bool {
 	return env == "development" || env == "dev"
 }
 
+// contextKey is a type for context keys to avoid collisions
+type contextKey string
+
+// userContextKey is the context key for user email
+const userContextKey contextKey = "user_email"
+
+// GetUserFromContext extracts user email from context
+func GetUserFromContext(ctx context.Context) (string, bool) {
+	email, ok := ctx.Value(userContextKey).(string)
+	return email, ok
+}
+
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
 	provider    fosite.OAuth2Provider
-	storage     OAuthStorage
+	storage     interface {
+		fosite.Storage
+		generateState() string
+		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
+		getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
+		createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
+		GetAllClients() map[string]fosite.Client
+		GetMemoryStore() *fosite_storage.MemoryStore
+		// User token methods
+		GetUserToken(ctx context.Context, userEmail, service string) (string, error)
+		SetUserToken(ctx context.Context, userEmail, service, token string) error
+		DeleteUserToken(ctx context.Context, userEmail, service string) error
+		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
+	}
 	authService *authService
 	config      Config
+}
+
+// UserTokenStore defines methods for managing user tokens
+type UserTokenStore interface {
+	GetUserToken(ctx context.Context, userEmail, service string) (string, error)
+	SetUserToken(ctx context.Context, userEmail, service, token string) error
+	DeleteUserToken(ctx context.Context, userEmail, service string) error
+	ListUserServices(ctx context.Context, userEmail string) ([]string, error)
+}
+
+// GetUserTokenStore returns the storage for use by handlers that need user token methods
+func (s *Server) GetUserTokenStore() UserTokenStore {
+	return s.storage
 }
 
 // Config holds OAuth server configuration
@@ -39,6 +79,7 @@ type Config struct {
 	GoogleClientSecret  string
 	GoogleRedirectURI   string
 	JWTSecret           string // Should be provided via environment variable
+	EncryptionKey       string // Should be provided via environment variable
 	StorageType         string // "memory" or "firestore"
 	GCPProjectID        string // Required for firestore storage
 	FirestoreDatabase   string // Optional: Firestore database name (default: "(default)")
@@ -47,8 +88,50 @@ type Config struct {
 
 // NewServer creates a new OAuth 2.1 server
 func NewServer(config Config) (*Server, error) {
+	// Validate storage type first
+	var needsEncryption bool
+	switch config.StorageType {
+	case "memory", "":
+		needsEncryption = false
+	case "firestore":
+		needsEncryption = true
+	default:
+		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
+	}
+
+	// Create encryptor for sensitive data if using persistent storage
+	var encryptor crypto.Encryptor
+	if needsEncryption {
+		// Non-memory storage requires encryption
+		if config.EncryptionKey == "" {
+			return nil, fmt.Errorf("encryptionKey is required when using %s storage (set via config or ENCRYPTION_KEY env var)", config.StorageType)
+		}
+		key := []byte(config.EncryptionKey)
+		if len(key) != 32 {
+			return nil, fmt.Errorf("encryption key must be exactly 32 bytes for AES-256, got %d bytes", len(key))
+		}
+		var err error
+		encryptor, err = crypto.NewEncryptor(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create encryptor: %w", err)
+		}
+	}
+
 	// Create storage (data layer)
-	var storage OAuthStorage
+	var storage interface {
+		fosite.Storage
+		generateState() string
+		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
+		getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
+		createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
+		GetAllClients() map[string]fosite.Client
+		GetMemoryStore() *fosite_storage.MemoryStore
+		// User token methods
+		GetUserToken(ctx context.Context, userEmail, service string) (string, error)
+		SetUserToken(ctx context.Context, userEmail, service, token string) error
+		DeleteUserToken(ctx context.Context, userEmail, service string) error
+		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
+	}
 	var err error
 
 	switch config.StorageType {
@@ -66,13 +149,14 @@ func NewServer(config Config) (*Server, error) {
 		if collection == "" {
 			collection = "mcp_front_oauth_clients"
 		}
-		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, database, collection)
+		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, database, collection, encryptor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
 		}
 	case "memory", "":
 		storage = newStorage()
 	default:
+		// This should never happen since we already validated above
 		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
 	}
 
@@ -419,11 +503,18 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 
 			token := parts[1]
 
-			// Validate token
-			_, _, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, &fosite.DefaultSession{})
+			// Validate token and extract session
+			session := &Session{}
+			_, _, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, session)
 			if err != nil {
 				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 				return
+			}
+
+			// Pass user info through context
+			if session.UserInfo != nil && session.UserInfo.Email != "" {
+				ctx = context.WithValue(ctx, userContextKey, session.UserInfo.Email)
+				r = r.WithContext(ctx)
 			}
 
 			next.ServeHTTP(w, r)
