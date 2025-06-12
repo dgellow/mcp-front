@@ -6,23 +6,48 @@ import (
 )
 
 func TestFirestoreStorageConfig(t *testing.T) {
-	// Test that Firestore storage requires GCP project ID
-	config := Config{
-		Issuer:       "https://test.example.com",
-		TokenTTL:     time.Hour,
-		JWTSecret:    "test-secret-32-bytes-long-for-testing",
-		StorageType:  "firestore",
-		GCPProjectID: "", // Missing project ID should fail
-	}
+	t.Run("missing GCP project ID", func(t *testing.T) {
+		// Test that Firestore storage requires GCP project ID
+		config := Config{
+			Issuer:        "https://test.example.com",
+			TokenTTL:      time.Hour,
+			JWTSecret:     "test-secret-32-bytes-long-for-testing",
+			EncryptionKey: "test-encryption-key-32-bytes-ok!",
+			StorageType:   "firestore",
+			GCPProjectID:  "", // Missing project ID should fail
+		}
 
-	_, err := NewServer(config)
-	if err == nil {
-		t.Fatal("Expected error when GCP project ID is missing for Firestore storage")
-	}
+		_, err := NewServer(config)
+		if err == nil {
+			t.Fatal("Expected error when GCP project ID is missing for Firestore storage")
+		}
 
-	if err.Error() != "GCP project ID is required for Firestore storage" {
-		t.Fatalf("Expected specific error message, got: %v", err)
-	}
+		if err.Error() != "GCP project ID is required for Firestore storage" {
+			t.Fatalf("Expected specific error message, got: %v", err)
+		}
+	})
+
+	t.Run("missing encryption key", func(t *testing.T) {
+		// Test that Firestore storage requires encryption key
+		config := Config{
+			Issuer:        "https://test.example.com",
+			TokenTTL:      time.Hour,
+			JWTSecret:     "test-secret-32-bytes-long-for-testing",
+			StorageType:   "firestore",
+			GCPProjectID:  "test-project",
+			EncryptionKey: "", // Missing encryption key should fail
+		}
+
+		_, err := NewServer(config)
+		if err == nil {
+			t.Fatal("Expected error when encryption key is missing for Firestore storage")
+		}
+
+		expected := "encryptionKey is required when using firestore storage (set via config or ENCRYPTION_KEY env var)"
+		if err.Error() != expected {
+			t.Fatalf("Expected error message %q, got: %v", expected, err)
+		}
+	})
 }
 
 func TestMemoryStorageDefault(t *testing.T) {

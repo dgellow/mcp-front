@@ -10,8 +10,8 @@ func TestValidateConfig(t *testing.T) {
 	validBearerTokenConfig := Config{
 		Version: "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
 		Proxy: ProxyConfig{
-			BaseURL: "http://localhost:8080",
-			Addr:    ":8080",
+			BaseURL: NewConfigValue("http://localhost:8080"),
+			Addr:    NewConfigValue(":8080"),
 			Name:    "test-proxy",
 			Auth: &BearerTokenAuthConfig{
 				Kind: "bearerToken",
@@ -23,7 +23,7 @@ func TestValidateConfig(t *testing.T) {
 		MCPServers: map[string]*MCPClientConfig{
 			"test": {
 				Command: "echo",
-				Args:    []string{"hello"},
+				Args:    ConfigValueSlice{NewConfigValue("hello")},
 			},
 		},
 	}
@@ -31,26 +31,26 @@ func TestValidateConfig(t *testing.T) {
 	validOAuthConfig := Config{
 		Version: "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
 		Proxy: ProxyConfig{
-			BaseURL: "https://example.com",
-			Addr:    ":8080",
+			BaseURL: NewConfigValue("https://example.com"),
+			Addr:    NewConfigValue(":8080"),
 			Name:    "oauth-proxy",
 			Auth: &OAuthAuthConfig{
 				Kind:               "oauth",
-				Issuer:             "https://example.com",
-				GCPProject:         "test-project",
+				Issuer:             NewConfigValue("https://example.com"),
+				GCPProject:         NewConfigValue("test-project"),
 				AllowedDomains:     []string{"example.com"},
 				TokenTTL:           "1h",
 				Storage:            "memory",
-				GoogleClientID:     "test-client-id",
-				GoogleClientSecret: map[string]interface{}{"$env": "GOOGLE_CLIENT_SECRET"},
-				GoogleRedirectURI:  "https://example.com/callback",
-				JWTSecret:          map[string]interface{}{"$env": "JWT_SECRET"},
+				GoogleClientID:     NewConfigValue("test-client-id"),
+				GoogleClientSecret: &ConfigValue{refType: "env", refValue: "GOOGLE_CLIENT_SECRET"},
+				GoogleRedirectURI:  NewConfigValue("https://example.com/callback"),
+				JWTSecret:          &ConfigValue{refType: "env", refValue: "JWT_SECRET"},
 			},
 		},
 		MCPServers: map[string]*MCPClientConfig{
 			"test": {
 				Command: "echo",
-				Args:    []string{"hello"},
+				Args:    ConfigValueSlice{NewConfigValue("hello")},
 			},
 		},
 	}
@@ -94,7 +94,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "missing_proxy_base_url",
 			config: func() Config {
 				c := validBearerTokenConfig
-				c.Proxy.BaseURL = ""
+				c.Proxy.BaseURL = nil
 				return c
 			}(),
 			wantErr: true,
@@ -104,7 +104,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "invalid_proxy_base_url",
 			config: func() Config {
 				c := validBearerTokenConfig
-				c.Proxy.BaseURL = "://invalid-url"
+				c.Proxy.BaseURL = NewConfigValue("://invalid-url")
 				return c
 			}(),
 			wantErr: true,
@@ -114,7 +114,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "missing_proxy_addr",
 			config: func() Config {
 				c := validBearerTokenConfig
-				c.Proxy.Addr = ""
+				c.Proxy.Addr = nil
 				return c
 			}(),
 			wantErr: true,
@@ -124,7 +124,7 @@ func TestValidateConfig(t *testing.T) {
 			name: "invalid_proxy_addr",
 			config: func() Config {
 				c := validBearerTokenConfig
-				c.Proxy.Addr = "8080"
+				c.Proxy.Addr = NewConfigValue("8080")
 				return c
 			}(),
 			wantErr: true,
@@ -291,15 +291,15 @@ func TestValidateOAuthAuth(t *testing.T) {
 
 	validOAuth := &OAuthAuthConfig{
 		Kind:               "oauth",
-		Issuer:             "https://example.com",
-		GCPProject:         "test-project",
+		Issuer:             NewConfigValue("https://example.com"),
+		GCPProject:         NewConfigValue("test-project"),
 		AllowedDomains:     []string{"example.com"},
 		TokenTTL:           "1h",
 		Storage:            "memory",
-		GoogleClientID:     "test-client-id",
-		GoogleClientSecret: map[string]interface{}{"$env": "SECRET"},
-		GoogleRedirectURI:  "https://example.com/callback",
-		JWTSecret:          map[string]interface{}{"$env": "JWT_SECRET"},
+		GoogleClientID:     NewConfigValue("test-client-id"),
+		GoogleClientSecret: &ConfigValue{refType: "env", refValue: "SECRET"},
+		GoogleRedirectURI:  NewConfigValue("https://example.com/callback"),
+		JWTSecret:          &ConfigValue{refType: "env", refValue: "JWT_SECRET"},
 	}
 
 	tests := []struct {
@@ -336,7 +336,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 			name: "missing_issuer",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
-				a.Issuer = ""
+				a.Issuer = nil
 				return &a
 			}(),
 			wantErr: true,
@@ -346,7 +346,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 			name: "invalid_issuer_url",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
-				a.Issuer = "://invalid"
+				a.Issuer = NewConfigValue("://invalid")
 				return &a
 			}(),
 			wantErr: true,
@@ -356,7 +356,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 			name: "http_issuer_non_localhost",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
-				a.Issuer = "http://example.com"
+				a.Issuer = NewConfigValue("http://example.com")
 				return &a
 			}(),
 			wantErr: true,
@@ -366,7 +366,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 			name: "http_issuer_localhost_allowed",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
-				a.Issuer = "http://localhost:8080"
+				a.Issuer = NewConfigValue("http://localhost:8080")
 				return &a
 			}(),
 			wantErr: false,
@@ -375,7 +375,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 			name: "missing_gcp_project",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
-				a.GCPProject = ""
+				a.GCPProject = nil
 				return &a
 			}(),
 			wantErr: true,
@@ -445,7 +445,7 @@ func TestValidateOAuthAuth(t *testing.T) {
 			name: "invalid_redirect_uri",
 			auth: func() *OAuthAuthConfig {
 				a := *validOAuth
-				a.GoogleRedirectURI = "://invalid"
+				a.GoogleRedirectURI = NewConfigValue("://invalid")
 				return &a
 			}(),
 			wantErr: true,
@@ -489,8 +489,8 @@ func TestValidateMCPServersConfig(t *testing.T) {
 			servers: map[string]*MCPClientConfig{
 				"test": {
 					Command: "echo",
-					Args:    []string{"hello"},
-					Env:     map[string]string{"KEY": "value"},
+					Args:    ConfigValueSlice{NewConfigValue("hello")},
+					Env:     ConfigValueMap{"KEY": NewConfigValue("value")},
 				},
 			},
 			wantErr: false,
@@ -560,22 +560,22 @@ func TestValidateMCPServersConfig(t *testing.T) {
 			servers: map[string]*MCPClientConfig{
 				"test": {
 					Command: "echo",
-					Env:     map[string]string{"": "value"},
+					Env:     ConfigValueMap{"": NewConfigValue("value")},
 				},
 			},
 			wantErr: true,
 			errMsg:  "environment variable key cannot be empty",
 		},
 		{
-			name: "empty_env_value",
+			name: "nil_env_value",
 			servers: map[string]*MCPClientConfig{
 				"test": {
 					Command: "echo",
-					Env:     map[string]string{"KEY": ""},
+					Env:     ConfigValueMap{"KEY": nil},
 				},
 			},
 			wantErr: true,
-			errMsg:  "environment variable value cannot be empty",
+			errMsg:  "environment variable value cannot be nil",
 		},
 		{
 			name: "empty_auth_token",
@@ -726,8 +726,8 @@ func TestBearerTokenDistribution(t *testing.T) {
 	config := Config{
 		Version: "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
 		Proxy: ProxyConfig{
-			BaseURL: "http://localhost:8080",
-			Addr:    ":8080",
+			BaseURL: NewConfigValue("http://localhost:8080"),
+			Addr:    NewConfigValue(":8080"),
 			Name:    "test-proxy",
 			Auth: &BearerTokenAuthConfig{
 				Kind: "bearerToken",
@@ -740,11 +740,11 @@ func TestBearerTokenDistribution(t *testing.T) {
 		MCPServers: map[string]*MCPClientConfig{
 			"postgres": {
 				Command: "docker",
-				Args:    []string{"run", "postgres-mcp"},
+				Args:    ConfigValueSlice{NewConfigValue("run"), NewConfigValue("postgres-mcp")},
 			},
 			"notion": {
 				Command: "docker",
-				Args:    []string{"run", "notion-mcp"},
+				Args:    ConfigValueSlice{NewConfigValue("run"), NewConfigValue("notion-mcp")},
 			},
 		},
 	}

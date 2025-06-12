@@ -1,157 +1,362 @@
 package config
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestLoadBearerTokenConfig(t *testing.T) {
-	config, err := Load("../../config-token.example.json")
-	if err != nil {
-		t.Fatalf("Failed to load bearer token config: %v", err)
-	}
-
-	if config.Proxy.Name != "mcp-front-dev" {
-		t.Errorf("Expected name mcp-front-dev, got %s", config.Proxy.Name)
-	}
-
-	// Check that bearer tokens were distributed to servers
-	postgresTokens := config.MCPServers["postgres"].Options.AuthTokens
-	if len(postgresTokens) != 2 {
-		t.Errorf("Expected 2 postgres tokens, got %d", len(postgresTokens))
-	}
-	if postgresTokens[0] != "dev-token-postgres-1" {
-		t.Errorf("Expected first postgres token to be dev-token-postgres-1, got %s", postgresTokens[0])
-	}
-
-	// Verify OAuth is not configured for bearer token mode
-	if _, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
-		t.Error("Should not have OAuth config for bearer token auth")
-	}
-}
-
-func TestEnvRefResolution(t *testing.T) {
+func TestLoad(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    interface{}
-		envVars  map[string]string
-		expected interface{}
-		wantErr  bool
+		name        string
+		configJSON  string
+		setupEnv    map[string]string
+		wantErr     bool
+		validate    func(*testing.T, *Config)
 	}{
 		{
-			name: "simple env ref with value",
-			input: map[string]interface{}{
-				"$env": "TEST_VAR",
+			name: "valid config with env resolution",
+			configJSON: `{
+				"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+				"proxy": {
+					"baseURL": {"$env": "TEST_BASE_URL"},
+					"addr": ":8080",
+					"name": "test-proxy",
+					"auth": {
+						"kind": "bearerToken",
+						"tokens": {
+							"test": ["test-token"]
+						}
+					}
+				},
+				"mcpServers": {
+					"test": {
+						"url": "https://example.com",
+						"env": {
+							"API_KEY": {"$env": "TEST_API_KEY"}
+						},
+						"args": [{"$env": "TEST_ARG"}]
+					}
+				}
+			}`,
+			setupEnv: map[string]string{
+				"TEST_BASE_URL": "https://test.example.com",
+				"TEST_API_KEY":  "secret-key",
+				"TEST_ARG":      "test-argument",
 			},
-			envVars: map[string]string{
-				"TEST_VAR": "test-value",
+			wantErr: false,
+			validate: func(t *testing.T, cfg *Config) {
+				if cfg.Proxy.BaseURL.String() != "https://test.example.com" {
+					t.Errorf("Expected baseURL to be resolved to https://test.example.com, got %s", cfg.Proxy.BaseURL.String())
+				}
+				if cfg.MCPServers["test"].Env["API_KEY"].String() != "secret-key" {
+					t.Errorf("Expected API_KEY to be resolved to secret-key, got %s", cfg.MCPServers["test"].Env["API_KEY"].String())
+				}
+				if cfg.MCPServers["test"].Args[0].String() != "test-argument" {
+					t.Errorf("Expected arg to be resolved to test-argument, got %s", cfg.MCPServers["test"].Args[0].String())
+				}
 			},
-			expected: "test-value",
 		},
 		{
-			name: "env ref with default",
-			input: map[string]interface{}{
-				"$env":    "MISSING_VAR",
-				"default": "default-value",
+			name: "config with user token references preserved",
+			configJSON: `{
+				"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+				"proxy": {
+					"baseURL": "https://test.example.com",
+					"addr": ":8080",
+					"name": "test-proxy",
+					"auth": {
+						"kind": "oauth",
+						"issuer": "https://test.example.com",
+						"gcpProject": "test-project",
+						"googleClientID": {"$env": "GOOGLE_CLIENT_ID"},
+						"googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
+						"googleRedirectURI": "https://test.example.com/callback",
+						"allowedDomains": ["example.com"],
+						"tokenTTL": "1h",
+						"storage": "memory",
+						"jwtSecret": {"$env": "JWT_SECRET"},
+						"encryptionKey": {"$env": "ENCRYPTION_KEY"}
+					}
+				},
+				"mcpServers": {
+					"notion": {
+						"url": "https://notion-api.example.com",
+						"requiresUserToken": true,
+						"env": {
+							"NOTION_TOKEN": {"$userToken": "{{token}}"}
+						}
+					}
+				}
+			}`,
+			setupEnv: map[string]string{
+				"GOOGLE_CLIENT_ID":     "test-client-id",
+				"GOOGLE_CLIENT_SECRET": "test-client-secret",
+				"JWT_SECRET":           strings.Repeat("a", 32),
+				"ENCRYPTION_KEY":       strings.Repeat("b", 32),
 			},
-			envVars:  map[string]string{},
-			expected: "default-value",
+			wantErr: false,
+			validate: func(t *testing.T, cfg *Config) {
+				// Check that user token references are preserved
+				envValue := cfg.MCPServers["notion"].Env["NOTION_TOKEN"]
+				if !envValue.IsUserTokenRef() {
+					t.Errorf("Expected NOTION_TOKEN to preserve user token reference")
+				}
+				
+				// Test user token resolution - the template is "$userToken" so it should resolve to the token
+				resolved := envValue.ResolveUserToken("test-user-token")
+				if resolved != "test-user-token" {
+					t.Errorf("Expected user token to resolve to test-user-token, got %s", resolved)
+				}
+				
+				// Check that env refs were resolved
+				oauthAuth := cfg.Proxy.Auth.(*OAuthAuthConfig)
+				if oauthAuth.GoogleClientID.String() != "test-client-id" {
+					t.Errorf("Expected GoogleClientID to be resolved, got %s", oauthAuth.GoogleClientID.String())
+				}
+			},
 		},
 		{
-			name: "missing env without default",
-			input: map[string]interface{}{
-				"$env": "MISSING_VAR",
-			},
-			envVars: map[string]string{},
+			name: "missing env var should fail",
+			configJSON: `{
+				"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+				"proxy": {
+					"baseURL": {"$env": "MISSING_ENV_VAR"},
+					"addr": ":8080",
+					"name": "test-proxy",
+					"auth": {
+						"kind": "bearerToken",
+						"tokens": {
+							"test": ["test-token"]
+						}
+					}
+				},
+				"mcpServers": {
+					"test": {
+						"url": "https://example.com"
+					}
+				}
+			}`,
+			setupEnv: map[string]string{},
+			wantErr:  true,
+		},
+		{
+			name: "invalid JSON should fail",
+			configJSON: `{
+				"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+				"proxy": {
+					"baseURL": "https://test.example.com"
+					// missing comma
+					"addr": ":8080"
+				}
+			}`,
 			wantErr: true,
-		},
-		{
-			name: "nested env refs",
-			input: map[string]interface{}{
-				"auth": map[string]interface{}{
-					"secret": map[string]interface{}{
-						"$env": "SECRET",
-					},
-				},
-			},
-			envVars: map[string]string{
-				"SECRET": "secret-value",
-			},
-			expected: map[string]interface{}{
-				"auth": map[string]interface{}{
-					"secret": "secret-value",
-				},
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set env vars
-			for k, v := range tt.envVars {
+			// Setup environment variables
+			for k, v := range tt.setupEnv {
 				os.Setenv(k, v)
 				defer os.Unsetenv(k)
 			}
 
-			result, err := resolveEnvRef(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("resolveEnvRef() error = %v, wantErr %v", err, tt.wantErr)
+			// Create temporary config file
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "config.json")
+			
+			err := os.WriteFile(configPath, []byte(tt.configJSON), 0644)
+			if err != nil {
+				t.Fatalf("Failed to write config file: %v", err)
+			}
+
+			// Test Load function
+			cfg, err := Load(configPath)
+			
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+				return
+			}
+			
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+			
+			if cfg == nil {
+				t.Errorf("Expected config but got nil")
 				return
 			}
 
-			if !tt.wantErr {
-				// Check if we have maps to compare
-				if resultMap, ok := result.(map[string]interface{}); ok {
-					if expectedMap, ok := tt.expected.(map[string]interface{}); ok {
-						// Simple string representation comparison for this test
-						if fmt.Sprintf("%v", resultMap) != fmt.Sprintf("%v", expectedMap) {
-							t.Errorf("Expected %v, got %v", expectedMap, resultMap)
-						}
-					} else {
-						t.Errorf("Expected %v, got %v", tt.expected, result)
-					}
-				} else if result != tt.expected {
-					t.Errorf("Expected %v, got %v", tt.expected, result)
+			// Run custom validation if provided
+			if tt.validate != nil {
+				tt.validate(t, cfg)
+			}
+		})
+	}
+}
+
+func TestParseMCPClientConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *MCPClientConfig
+		wantType string
+		wantErr  bool
+	}{
+		{
+			name: "stdio transport",
+			config: &MCPClientConfig{
+				TransportType: MCPClientTypeStdio,
+				Command:       "python",
+				Args:          ConfigValueSlice{NewConfigValue("script.py")},
+			},
+			wantType: "stdio",
+			wantErr:  false,
+		},
+		{
+			name: "sse transport",
+			config: &MCPClientConfig{
+				TransportType: MCPClientTypeSSE,
+				URL:           "https://api.example.com",
+			},
+			wantType: "sse",
+			wantErr:  false,
+		},
+		{
+			name: "inferred stdio from command",
+			config: &MCPClientConfig{
+				Command: "python",
+				Args:    ConfigValueSlice{NewConfigValue("script.py")},
+			},
+			wantType: "stdio",
+			wantErr:  false,
+		},
+		{
+			name: "inferred sse from url",
+			config: &MCPClientConfig{
+				URL: "https://api.example.com",
+			},
+			wantType: "sse",
+			wantErr:  false,
+		},
+		{
+			name: "missing both command and url",
+			config: &MCPClientConfig{
+				TransportType: MCPClientTypeStdio,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseMCPClientConfig(tt.config)
+			
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+				}
+				return
+			}
+			
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+				return
+			}
+			
+			// Check the type of returned result
+			switch tt.wantType {
+			case "stdio":
+				if _, ok := result.(*StdioMCPClientConfig); !ok {
+					t.Errorf("Expected *StdioMCPClientConfig, got %T", result)
+				}
+			case "sse":
+				if _, ok := result.(*SSEMCPClientConfig); !ok {
+					t.Errorf("Expected *SSEMCPClientConfig, got %T", result)
 				}
 			}
 		})
 	}
 }
 
-func TestConfigVersionValidation(t *testing.T) {
-	// Create a temporary config with wrong version
-	tmpFile := "/tmp/test-wrong-version.json"
-	content := `{
-		"version": "v1.0.0",
-		"proxy": {
-			"baseURL": "http://localhost:8080",
-			"addr": ":8080",
-			"name": "test",
-			"auth": {
-				"kind": "bearerToken",
-				"tokens": {"test": ["token1"]}
-			}
+func TestValidateRawConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		configJSON string
+		wantErr    bool
+	}{
+		{
+			name: "valid config",
+			configJSON: `{
+				"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+				"proxy": {
+					"baseURL": "https://test.example.com",
+					"addr": ":8080",
+					"name": "test-proxy",
+					"auth": {
+						"kind": "bearerToken",
+						"tokens": {
+							"test": ["token1"]
+						}
+					}
+				},
+				"mcpServers": {
+					"test": {
+						"url": "https://example.com"
+					}
+				}
+			}`,
+			wantErr: false,
 		},
-		"mcpServers": {
-			"test": {
-				"command": "echo",
-				"args": ["hello"]
+		{
+			name: "hardcoded oauth secret should fail",
+			configJSON: `{
+				"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+				"proxy": {
+					"baseURL": "https://test.example.com",
+					"addr": ":8080",
+					"name": "test-proxy",
+					"auth": {
+						"kind": "oauth",
+						"issuer": "https://test.example.com",
+						"gcpProject": "test-project",
+						"googleClientId": "test-client-id",
+						"googleClientSecret": "hardcoded-secret",
+						"jwtSecret": "hardcoded-jwt-secret"
+					}
+				},
+				"mcpServers": {
+					"test": {
+						"url": "https://example.com"
+					}
+				}
+			}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var rawConfig map[string]interface{}
+			err := json.Unmarshal([]byte(tt.configJSON), &rawConfig)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal test JSON: %v", err)
 			}
-		}
-	}`
 
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
-		t.Fatalf("Failed to write test file: %v", err)
-	}
-	defer os.Remove(tmpFile)
-
-	_, err := Load(tmpFile)
-	if err == nil {
-		t.Error("Expected error for unsupported version")
-	}
-	if !strings.Contains(err.Error(), "unsupported config version") {
-		t.Errorf("Expected unsupported version error, got: %v", err)
+			err = validateRawConfig(rawConfig)
+			
+			if tt.wantErr && err == nil {
+				t.Errorf("Expected error but got none")
+			}
+			
+			if !tt.wantErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
 	}
 }
