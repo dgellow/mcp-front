@@ -5,21 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"path"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
-	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
-
-	"github.com/dgellow/mcp-front/internal/oauth"
-	"github.com/mark3labs/mcp-go/mcp"
-	"golang.org/x/sync/errgroup"
 )
 
 type MiddlewareFunc func(http.Handler) http.Handler
@@ -169,222 +162,22 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 
 // Start starts the HTTP server with the given configuration
 func Start(cfg *config.Config) error {
-	baseURL, err := url.Parse(fmt.Sprintf("%v", cfg.Proxy.BaseURL))
-	if err != nil {
-		return err
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var errorGroup errgroup.Group
-	httpMux := http.NewServeMux()
+	// Create the server handler
+	handler, err := NewServer(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
 	httpServer := &http.Server{
-		Addr:    fmt.Sprintf("%v", cfg.Proxy.Addr),
-		Handler: httpMux,
-	}
-	info := mcp.Implementation{
-		Name:    cfg.Proxy.Name,
-		Version: "dev", // TODO: Pass build version from main
-	}
-
-	// Initialize OAuth server if OAuth config is provided
-	var oauthServer *oauth.Server
-	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
-		internal.LogDebug("initializing OAuth 2.1 server")
-
-		// Validate required OAuth fields
-		if oauthAuth.Issuer == nil || oauthAuth.TokenTTL == "" {
-			internal.LogError("OAuth configuration missing required fields: issuer and token_ttl are required")
-			return fmt.Errorf("OAuth configuration missing required fields: issuer and token_ttl are required")
-		}
-
-		internal.LogDebug("parsing OAuth token TTL: %s", oauthAuth.TokenTTL)
-		ttl, err := time.ParseDuration(oauthAuth.TokenTTL)
-		if err != nil {
-			internal.LogError("failed to parse OAuth token TTL '%s': %v", oauthAuth.TokenTTL, err)
-			return fmt.Errorf("parsing OAuth token TTL: %w", err)
-		}
-
-		oauthConfig := oauth.Config{
-			Issuer:              fmt.Sprintf("%v", oauthAuth.Issuer),
-			TokenTTL:            ttl,
-			AllowedDomains:      oauthAuth.AllowedDomains,
-			GoogleClientID:      fmt.Sprintf("%v", oauthAuth.GoogleClientID),
-			GoogleClientSecret:  fmt.Sprintf("%v", oauthAuth.GoogleClientSecret),
-			GoogleRedirectURI:   fmt.Sprintf("%v", oauthAuth.GoogleRedirectURI),
-			JWTSecret:           fmt.Sprintf("%v", oauthAuth.JWTSecret),
-			StorageType:         oauthAuth.Storage,
-			GCPProjectID:        fmt.Sprintf("%v", oauthAuth.GCPProject),
-			FirestoreDatabase:   oauthAuth.FirestoreDatabase,
-			FirestoreCollection: oauthAuth.FirestoreCollection,
-		}
-
-		internal.LogTraceWithFields("oauth", "creating OAuth server", map[string]interface{}{
-			"issuer":          oauthConfig.Issuer,
-			"token_ttl":       oauthConfig.TokenTTL.String(),
-			"allowed_domains": oauthConfig.AllowedDomains,
-		})
-
-		oauthServer, err = oauth.NewServer(oauthConfig)
-		if err != nil {
-			internal.LogErrorWithFields("oauth", "failed to create OAuth server", map[string]interface{}{
-				"error": err.Error(),
-			})
-			return fmt.Errorf("failed to create OAuth server: %w", err)
-		}
-
-		if oauthServer == nil {
-			internal.LogErrorWithFields("oauth", "OAuth server creation returned nil", nil)
-			return fmt.Errorf("OAuth server creation returned nil")
-		}
-
-		internal.LogTraceWithFields("oauth", "registering OAuth endpoints", map[string]interface{}{
-			"endpoints": []string{
-				"/.well-known/oauth-authorization-server",
-				"/authorize",
-				"/oauth/callback",
-				"/token",
-				"/register",
-				"/debug/clients",
-			},
-		})
-
-		// Register OAuth endpoints with CORS and logging middleware
-		oauthMiddlewares := []MiddlewareFunc{
-			corsMiddleware(),
-			loggerMiddleware("oauth"),
-		}
-
-		httpMux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(oauthServer.WellKnownHandler), oauthMiddlewares...))
-		httpMux.Handle("/authorize", chainMiddleware(http.HandlerFunc(oauthServer.AuthorizeHandler), oauthMiddlewares...))
-		httpMux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(oauthServer.GoogleCallbackHandler), oauthMiddlewares...))
-		httpMux.Handle("/token", chainMiddleware(http.HandlerFunc(oauthServer.TokenHandler), oauthMiddlewares...))
-		httpMux.Handle("/register", chainMiddleware(http.HandlerFunc(oauthServer.RegisterHandler), oauthMiddlewares...))
-
-		// Debug endpoint to see registered clients
-		httpMux.Handle("/debug/clients", chainMiddleware(http.HandlerFunc(oauthServer.DebugClientsHandler), oauthMiddlewares...))
-
-		internal.LogInfoWithFields("oauth", "OAuth 2.1 server initialized", map[string]interface{}{
-			"issuer": oauthAuth.Issuer,
-		})
-	} else {
-		internal.LogDebug("no OAuth configuration found, using token-based authentication")
-	}
-
-	// Add health check endpoint with logging
-	httpMux.Handle("/health", chainMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","service":"mcp-front"}`))
-	}), loggerMiddleware("health")))
-
-	for name, clientConfig := range cfg.MCPServers {
-		mcpClient, err := client.NewMCPClient(name, clientConfig)
-		if err != nil {
-			internal.Logf("<%s> Failed to create client: %v", name, err)
-			os.Exit(1)
-		}
-		server := client.NewMCPServer(name, "dev", fmt.Sprintf("%v", cfg.Proxy.BaseURL), clientConfig)
-
-		// Capture loop variables to avoid closure issues
-		currentName := name
-		currentClient := mcpClient
-		currentServer := server
-		currentConfig := clientConfig
-
-		errorGroup.Go(func() error {
-			internal.LogTraceWithFields(currentName, "starting MCP client initialization", nil)
-
-			// Add nil checks to prevent panics
-			if currentClient == nil {
-				internal.LogErrorWithFields(currentName, "client is nil", nil)
-				return fmt.Errorf("<%s> client is nil", currentName)
-			}
-			if currentServer == nil || currentServer.MCPServer == nil {
-				internal.LogErrorWithFields(currentName, "server or mcpServer is nil", nil)
-				return fmt.Errorf("<%s> server or mcpServer is nil", currentName)
-			}
-
-			internal.LogTraceWithFields(currentName, "client and server objects validated", nil)
-			internal.LogInfoWithFields(currentName, "connecting to MCP server", nil)
-			addErr := currentClient.AddToMCPServer(ctx, info, currentServer.MCPServer)
-			if addErr != nil {
-				internal.LogErrorWithFields(currentName, "failed to add client to server", map[string]interface{}{
-					"error": addErr.Error(),
-				})
-				if currentConfig != nil && currentConfig.Options != nil && config.BoolOrDefault(currentConfig.Options.PanicIfInvalid, false) {
-					return addErr
-				}
-				return nil
-			}
-			internal.LogInfoWithFields(currentName, "connected to MCP server", nil)
-
-			internal.LogTraceWithFields(currentName, "setting up middleware chain", nil)
-			middlewares := make([]MiddlewareFunc, 0)
-
-			// Add CORS as the FIRST middleware to handle OPTIONS before auth
-			middlewares = append(middlewares, corsMiddleware())
-			middlewares = append(middlewares, recoverMiddleware(currentName))
-
-			// Always add logging middleware for request tracking
-			middlewares = append(middlewares, loggerMiddleware(currentName))
-
-			// Use OAuth authentication if configured, otherwise fall back to simple tokens
-			hasOAuth := oauthServer != nil
-			internal.LogTraceWithFields(currentName, "configuring authentication", map[string]interface{}{
-				"oauth_enabled": hasOAuth,
-			})
-
-			if hasOAuth {
-				internal.LogTraceWithFields(currentName, "adding OAuth middleware", nil)
-				middlewares = append(middlewares, oauthServer.ValidateTokenMiddleware())
-			} else if currentConfig.Options != nil && len(currentConfig.Options.AuthTokens) > 0 {
-				internal.LogTraceWithFields(currentName, "adding token auth middleware", map[string]interface{}{
-					"token_count": len(currentConfig.Options.AuthTokens),
-				})
-				middlewares = append(middlewares, newAuthMiddleware(currentConfig.Options.AuthTokens))
-			} else {
-				internal.LogTraceWithFields(currentName, "no authentication middleware configured", nil)
-			}
-
-			mcpRoute := path.Join(baseURL.Path, currentName)
-			if !strings.HasPrefix(mcpRoute, "/") {
-				mcpRoute = "/" + mcpRoute
-			}
-			if !strings.HasSuffix(mcpRoute, "/") {
-				mcpRoute += "/"
-			}
-
-			internal.LogTraceWithFields(currentName, "registering route", map[string]interface{}{
-				"route":            mcpRoute,
-				"middleware_count": len(middlewares),
-			})
-			httpMux.Handle(mcpRoute, chainMiddleware(currentServer.SSEServer, middlewares...))
-
-			httpServer.RegisterOnShutdown(func() {
-				internal.Logf("<%s> Shutting down", currentName)
-				_ = currentClient.Close()
-			})
-
-			internal.LogTraceWithFields(currentName, "MCP client initialization completed successfully", nil)
-			return nil
-		})
+		Addr:    cfg.Proxy.Addr.String(),
+		Handler: handler,
 	}
 
 	// Channel to signal errors that should trigger shutdown
-	errChan := make(chan error, 2)
-
-	// Wait for all MCP clients to initialize
-	go func() {
-		err := errorGroup.Wait()
-		if err != nil {
-			internal.Logf("Failed to initialize MCP clients: %v", err)
-			errChan <- err
-			return
-		}
-		internal.Logf("All clients initialized")
-	}()
+	errChan := make(chan error, 1)
 
 	// Start HTTP server
 	go func() {
