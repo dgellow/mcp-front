@@ -36,6 +36,11 @@ func GetUserFromContext(ctx context.Context) (string, bool) {
 	return email, ok
 }
 
+// GetUserContextKey returns the context key for user email (for testing)
+func GetUserContextKey() contextKey {
+	return userContextKey
+}
+
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
 	provider    fosite.OAuth2Provider

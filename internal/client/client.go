@@ -286,6 +286,14 @@ type Server struct {
 	SSEServer *server.SSEServer
 }
 
+// Close cleans up the server resources
+func (s *Server) Close() error {
+	// FIXME: Need to check how to properly clean up SSEServer and MCPServer resources
+	// We should investigate the mcp-go library to see if there are shutdown methods
+	// or if we need to properly close HTTP connections, stop goroutines, etc.
+	return nil
+}
+
 func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientConfig) *Server {
 	serverOpts := []server.ServerOption{
 		server.WithResourceCapabilities(true, true),
