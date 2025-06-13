@@ -123,10 +123,21 @@ func ValidateConfig(config *Config) error {
 		}
 	}
 
+	// Check if OAuth is configured
+	hasOAuth := false
+	if _, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
+		hasOAuth = true
+	}
+
 	// Validate MCP servers
 	for name, server := range config.MCPServers {
 		if err := validateMCPServer(name, server); err != nil {
 			return err
+		}
+		
+		// Validate that user tokens require OAuth
+		if server.RequiresUserToken && !hasOAuth {
+			return fmt.Errorf("server %s requires user tokens but OAuth is not configured - user tokens require OAuth authentication", name)
 		}
 	}
 
