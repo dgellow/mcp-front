@@ -144,13 +144,18 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		middlewares = append(middlewares, recoverMiddleware("mcp"))
 
 		// Add auth middleware based on configuration
+		// Auth models:
+		// 1. OAuth: If OAuth server is configured, ALL MCP endpoints require OAuth authentication
+		// 2. Bearer token: Individual MCP servers can require bearer tokens (per-server auth)
+		// 3. No auth: If neither OAuth nor bearer tokens configured, endpoint is public
 		if s.oauthServer != nil {
-			// OAuth authentication
+			// OAuth authentication - user must be authenticated via Google OAuth
 			middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
 		} else if serverConfig.Options != nil && len(serverConfig.Options.AuthTokens) > 0 {
-			// Bearer token authentication
+			// Bearer token authentication - request must include valid bearer token
 			middlewares = append(middlewares, newAuthMiddleware(serverConfig.Options.AuthTokens))
 		}
+		// else: no auth required for this endpoint
 
 		// Register handler
 		mux.Handle(ssePathPrefix, chainMiddleware(handler, middlewares...))
