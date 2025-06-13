@@ -15,24 +15,21 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// mcpClient is the minimal interface we need from client.Client
-type mcpClient interface {
-	AddToMCPServer(ctx context.Context, info mcp.Implementation, srv *server.MCPServer) error
-	Close() error
-}
-
-// MCPHandler handles MCP requests with direct token resolution
 type MCPHandler struct {
 	serverName     string
 	serverConfig   *config.MCPClientConfig
 	tokenStore     oauth.UserTokenStore
 	setupBaseURL   string
 	info           mcp.Implementation
-	// For testing: inject client creation function
-	newClient      func(string, *config.MCPClientConfig) (*client.Client, error)
+	createClient   func(ctx context.Context, name string, config *config.MCPClientConfig) (MCPClient, error)
+	createServer   func(name, version, baseURL string, config *config.MCPClientConfig) http.Handler
 }
 
-// NewMCPHandler creates a new MCP handler
+type MCPClient interface {
+	AddToMCPServer(ctx context.Context, info mcp.Implementation, srv *server.MCPServer) error
+	Close() error
+}
+
 func NewMCPHandler(
 	serverName string,
 	serverConfig *config.MCPClientConfig,
@@ -40,27 +37,45 @@ func NewMCPHandler(
 	setupBaseURL string,
 	info mcp.Implementation,
 ) *MCPHandler {
+	return NewMCPHandlerWith(serverName, serverConfig, tokenStore, setupBaseURL, info, defaultCreateClient, defaultCreateServer)
+}
+
+func NewMCPHandlerWith(
+	serverName string,
+	serverConfig *config.MCPClientConfig,
+	tokenStore oauth.UserTokenStore,
+	setupBaseURL string,
+	info mcp.Implementation,
+	createClient func(ctx context.Context, name string, config *config.MCPClientConfig) (MCPClient, error),
+	createServer func(name, version, baseURL string, config *config.MCPClientConfig) http.Handler,
+) *MCPHandler {
 	return &MCPHandler{
 		serverName:   serverName,
 		serverConfig: serverConfig,
 		tokenStore:   tokenStore,
 		setupBaseURL: setupBaseURL,
 		info:         info,
-		newClient: client.NewMCPClient, // Default to real implementation
+		createClient: createClient,
+		createServer: createServer,
 	}
 }
 
 func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user from context (set by OAuth middleware)
+	// Get user from context (set by OAuth middleware if auth is configured)
 	userEmail, ok := oauth.GetUserFromContext(ctx)
 	if !ok {
-		internal.LogErrorWithFields("mcp", "No user email in context", map[string]interface{}{
-			"service": h.serverName,
-		})
-		http.Error(w, "Authentication required", http.StatusUnauthorized)
-		return
+		// If no user context and we have a token store, auth is required
+		if h.tokenStore != nil {
+			internal.LogErrorWithFields("mcp", "No user email in context", map[string]interface{}{
+				"service": h.serverName,
+			})
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+			return
+		}
+		// No auth configured, use empty user email
+		userEmail = ""
 	}
 
 	// Get user token if required
@@ -105,8 +120,8 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 		config = config.ApplyUserToken(userToken)
 	}
 
-	// Create MCP client
-	mcpClient, err := h.newClient(h.serverName, config)
+	// Create MCP client using injected func
+	mcpClient, err := h.createClient(ctx, h.serverName, config)
 	if err != nil {
 		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
 			"error":   err.Error(),
@@ -123,11 +138,18 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 		defer mcpClient.Close()
 	}
 
-	// Create SSE server for this request
-	server := client.NewMCPServer(h.serverName, "dev", h.setupBaseURL, config)
+	// Create MCP server using injected func
+	mcpServer := h.createServer(h.serverName, "dev", h.setupBaseURL, config)
+	
+	// For the real client.Server, we need to extract the MCP server
+	// This is a temporary bridge until we clean up the interfaces completely
+	var realMCPServer *server.MCPServer
+	if serverImpl, ok := mcpServer.(*client.Server); ok {
+		realMCPServer = serverImpl.MCPServer
+	}
 	
 	// Connect client to server
-	if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
+	if err := mcpClient.AddToMCPServer(ctx, h.info, realMCPServer); err != nil {
 		// For SSE servers, we need to close on error since we didn't defer it
 		if !isStdio {
 			_ = mcpClient.Close()
@@ -155,7 +177,33 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 			}
 		}()
 	}
-	server.SSEServer.ServeHTTP(w, r)
+	mcpServer.ServeHTTP(w, r)
+}
+
+// Production client adapter - adapts client.Client to MCPClient interface
+type clientAdapter struct {
+	*client.Client
+}
+
+func (c *clientAdapter) AddToMCPServer(ctx context.Context, info mcp.Implementation, srv *server.MCPServer) error {
+	return c.Client.AddToMCPServer(ctx, info, srv)
+}
+
+func (c *clientAdapter) Close() error {
+	return c.Client.Close()
+}
+
+// Default production functions
+func defaultCreateClient(ctx context.Context, name string, config *config.MCPClientConfig) (MCPClient, error) {
+	realClient, err := client.NewMCPClient(name, config)
+	if err != nil {
+		return nil, err
+	}
+	return &clientAdapter{realClient}, nil
+}
+
+func defaultCreateServer(name, version, baseURL string, config *config.MCPClientConfig) http.Handler {
+	return client.NewMCPServer(name, version, baseURL, config).SSEServer
 }
 
 func (h *MCPHandler) sendTokenSetupInstructions(w http.ResponseWriter, userEmail string) {

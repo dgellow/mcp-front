@@ -95,16 +95,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		mux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(s.oauthServer.GoogleCallbackHandler), oauthMiddlewares...))
 		mux.Handle("/token", chainMiddleware(http.HandlerFunc(s.oauthServer.TokenHandler), oauthMiddlewares...))
 		mux.Handle("/register", chainMiddleware(http.HandlerFunc(s.oauthServer.RegisterHandler), oauthMiddlewares...))
-		mux.Handle("/debug/clients", chainMiddleware(http.HandlerFunc(s.oauthServer.DebugClientsHandler), oauthMiddlewares...))
 
-		// Token management UI endpoints
+		// Protected endpoints - require authentication
 		tokenHandlers := NewTokenHandlers(s.oauthServer, cfg.MCPServers)
 		tokenMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
 			s.oauthServer.ValidateTokenMiddleware(),
 		}
-
+		
+		// Token management UI endpoints
 		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/set", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/delete", chainMiddleware(http.HandlerFunc(tokenHandlers.DeleteTokenHandler), tokenMiddlewares...))
