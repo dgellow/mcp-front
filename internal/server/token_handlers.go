@@ -29,14 +29,14 @@ func NewTokenHandlers(oauthServer *oauth.Server, mcpServers map[string]*config.M
 }
 
 // generateCSRFToken creates a new CSRF token
-func (h *TokenHandlers) generateCSRFToken() string {
+func (h *TokenHandlers) generateCSRFToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(err) // This should never happen with crypto/rand
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 	token := base64.URLEncoding.EncodeToString(b)
 	h.csrfTokens.Store(token, true)
-	return token
+	return token, nil
 }
 
 // validateCSRFToken checks if a CSRF token is valid
@@ -107,11 +107,22 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 		services = append(services, service)
 	}
 
+	// Generate CSRF token
+	csrfToken, err := h.generateCSRFToken()
+	if err != nil {
+		internal.LogErrorWithFields("token", "Failed to generate CSRF token", map[string]interface{}{
+			"error": err.Error(),
+			"user":  userEmail,
+		})
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	// Render page
 	data := TokenPageData{
 		UserEmail:   userEmail,
 		Services:    services,
-		CSRFToken:   h.generateCSRFToken(),
+		CSRFToken:   csrfToken,
 		Message:     message,
 		MessageType: messageType,
 	}
@@ -153,8 +164,11 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/my/tokens/")
-	serviceName := strings.TrimSuffix(path, "/")
+	serviceName := r.FormValue("service")
+	if serviceName == "" {
+		http.Error(w, "Service name is required", http.StatusBadRequest)
+		return
+	}
 
 	// Validate service exists and requires user token
 	serviceConfig, exists := h.mcpServers[serviceName]
@@ -257,9 +271,11 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/my/tokens/")
-	serviceName := strings.TrimPrefix(path, "/delete")
-	serviceName = strings.TrimSuffix(serviceName, "/delete")
+	serviceName := r.FormValue("service")
+	if serviceName == "" {
+		http.Error(w, "Service name is required", http.StatusBadRequest)
+		return
+	}
 
 	serviceConfig, exists := h.mcpServers[serviceName]
 	if !exists {

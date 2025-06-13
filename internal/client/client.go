@@ -15,17 +15,62 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// MCPClientInterface is the interface we need from mcp-go client
+type MCPClientInterface interface {
+	Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error)
+	ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+	CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	ListPrompts(ctx context.Context, request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error)
+	GetPrompt(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
+	ListResources(ctx context.Context, request mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error)
+	ReadResource(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)
+	ListResourceTemplates(ctx context.Context, request mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error)
+	Ping(ctx context.Context) error
+	Start(ctx context.Context) error
+	Close() error
+}
+
+
+// TransportCreator creates the underlying MCP transport client
+type TransportCreator func(conf *config.MCPClientConfig) (MCPClientInterface, error)
+
 // Client represents an MCP client wrapper
 type Client struct {
 	name            string
 	needPing        bool
 	needManualStart bool
-	client          *client.Client
+	client          MCPClientInterface
 	options         *config.Options
 }
 
-// NewMCPClient creates a new MCP client
+// NewMCPClient creates a new MCP client using the default transport creator
 func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
+	return NewMCPClientWith(name, conf, DefaultTransportCreator)
+}
+
+// NewMCPClientWith creates a new MCP client with a custom transport creator
+func NewMCPClientWith(name string, conf *config.MCPClientConfig, createTransport TransportCreator) (*Client, error) {
+	// Create the transport
+	transport, err := createTransport(conf)
+	if err != nil {
+		return nil, fmt.Errorf("creating transport: %w", err)
+	}
+	
+	// Determine if we need ping/manual start based on transport type
+	needPing := conf.URL != ""
+	needManualStart := conf.URL != ""
+	
+	return &Client{
+		name:            name,
+		needPing:        needPing,
+		needManualStart: needManualStart,
+		client:          transport,
+		options:         conf.Options,
+	}, nil
+}
+
+// DefaultTransportCreator creates the appropriate MCP transport based on config
+func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, error) {
 	// Determine transport type
 	if conf.Command != "" || conf.TransportType == config.MCPClientTypeStdio {
 		if conf.Command == "" {
@@ -43,11 +88,7 @@ func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
 			return nil, err
 		}
 
-		return &Client{
-			name:    name,
-			client:  mcpClient,
-			options: conf.Options,
-		}, nil
+		return mcpClient, nil
 	}
 
 	if conf.URL != "" {
@@ -63,13 +104,7 @@ func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &Client{
-				name:            name,
-				needPing:        true,
-				needManualStart: true,
-				client:          mcpClient,
-				options:         conf.Options,
-			}, nil
+			return mcpClient, nil
 		} else {
 			// SSE transport
 			var options []transport.ClientOption
@@ -80,13 +115,7 @@ func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
 			if err != nil {
 				return nil, err
 			}
-			return &Client{
-				name:            name,
-				needPing:        true,
-				needManualStart: true,
-				client:          mcpClient,
-				options:         conf.Options,
-			}, nil
+			return mcpClient, nil
 		}
 	}
 

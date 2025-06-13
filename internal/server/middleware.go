@@ -20,18 +20,29 @@ func chainMiddleware(h http.Handler, middlewares ...MiddlewareFunc) http.Handler
 }
 
 // corsMiddleware adds CORS headers to responses
-func corsMiddleware() MiddlewareFunc {
+func corsMiddleware(allowedOrigins []string) MiddlewareFunc {
+	// Build a map for faster lookup
+	allowedMap := make(map[string]bool)
+	for _, origin := range allowedOrigins {
+		allowedMap[origin] = true
+	}
+	
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if origin == "" {
-				origin = "*"
+			
+			// Only set CORS headers if origin is allowed
+			if origin != "" && allowedMap[origin] {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			} else if len(allowedOrigins) == 0 {
+				// If no allowed origins configured, allow all (development mode)
+				w.Header().Set("Access-Control-Allow-Origin", "*")
 			}
-
-			w.Header().Set("Access-Control-Allow-Origin", origin)
+			// If origin not allowed, don't set Access-Control-Allow-Origin header
+			
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cache-Control, mcp-protocol-version")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 
 			// Handle preflight requests

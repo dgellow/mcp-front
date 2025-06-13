@@ -32,10 +32,25 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		mux:    mux,
 		config: cfg,
 	}
+	
+	// Build list of allowed CORS origins
+	var allowedOrigins []string
+	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
+		// Use explicitly configured origins if provided
+		if len(oauthAuth.AllowedOrigins) > 0 {
+			allowedOrigins = oauthAuth.AllowedOrigins
+		} else if len(oauthAuth.AllowedDomains) > 0 {
+			// Fall back to building from allowed domains for backward compatibility
+			internal.LogWarn("Using allowedDomains for CORS is deprecated. Please use allowedOrigins instead.")
+			for _, domain := range oauthAuth.AllowedDomains {
+				allowedOrigins = append(allowedOrigins, "https://"+domain)
+			}
+		}
+	}
 
 	info := mcp.Implementation{
 		Name:    cfg.Proxy.Name,
-		Version: "dev", // TODO: Pass build version from main
+		Version: "dev",
 	}
 
 	// Initialize OAuth server if OAuth config is provided
@@ -52,6 +67,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			Issuer:              oauthAuth.Issuer,
 			TokenTTL:            ttl,
 			AllowedDomains:      oauthAuth.AllowedDomains,
+			AllowedOrigins:      oauthAuth.AllowedOrigins,
 			GoogleClientID:      oauthAuth.GoogleClientID,
 			GoogleClientSecret:  oauthAuth.GoogleClientSecret,
 			GoogleRedirectURI:   oauthAuth.GoogleRedirectURI,
@@ -70,7 +86,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 		// Register OAuth endpoints
 		oauthMiddlewares := []MiddlewareFunc{
-			corsMiddleware(),
+			corsMiddleware(allowedOrigins),
 			loggerMiddleware("oauth"),
 		}
 
@@ -84,13 +100,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Token management UI endpoints
 		tokenHandlers := NewTokenHandlers(s.oauthServer, cfg.MCPServers)
 		tokenMiddlewares := []MiddlewareFunc{
-			corsMiddleware(),
+			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
 			s.oauthServer.ValidateTokenMiddleware(),
 		}
 
 		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
-		mux.Handle("/my/tokens/", http.StripPrefix("/my/tokens/", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...)))
+		mux.Handle("/my/tokens/set", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...))
+		mux.Handle("/my/tokens/delete", chainMiddleware(http.HandlerFunc(tokenHandlers.DeleteTokenHandler), tokenMiddlewares...))
 	}
 
 	// Setup MCP server endpoints
@@ -122,7 +139,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 		// Setup middlewares
 		var middlewares []MiddlewareFunc
-		middlewares = append(middlewares, corsMiddleware())
+		middlewares = append(middlewares, corsMiddleware(allowedOrigins))
 		middlewares = append(middlewares, loggerMiddleware("mcp"))
 		middlewares = append(middlewares, recoverMiddleware("mcp"))
 
