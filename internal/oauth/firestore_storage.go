@@ -179,7 +179,9 @@ func (s *FirestoreStorage) loadClientsFromFirestore(ctx context.Context) error {
 func (s *FirestoreStorage) generateState() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(err) // This should never happen with crypto/rand
+		// Log the error and return empty string which will fail validation
+		internal.LogError("Failed to generate random state: %v", err)
+		return ""
 	}
 	return base64.URLEncoding.EncodeToString(b)
 }

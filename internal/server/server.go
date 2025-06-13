@@ -19,7 +19,6 @@ func Run(cfg *config.Config) error {
 	internal.LogInfoWithFields("server", "Starting MCP proxy server", map[string]interface{}{
 		"addr":    cfg.Proxy.Addr,
 		"baseURL": cfg.Proxy.BaseURL,
-		"version": cfg.Version,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -95,9 +95,11 @@ type MCPClientConfig struct {
 	ArgsNeedToken []bool          `json:"-"`
 
 	// SSE or Streamable HTTP
-	URL     string            `json:"url,omitempty"`
-	Headers map[string]string `json:"headers,omitempty"`
-	Timeout time.Duration     `json:"timeout,omitempty"`
+	URL              string            `json:"url,omitempty"`
+	URLNeedsToken    bool              `json:"-"` // Track if URL needs token substitution
+	Headers          map[string]string `json:"headers,omitempty"`
+	HeadersNeedToken map[string]bool   `json:"-"` // Track which headers need token substitution
+	Timeout          time.Duration     `json:"timeout,omitempty"`
 
 	Options *Options `json:"options,omitempty"`
 
@@ -111,9 +113,10 @@ type OAuthAuthConfig struct {
 	Kind                AuthKind `json:"kind"`
 	Issuer              string   `json:"issuer"`
 	GCPProject          string   `json:"gcpProject"`
-	AllowedDomains      []string `json:"allowedDomains"`
+	AllowedDomains      []string `json:"allowedDomains"`      // For Google OAuth email validation
+	AllowedOrigins      []string `json:"allowedOrigins"`      // For CORS validation
 	TokenTTL            string   `json:"tokenTtl"`
-	Storage             string   `json:"storage"`                       // "memory" or "firestore"
+	Storage             string   `json:"storage"`              // "memory" or "firestore"
 	FirestoreDatabase   string   `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name
 	FirestoreCollection string   `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name
 	GoogleClientID      string   `json:"googleClientId"`
@@ -133,7 +136,6 @@ type ProxyConfig struct {
 
 // Config represents the config structure with resolved values
 type Config struct {
-	Version    string                      `json:"version"`
 	Proxy      ProxyConfig                 `json:"proxy"`
 	MCPServers map[string]*MCPClientConfig `json:"mcpServers"`
 }
