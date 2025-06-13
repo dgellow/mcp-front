@@ -21,10 +21,16 @@ type MCPHandler struct {
 	tokenStore     oauth.UserTokenStore
 	setupBaseURL   string
 	info           mcp.Implementation
-	createClient   func(ctx context.Context, name string, config *config.MCPClientConfig) (MCPClient, error)
-	createServer   func(name, version, baseURL string, config *config.MCPClientConfig) http.Handler
+	// Accept interface for testing, return concrete types
+	clientFactory  ClientFactory
 }
 
+// ClientFactory creates MCP clients - accept interface for testability
+type ClientFactory interface {
+	CreateClient(ctx context.Context, name string, config *config.MCPClientConfig) (*client.Client, error)
+}
+
+// MCPClient is what we need from a client - accept interface
 type MCPClient interface {
 	AddToMCPServer(ctx context.Context, info mcp.Implementation, srv *server.MCPServer) error
 	Close() error
@@ -37,26 +43,32 @@ func NewMCPHandler(
 	setupBaseURL string,
 	info mcp.Implementation,
 ) *MCPHandler {
-	return NewMCPHandlerWith(serverName, serverConfig, tokenStore, setupBaseURL, info, defaultCreateClient, defaultCreateServer)
+	return &MCPHandler{
+		serverName:    serverName,
+		serverConfig:  serverConfig,
+		tokenStore:    tokenStore,
+		setupBaseURL:  setupBaseURL,
+		info:          info,
+		clientFactory: &defaultClientFactory{},
+	}
 }
 
+// NewMCPHandlerWith allows dependency injection for testing
 func NewMCPHandlerWith(
 	serverName string,
 	serverConfig *config.MCPClientConfig,
 	tokenStore oauth.UserTokenStore,
 	setupBaseURL string,
 	info mcp.Implementation,
-	createClient func(ctx context.Context, name string, config *config.MCPClientConfig) (MCPClient, error),
-	createServer func(name, version, baseURL string, config *config.MCPClientConfig) http.Handler,
+	clientFactory ClientFactory,
 ) *MCPHandler {
 	return &MCPHandler{
-		serverName:   serverName,
-		serverConfig: serverConfig,
-		tokenStore:   tokenStore,
-		setupBaseURL: setupBaseURL,
-		info:         info,
-		createClient: createClient,
-		createServer: createServer,
+		serverName:    serverName,
+		serverConfig:  serverConfig,
+		tokenStore:    tokenStore,
+		setupBaseURL:  setupBaseURL,
+		info:          info,
+		clientFactory: clientFactory,
 	}
 }
 
@@ -120,8 +132,8 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 		config = config.ApplyUserToken(userToken)
 	}
 
-	// Create MCP client using injected func
-	mcpClient, err := h.createClient(ctx, h.serverName, config)
+	// Create MCP client - returns concrete type
+	mcpClient, err := h.clientFactory.CreateClient(ctx, h.serverName, config)
 	if err != nil {
 		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
 			"error":   err.Error(),
@@ -135,24 +147,31 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 	// For stdio servers, defer close. For SSE servers, we handle it manually.
 	isStdio := isStdioServer(config)
 	if isStdio {
-		defer mcpClient.Close()
+		defer func() {
+			if err := mcpClient.Close(); err != nil {
+				internal.LogErrorWithFields("mcp", "Failed to close MCP client", map[string]interface{}{
+					"error":   err.Error(),
+					"user":    userEmail,
+					"service": h.serverName,
+				})
+			}
+		}()
 	}
 
-	// Create MCP server using injected func
-	mcpServer := h.createServer(h.serverName, "dev", h.setupBaseURL, config)
+	// Create MCP server - return concrete type, no unsafe assertions needed
+	mcpServerWrapper := client.NewMCPServer(h.serverName, "dev", h.setupBaseURL, config)
 	
-	// For the real client.Server, we need to extract the MCP server
-	// This is a temporary bridge until we clean up the interfaces completely
-	var realMCPServer *server.MCPServer
-	if serverImpl, ok := mcpServer.(*client.Server); ok {
-		realMCPServer = serverImpl.MCPServer
-	}
-	
-	// Connect client to server
-	if err := mcpClient.AddToMCPServer(ctx, h.info, realMCPServer); err != nil {
+	// Connect client to server - no type assertion needed
+	if err := mcpClient.AddToMCPServer(ctx, h.info, mcpServerWrapper.MCPServer); err != nil {
 		// For SSE servers, we need to close on error since we didn't defer it
 		if !isStdio {
-			_ = mcpClient.Close()
+			if closeErr := mcpClient.Close(); closeErr != nil {
+				internal.LogErrorWithFields("mcp", "Failed to close MCP client after connection error", map[string]interface{}{
+					"error":   closeErr.Error(),
+					"user":    userEmail,
+					"service": h.serverName,
+				})
+			}
 		}
 		internal.LogErrorWithFields("mcp", "Failed to connect client to server", map[string]interface{}{
 			"error":   err.Error(),
@@ -177,33 +196,14 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 			}
 		}()
 	}
-	mcpServer.ServeHTTP(w, r)
+	mcpServerWrapper.SSEServer.ServeHTTP(w, r)
 }
 
-// Production client adapter - adapts client.Client to MCPClient interface
-type clientAdapter struct {
-	*client.Client
-}
+// defaultClientFactory is the production implementation
+type defaultClientFactory struct{}
 
-func (c *clientAdapter) AddToMCPServer(ctx context.Context, info mcp.Implementation, srv *server.MCPServer) error {
-	return c.Client.AddToMCPServer(ctx, info, srv)
-}
-
-func (c *clientAdapter) Close() error {
-	return c.Client.Close()
-}
-
-// Default production functions
-func defaultCreateClient(ctx context.Context, name string, config *config.MCPClientConfig) (MCPClient, error) {
-	realClient, err := client.NewMCPClient(name, config)
-	if err != nil {
-		return nil, err
-	}
-	return &clientAdapter{realClient}, nil
-}
-
-func defaultCreateServer(name, version, baseURL string, config *config.MCPClientConfig) http.Handler {
-	return client.NewMCPServer(name, version, baseURL, config).SSEServer
+func (f *defaultClientFactory) CreateClient(ctx context.Context, name string, config *config.MCPClientConfig) (*client.Client, error) {
+	return client.NewMCPClient(name, config)
 }
 
 func (h *MCPHandler) sendTokenSetupInstructions(w http.ResponseWriter, userEmail string) {
