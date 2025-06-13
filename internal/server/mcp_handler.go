@@ -18,16 +18,11 @@ import (
 type MCPHandler struct {
 	serverName     string
 	serverConfig   *config.MCPClientConfig
-	tokenStore     oauth.UserTokenStore
+	tokenStore     oauth.UserTokenStore  // nil if no OAuth configured
 	setupBaseURL   string
 	info           mcp.Implementation
-	// Accept interface for testing, return concrete types
-	clientFactory  ClientFactory
-}
-
-// ClientFactory creates MCP clients - accept interface for testability
-type ClientFactory interface {
-	CreateClient(ctx context.Context, name string, config *config.MCPClientConfig) (*client.Client, error)
+	// For testing: allow injection of client creation
+	createClient  func(name string, config *config.MCPClientConfig) (*client.Client, error)
 }
 
 // MCPClient is what we need from a client - accept interface
@@ -49,7 +44,7 @@ func NewMCPHandler(
 		tokenStore:    tokenStore,
 		setupBaseURL:  setupBaseURL,
 		info:          info,
-		clientFactory: &defaultClientFactory{},
+		createClient: client.NewMCPClient,
 	}
 }
 
@@ -60,7 +55,7 @@ func NewMCPHandlerWith(
 	tokenStore oauth.UserTokenStore,
 	setupBaseURL string,
 	info mcp.Implementation,
-	clientFactory ClientFactory,
+	createClient func(name string, config *config.MCPClientConfig) (*client.Client, error),
 ) *MCPHandler {
 	return &MCPHandler{
 		serverName:    serverName,
@@ -68,31 +63,34 @@ func NewMCPHandlerWith(
 		tokenStore:    tokenStore,
 		setupBaseURL:  setupBaseURL,
 		info:          info,
-		clientFactory: clientFactory,
+		createClient:  createClient,
 	}
 }
 
 func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user from context (set by OAuth middleware if auth is configured)
-	userEmail, ok := oauth.GetUserFromContext(ctx)
-	if !ok {
-		// If no user context and we have a token store, auth is required
-		if h.tokenStore != nil {
-			internal.LogErrorWithFields("mcp", "No user email in context", map[string]interface{}{
+	// Auth is handled by middleware. If we reach here, the request is authorized.
+	// Get user from context if OAuth middleware set it
+	userEmail, _ := oauth.GetUserFromContext(ctx)
+	// If no user in context, it means no OAuth is configured (bearer token auth or no auth)
+	// This is fine - userEmail will just be empty string
+
+	// Get user token if required
+	userToken := ""
+	if h.serverConfig.RequiresUserToken {
+		// Config validation ensures tokenStore exists if RequiresUserToken is true
+		// OAuth middleware ensures userEmail is set
+		// But let's be defensive in case middleware setup is wrong
+		if userEmail == "" {
+			// This shouldn't happen - OAuth middleware should have blocked the request
+			internal.LogErrorWithFields("mcp", "Server requires user token but no authenticated user", map[string]interface{}{
 				"service": h.serverName,
 			})
 			http.Error(w, "Authentication required", http.StatusUnauthorized)
 			return
 		}
-		// No auth configured, use empty user email
-		userEmail = ""
-	}
 
-	// Get user token if required
-	userToken := ""
-	if h.serverConfig.RequiresUserToken {
 		token, err := h.tokenStore.GetUserToken(ctx, userEmail, h.serverName)
 		if err != nil {
 			if errors.Is(err, oauth.ErrUserTokenNotFound) {
@@ -133,7 +131,7 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 	}
 
 	// Create MCP client - returns concrete type
-	mcpClient, err := h.clientFactory.CreateClient(ctx, h.serverName, config)
+	mcpClient, err := h.createClient(h.serverName, config)
 	if err != nil {
 		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
 			"error":   err.Error(),
@@ -199,12 +197,6 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 	mcpServerWrapper.SSEServer.ServeHTTP(w, r)
 }
 
-// defaultClientFactory is the production implementation
-type defaultClientFactory struct{}
-
-func (f *defaultClientFactory) CreateClient(ctx context.Context, name string, config *config.MCPClientConfig) (*client.Client, error) {
-	return client.NewMCPClient(name, config)
-}
 
 func (h *MCPHandler) sendTokenSetupInstructions(w http.ResponseWriter, userEmail string) {
 	internal.LogInfoWithFields("mcp", "Sending token setup instructions", map[string]interface{}{
