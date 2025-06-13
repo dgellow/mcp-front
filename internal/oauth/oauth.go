@@ -263,7 +263,11 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(metadata)
+	if err := json.NewEncoder(w).Encode(metadata); err != nil {
+		internal.LogErrorWithFields("oauth", "Failed to encode metadata response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // AuthorizeHandler handles OAuth 2.0 authorization requests
@@ -461,7 +465,11 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogErrorWithFields("oauth", "Failed to encode register response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // DebugClientsHandler shows all registered clients (for debugging)
@@ -485,7 +493,11 @@ func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogErrorWithFields("oauth", "Failed to encode debug response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // ValidateTokenMiddleware creates middleware that validates OAuth tokens

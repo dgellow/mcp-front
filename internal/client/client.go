@@ -158,6 +158,11 @@ func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	return nil
 }
 
+// startPingTask runs a goroutine that pings the MCP server every 30 seconds.
+// The goroutine lifecycle is tied to the provided context:
+// - For stdio clients: context is cancelled when the request ends, stopping pings
+// - For SSE/HTTP clients: context lives as long as the connection, which is correct
+// This ensures no goroutine leaks as the ping task stops when the connection closes.
 func (c *Client) startPingTask(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
