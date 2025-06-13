@@ -213,8 +213,9 @@ var tokenPageTemplate = template.Must(template.New("tokens").Parse(`
                 {{end}}
             </div>
             
-            <form method="POST" action="/my/tokens/{{.Name}}">
+            <form method="POST" action="/my/tokens/set">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="service" value="{{.Name}}">
                 <input type="password" 
                        name="token" 
                        placeholder="{{if .HasToken}}Enter new token to update{{else}}Enter your {{.DisplayName}} token{{end}}"
@@ -226,8 +227,9 @@ var tokenPageTemplate = template.Must(template.New("tokens").Parse(`
             </form>
             
             {{if .HasToken}}
-            <form method="POST" action="/my/tokens/{{.Name}}/delete" class="delete-form">
+            <form method="POST" action="/my/tokens/delete" class="delete-form">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="service" value="{{.Name}}">
                 <button type="submit" class="danger">Remove Token</button>
             </form>
             {{end}}

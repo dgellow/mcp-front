@@ -12,7 +12,14 @@ import (
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
+
+// mcpClient is the minimal interface we need from client.Client
+type mcpClient interface {
+	AddToMCPServer(ctx context.Context, info mcp.Implementation, srv *server.MCPServer) error
+	Close() error
+}
 
 // MCPHandler handles MCP requests with direct token resolution
 type MCPHandler struct {
@@ -21,6 +28,8 @@ type MCPHandler struct {
 	tokenStore     oauth.UserTokenStore
 	setupBaseURL   string
 	info           mcp.Implementation
+	// For testing: inject client creation function
+	newClient      func(string, *config.MCPClientConfig) (*client.Client, error)
 }
 
 // NewMCPHandler creates a new MCP handler
@@ -37,6 +46,7 @@ func NewMCPHandler(
 		tokenStore:   tokenStore,
 		setupBaseURL: setupBaseURL,
 		info:         info,
+		newClient: client.NewMCPClient, // Default to real implementation
 	}
 }
 
@@ -84,15 +94,11 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Handle based on server type
-	if isStdioServer(h.serverConfig) {
-		h.handleStdioRequest(ctx, w, r, userEmail, userToken)
-	} else {
-		h.handleSSERequest(ctx, w, r, userEmail, userToken)
-	}
+	// Handle the request
+	h.handleMCPRequest(ctx, w, r, userEmail, userToken)
 }
 
-func (h *MCPHandler) handleStdioRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail, userToken string) {
+func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail, userToken string) {
 	// Apply user token if needed
 	config := h.serverConfig
 	if userToken != "" && config.RequiresUserToken {
@@ -100,7 +106,7 @@ func (h *MCPHandler) handleStdioRequest(ctx context.Context, w http.ResponseWrit
 	}
 
 	// Create MCP client
-	mcpClient, err := client.NewMCPClient(h.serverName, config)
+	mcpClient, err := h.newClient(h.serverName, config)
 	if err != nil {
 		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
 			"error":   err.Error(),
@@ -110,13 +116,22 @@ func (h *MCPHandler) handleStdioRequest(ctx context.Context, w http.ResponseWrit
 		http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
 		return
 	}
-	defer mcpClient.Close()
+	
+	// For stdio servers, defer close. For SSE servers, we handle it manually.
+	isStdio := isStdioServer(config)
+	if isStdio {
+		defer mcpClient.Close()
+	}
 
 	// Create SSE server for this request
 	server := client.NewMCPServer(h.serverName, "dev", h.setupBaseURL, config)
 	
 	// Connect client to server
 	if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
+		// For SSE servers, we need to close on error since we didn't defer it
+		if !isStdio {
+			_ = mcpClient.Close()
+		}
 		internal.LogErrorWithFields("mcp", "Failed to connect client to server", map[string]interface{}{
 			"error":   err.Error(),
 			"user":    userEmail,
@@ -127,45 +142,20 @@ func (h *MCPHandler) handleStdioRequest(ctx context.Context, w http.ResponseWrit
 	}
 
 	// Handle the SSE request
-	server.SSEServer.ServeHTTP(w, r)
-}
-
-func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail, userToken string) {
-	// Apply user token if needed
-	config := h.serverConfig
-	if userToken != "" && config.RequiresUserToken {
-		config = config.ApplyUserToken(userToken)
+	// Note: For SSE servers, the connection remains open for the duration of the SSE stream
+	if !isStdio {
+		// For SSE connections, ensure cleanup when the request context is cancelled
+		go func() {
+			<-ctx.Done()
+			if err := mcpClient.Close(); err != nil {
+				internal.LogErrorWithFields("mcp", "Failed to close MCP client on context cancellation", map[string]interface{}{
+					"error":   err.Error(),
+					"user":    userEmail,
+					"service": h.serverName,
+				})
+			}
+		}()
 	}
-
-	// Create MCP client
-	mcpClient, err := client.NewMCPClient(h.serverName, config)
-	if err != nil {
-		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]interface{}{
-			"error":   err.Error(),
-			"user":    userEmail,
-			"service": h.serverName,
-		})
-		http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
-		return
-	}
-	// Note: For SSE servers, we don't defer Close() because the connection is long-lived
-
-	// Create SSE server
-	server := client.NewMCPServer(h.serverName, "dev", h.setupBaseURL, config)
-	
-	// Connect client to server
-	if err := mcpClient.AddToMCPServer(ctx, h.info, server.MCPServer); err != nil {
-		_ = mcpClient.Close()
-		internal.LogErrorWithFields("mcp", "Failed to connect client to server", map[string]interface{}{
-			"error":   err.Error(),
-			"user":    userEmail,
-			"service": h.serverName,
-		})
-		http.Error(w, "Failed to initialize service", http.StatusInternalServerError)
-		return
-	}
-
-	// Handle the SSE request
 	server.SSEServer.ServeHTTP(w, r)
 }
 

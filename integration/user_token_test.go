@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -15,7 +16,6 @@ import (
 func TestUserTokenFlow(t *testing.T) {
 	// Setup test configuration using new types
 	cfg := &config.Config{
-		Version: "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
 		Proxy: config.ProxyConfig{
 			BaseURL: "https://test.example.com",
 			Addr:    ":8080",
@@ -159,4 +159,15 @@ func createTestOAuthToken(t *testing.T, srv *httptest.Server, email string) stri
 	// This would create a test token using the OAuth server
 	// For now, return a dummy token
 	return "test-token-" + email
+}
+
+// extractCSRFToken extracts the CSRF token from the HTML response
+func extractCSRFToken(t *testing.T, html string) string {
+	// Look for <input type="hidden" name="csrf_token" value="...">
+	re := regexp.MustCompile(`<input[^>]+name="csrf_token"[^>]+value="([^"]+)"`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) < 2 {
+		t.Fatal("CSRF token not found in response")
+	}
+	return matches[1]
 }

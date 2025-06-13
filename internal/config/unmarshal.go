@@ -12,16 +12,16 @@ import (
 func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	// Use a raw type to avoid recursion
 	type rawConfig struct {
-		TransportType     MCPClientType           `json:"transportType,omitempty"`
-		Command           json.RawMessage         `json:"command,omitempty"`
-		Args              []json.RawMessage       `json:"args,omitempty"`
+		TransportType     MCPClientType              `json:"transportType,omitempty"`
+		Command           json.RawMessage            `json:"command,omitempty"`
+		Args              []json.RawMessage          `json:"args,omitempty"`
 		Env               map[string]json.RawMessage `json:"env,omitempty"`
-		URL               string                  `json:"url,omitempty"`
-		Headers           map[string]string       `json:"headers,omitempty"`
-		Timeout           time.Duration           `json:"timeout,omitempty"`
-		Options           *Options                `json:"options,omitempty"`
-		RequiresUserToken bool                    `json:"requiresUserToken,omitempty"`
-		TokenSetup        *TokenSetupConfig       `json:"tokenSetup,omitempty"`
+		URL               json.RawMessage            `json:"url,omitempty"`
+		Headers           map[string]json.RawMessage `json:"headers,omitempty"`
+		Timeout           time.Duration              `json:"timeout,omitempty"`
+		Options           *Options                   `json:"options,omitempty"`
+		RequiresUserToken bool                       `json:"requiresUserToken,omitempty"`
+		TokenSetup        *TokenSetupConfig          `json:"tokenSetup,omitempty"`
 	}
 
 	var raw rawConfig
@@ -31,8 +31,6 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 
 	// Copy simple fields
 	c.TransportType = raw.TransportType
-	c.URL = raw.URL
-	c.Headers = raw.Headers
 	c.Timeout = raw.Timeout
 	c.Options = raw.Options
 	c.RequiresUserToken = raw.RequiresUserToken
@@ -74,6 +72,26 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		c.EnvNeedsToken = needsToken
 	}
 
+	// Parse URL if present
+	if raw.URL != nil {
+		parsed, err := parseConfigValue(raw.URL)
+		if err != nil {
+			return fmt.Errorf("parsing url: %w", err)
+		}
+		c.URL = parsed.value
+		c.URLNeedsToken = parsed.needsUserToken
+	}
+
+	// Parse headers if present
+	if len(raw.Headers) > 0 {
+		values, needsToken, err := parseConfigValueMap(raw.Headers)
+		if err != nil {
+			return fmt.Errorf("parsing headers: %w", err)
+		}
+		c.Headers = values
+		c.HeadersNeedToken = needsToken
+	}
+
 	// Compile token format regex if present
 	if c.TokenSetup != nil && c.TokenSetup.TokenFormat != "" {
 		regex, err := regexp.Compile(c.TokenSetup.TokenFormat)
@@ -94,6 +112,7 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 		Issuer              json.RawMessage         `json:"issuer"`
 		GCPProject          json.RawMessage         `json:"gcpProject"`
 		AllowedDomains      []string                `json:"allowedDomains"`
+		AllowedOrigins      []string                `json:"allowedOrigins"`
 		TokenTTL            string                  `json:"tokenTtl"`
 		Storage             string                  `json:"storage"`
 		FirestoreDatabase   string                  `json:"firestoreDatabase,omitempty"`
@@ -113,6 +132,7 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 	// Copy simple fields
 	o.Kind = raw.Kind
 	o.AllowedDomains = raw.AllowedDomains
+	o.AllowedOrigins = raw.AllowedOrigins
 	o.TokenTTL = raw.TokenTTL
 	o.Storage = raw.Storage
 	o.FirestoreDatabase = raw.FirestoreDatabase
@@ -268,9 +288,28 @@ func (c *MCPClientConfig) ApplyUserToken(userToken string) *MCPClientConfig {
 		}
 	}
 
+	// Apply token to URL if needed
+	if c.URLNeedsToken {
+		result.URL = strings.ReplaceAll(c.URL, "{{token}}", userToken)
+	}
+
+	// Copy and apply token to headers
+	if c.Headers != nil {
+		result.Headers = make(map[string]string, len(c.Headers))
+		for key, value := range c.Headers {
+			if c.HeadersNeedToken != nil && c.HeadersNeedToken[key] {
+				result.Headers[key] = strings.ReplaceAll(value, "{{token}}", userToken)
+			} else {
+				result.Headers[key] = value
+			}
+		}
+	}
+
 	// Clear the tracking maps in the copy as they're no longer needed
 	result.EnvNeedsToken = nil
 	result.ArgsNeedToken = nil
+	result.URLNeedsToken = false
+	result.HeadersNeedToken = nil
 
 	return &result
 }

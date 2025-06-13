@@ -161,6 +161,43 @@ func TestMCPClientConfig_ApplyUserToken(t *testing.T) {
 	assert.Nil(t, result.ArgsNeedToken)
 }
 
+func TestApplyUserToken_SSE(t *testing.T) {
+	// Test SSE/HTTP config with user tokens in URL and headers
+	jsonStr := `{
+		"transportType": "sse",
+		"url": {"$userToken": "https://api.example.com/mcp?token={{token}}"},
+		"headers": {
+			"Authorization": {"$userToken": "Bearer {{token}}"},
+			"X-API-Version": "v1"
+		},
+		"requiresUserToken": true
+	}`
+
+	var config MCPClientConfig
+	err := json.Unmarshal([]byte(jsonStr), &config)
+	require.NoError(t, err)
+
+	// Check parsed values
+	assert.Equal(t, "https://api.example.com/mcp?token={{token}}", config.URL)
+	assert.True(t, config.URLNeedsToken)
+	assert.Equal(t, "Bearer {{token}}", config.Headers["Authorization"])
+	assert.Equal(t, "v1", config.Headers["X-API-Version"])
+	assert.True(t, config.HeadersNeedToken["Authorization"])
+	assert.False(t, config.HeadersNeedToken["X-API-Version"])
+
+	// Apply token
+	result := config.ApplyUserToken("test-token-123")
+
+	// Check substitutions
+	assert.Equal(t, "https://api.example.com/mcp?token=test-token-123", result.URL)
+	assert.Equal(t, "Bearer test-token-123", result.Headers["Authorization"])
+	assert.Equal(t, "v1", result.Headers["X-API-Version"]) // unchanged
+
+	// Tracking should be cleared
+	assert.False(t, result.URLNeedsToken)
+	assert.Nil(t, result.HeadersNeedToken)
+}
+
 func TestOAuthAuthConfig_UnmarshalJSON(t *testing.T) {
 	// Set up test env vars
 	os.Setenv("CLIENT_SECRET", "test-secret-value")
@@ -177,6 +214,7 @@ func TestOAuthAuthConfig_UnmarshalJSON(t *testing.T) {
 		"issuer": "https://example.com",
 		"gcpProject": "test-project",
 		"allowedDomains": ["example.com"],
+		"allowedOrigins": ["https://claude.ai", "https://example.com"],
 		"tokenTtl": "1h",
 		"storage": "firestore",
 		"googleClientId": "test-client-id",
@@ -194,6 +232,7 @@ func TestOAuthAuthConfig_UnmarshalJSON(t *testing.T) {
 	assert.Equal(t, "https://example.com", config.Issuer)
 	assert.Equal(t, "test-project", config.GCPProject)
 	assert.Equal(t, []string{"example.com"}, config.AllowedDomains)
+	assert.Equal(t, []string{"https://claude.ai", "https://example.com"}, config.AllowedOrigins)
 	assert.Equal(t, "test-client-id", config.GoogleClientID)
 	assert.Equal(t, "test-secret-value", config.GoogleClientSecret)
 	assert.Equal(t, "this-is-a-very-long-jwt-secret-key", config.JWTSecret)

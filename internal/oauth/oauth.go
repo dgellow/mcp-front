@@ -80,6 +80,7 @@ type Config struct {
 	Issuer              string
 	TokenTTL            time.Duration
 	AllowedDomains      []string
+	AllowedOrigins      []string // For CORS validation
 	GoogleClientID      string
 	GoogleClientSecret  string
 	GoogleRedirectURI   string
