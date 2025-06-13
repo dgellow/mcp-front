@@ -144,11 +144,10 @@ func (h *MCPHandler) handleMCPRequest(ctx context.Context, w http.ResponseWriter
 	// Handle the SSE request
 	// Note: For SSE servers, the connection remains open for the duration of the SSE stream
 	if !isStdio {
-		// For SSE connections, ensure cleanup when the request context is cancelled
-		go func() {
-			<-ctx.Done()
+		// For SSE connections, ensure cleanup when done
+		defer func() {
 			if err := mcpClient.Close(); err != nil {
-				internal.LogErrorWithFields("mcp", "Failed to close MCP client on context cancellation", map[string]interface{}{
+				internal.LogErrorWithFields("mcp", "Failed to close MCP client", map[string]interface{}{
 					"error":   err.Error(),
 					"user":    userEmail,
 					"service": h.serverName,
@@ -214,7 +213,9 @@ func (h *MCPHandler) sendTokenSetupInstructions(w http.ResponseWriter, userEmail
 	// Marshal and send as SSE event
 	data, _ := json.Marshal(errorEvent)
 	fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
-	w.(http.Flusher).Flush()
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // isStdioServer checks if this is a stdio-based server
