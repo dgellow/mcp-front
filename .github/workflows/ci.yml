@@ -82,9 +82,11 @@ jobs:
         JWT_SECRET: test-jwt-secret-that-is-32-bytes!
         DATABASE_URL: postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable
         # Shorter timeouts for CI environment
-        TEST_CLEANUP_WAIT_SECONDS: 8
-        TEST_TIMER_RESET_WAIT_SECONDS: 6
-        TEST_MULTI_USER_WAIT_SECONDS: 10
+        SESSION_TIMEOUT: 5s
+        SESSION_CLEANUP_INTERVAL: 1s
+        TEST_CLEANUP_WAIT_TIME: 15s
+        TEST_TIMER_RESET_WAIT_TIME: 15s
+        TEST_MULTI_USER_WAIT_TIME: 15s
       run: |
         cd integration
         go test -v -timeout 2m

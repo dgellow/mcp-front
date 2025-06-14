@@ -1,8 +1,6 @@
 package integration
 
 import (
-	"os"
-	"strconv"
 	"testing"
 	"time"
 
@@ -10,15 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// getTestTimeout returns the test timeout from environment or default
-func getTestTimeout(envVar string, defaultDuration time.Duration) time.Duration {
-	if timeoutStr := os.Getenv(envVar); timeoutStr != "" {
-		if seconds, err := strconv.Atoi(timeoutStr); err == nil && seconds > 0 {
-			return time.Duration(seconds) * time.Second
-		}
-	}
-	return defaultDuration
-}
 
 // TestMultiUserSessionIsolation validates that multiple users have separate stdio instances
 func TestMultiUserSessionIsolation(t *testing.T) {
@@ -224,13 +213,9 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
-	// Start mcp-front with shorter timeout for testing
-	// The default is 5 minutes, but we'll set it to 10 seconds for testing
-	trace(t, "Starting mcp-front with short session timeout")
-	mcpCmd := startMCPFront(t, "config/config.test.json",
-		"SESSION_TIMEOUT=10s",
-		"SESSION_CLEANUP_INTERVAL=2s",
-	)
+	// Start mcp-front with test timeout configuration
+	trace(t, "Starting mcp-front with test session timeout")
+	mcpCmd := startMCPFront(t, "config/config.test.json")
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
@@ -278,8 +263,9 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	assert.GreaterOrEqual(t, len(containersAfterClose), len(containersAfterConnect),
 		"Container was removed immediately after close (should remain until timeout)")
 
-	// Wait for timeout + cleanup interval (10s + 2s + buffer)
-	waitTime := getTestTimeout("TEST_CLEANUP_WAIT_SECONDS", 15*time.Second)
+	// Wait for timeout + cleanup interval
+	testConfig := GetTestConfig()
+	waitTime, _ := time.ParseDuration(testConfig.CleanupWaitTime)
 	t.Logf("Waiting %v for session timeout and cleanup...", waitTime)
 	time.Sleep(waitTime)
 
@@ -297,12 +283,9 @@ func TestSessionTimerReset(t *testing.T) {
 	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
-	// Start mcp-front with shorter timeout for testing
-	trace(t, "Starting mcp-front with short session timeout")
-	mcpCmd := startMCPFront(t, "config/config.test.json",
-		"SESSION_TIMEOUT=8s",
-		"SESSION_CLEANUP_INTERVAL=2s",
-	)
+	// Start mcp-front with test timeout configuration
+	trace(t, "Starting mcp-front with test session timeout")
+	mcpCmd := startMCPFront(t, "config/config.test.json")
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
@@ -362,7 +345,8 @@ func TestSessionTimerReset(t *testing.T) {
 	client.Close()
 
 	// Wait for timeout
-	waitTime := getTestTimeout("TEST_TIMER_RESET_WAIT_SECONDS", 12*time.Second)
+	testConfig := GetTestConfig()
+	waitTime, _ := time.ParseDuration(testConfig.TimerResetWaitTime)
 	t.Logf("Waiting %v for session timeout...", waitTime)
 	time.Sleep(waitTime)
 
@@ -380,12 +364,9 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
-	// Start mcp-front with shorter timeout for testing
-	trace(t, "Starting mcp-front with short session timeout")
-	mcpCmd := startMCPFront(t, "config/config.test.json",
-		"SESSION_TIMEOUT=10s",
-		"SESSION_CLEANUP_INTERVAL=2s",
-	)
+	// Start mcp-front with test timeout configuration
+	trace(t, "Starting mcp-front with test session timeout")
+	mcpCmd := startMCPFront(t, "config/config.test.json")
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
@@ -453,8 +434,9 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 		}
 	}()
 
-	// Wait for client1's timeout (10s + cleanup interval)
-	waitTime := getTestTimeout("TEST_MULTI_USER_WAIT_SECONDS", 15*time.Second)
+	// Wait for client1's timeout
+	testConfig := GetTestConfig()
+	waitTime, _ := time.ParseDuration(testConfig.MultiUserWaitTime)
 	t.Logf("Waiting %v for client1 timeout while client2 stays active...", waitTime)
 	time.Sleep(waitTime)
 
