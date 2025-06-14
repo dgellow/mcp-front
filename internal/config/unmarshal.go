@@ -108,20 +108,20 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 	// Use a raw type to parse references
 	type rawOAuth struct {
-		Kind                AuthKind                `json:"kind"`
-		Issuer              json.RawMessage         `json:"issuer"`
-		GCPProject          json.RawMessage         `json:"gcpProject"`
-		AllowedDomains      []string                `json:"allowedDomains"`
-		AllowedOrigins      []string                `json:"allowedOrigins"`
-		TokenTTL            string                  `json:"tokenTtl"`
-		Storage             string                  `json:"storage"`
-		FirestoreDatabase   string                  `json:"firestoreDatabase,omitempty"`
-		FirestoreCollection string                  `json:"firestoreCollection,omitempty"`
-		GoogleClientID      json.RawMessage         `json:"googleClientId"`
-		GoogleClientSecret  json.RawMessage         `json:"googleClientSecret"`
-		GoogleRedirectURI   json.RawMessage         `json:"googleRedirectUri"`
-		JWTSecret           json.RawMessage         `json:"jwtSecret"`
-		EncryptionKey       json.RawMessage         `json:"encryptionKey,omitempty"`
+		Kind                AuthKind        `json:"kind"`
+		Issuer              json.RawMessage `json:"issuer"`
+		GCPProject          json.RawMessage `json:"gcpProject"`
+		AllowedDomains      []string        `json:"allowedDomains"`
+		AllowedOrigins      []string        `json:"allowedOrigins"`
+		TokenTTL            string          `json:"tokenTtl"`
+		Storage             string          `json:"storage"`
+		FirestoreDatabase   string          `json:"firestoreDatabase,omitempty"`
+		FirestoreCollection string          `json:"firestoreCollection,omitempty"`
+		GoogleClientID      json.RawMessage `json:"googleClientId"`
+		GoogleClientSecret  json.RawMessage `json:"googleClientSecret"`
+		GoogleRedirectURI   json.RawMessage `json:"googleRedirectUri"`
+		JWTSecret           json.RawMessage `json:"jwtSecret"`
+		EncryptionKey       json.RawMessage `json:"encryptionKey,omitempty"`
 	}
 
 	var raw rawOAuth
@@ -140,9 +140,9 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse fields that can be references
 	fields := []struct {
-		name   string
-		raw    json.RawMessage
-		target *string
+		name           string
+		raw            json.RawMessage
+		target         *string
 		allowUserToken bool
 	}{
 		{"issuer", raw.Issuer, &o.Issuer, false},
@@ -263,7 +263,7 @@ func (c *MCPClientConfig) ApplyUserToken(userToken string) *MCPClientConfig {
 
 	// Create a copy
 	result := *c
-	
+
 	// Copy and apply token to env vars
 	if c.Env != nil {
 		result.Env = make(map[string]string, len(c.Env))

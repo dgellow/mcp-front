@@ -19,22 +19,10 @@ import (
 // This includes all OAuth flows, JWT validation, client registration,
 // state parameter handling, and environment-specific behavior
 func TestOAuthIntegration(t *testing.T) {
-	// Start test database
-	dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
-	if err := dbCmd.Run(); err != nil {
-		t.Fatalf("Failed to start test database: %v", err)
-	}
+	closeDB := startTestDB(t)
+	defer closeDB()
 
-	// Ensure cleanup
-	t.Cleanup(func() {
-		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-		if err := downCmd.Run(); err != nil {
-			t.Logf("Warning: cleanup failed: %v", err)
-		}
-	})
-
-	// Wait for database
-	waitForDatabase(t)
+	waitForDB(t)
 
 	// Start mock GCP server for OAuth
 	mockGCP := NewMockGCPServer("9090")
@@ -665,26 +653,6 @@ func registerTestClient(t *testing.T) string {
 	var clientResp map[string]interface{}
 	_ = json.NewDecoder(resp.Body).Decode(&clientResp)
 	return clientResp["client_id"].(string)
-}
-
-func waitForDatabase(t *testing.T) {
-	for i := 0; i < 60; i++ {
-		// Check if container is running
-		psCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "ps", "-q", "test-postgres")
-		if output, err := psCmd.Output(); err != nil || len(output) == 0 {
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		// Check if database is ready
-		checkCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "exec", "-T", "test-postgres", "pg_isready", "-U", "testuser", "-d", "testdb")
-		if err := checkCmd.Run(); err == nil {
-			return
-		}
-		time.Sleep(1 * time.Second)
-	}
-
-	t.Fatal("Database failed to become ready after 60 seconds")
 }
 
 func contains(s, substr string) bool {

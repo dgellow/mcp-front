@@ -10,17 +10,10 @@ import (
 )
 
 func TestSecurityScenarios(t *testing.T) {
-	// Start test database first
-	dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
-	if err := dbCmd.Run(); err != nil {
-		t.Fatalf("Failed to start test database: %v", err)
-	}
-	defer func() {
-		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-		_ = downCmd.Run()
-	}()
+	closeDB := startTestDB(t)
+	defer closeDB()
 
-	time.Sleep(10 * time.Second)
+	waitForDB(t)
 
 	// Start mcp-front
 	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.test.json")
@@ -34,7 +27,7 @@ func TestSecurityScenarios(t *testing.T) {
 		}
 	}()
 
-	time.Sleep(15 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	t.Run("NoAuthToken", func(t *testing.T) {
 		// Test:
@@ -319,16 +312,10 @@ func TestFailureScenarios(t *testing.T) {
 	// Testing failure scenarios
 
 	t.Run("FailsWithWrongAuth", func(t *testing.T) {
-		dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
-		if err := dbCmd.Run(); err != nil {
-			t.Fatalf("Failed to start test database: %v", err)
-		}
-		defer func() {
-			downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-			_ = downCmd.Run()
-		}()
+		closeDB := startTestDB(t)
+		defer closeDB()
 
-		time.Sleep(10 * time.Second)
+		waitForDB(t)
 
 		mcpCmd := exec.Command("../mcp-front", "-config", "config/config.test.json")
 		if err := mcpCmd.Start(); err != nil {
@@ -341,7 +328,7 @@ func TestFailureScenarios(t *testing.T) {
 			}
 		}()
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		// Test comprehensive token validation
 		testCases := []struct {

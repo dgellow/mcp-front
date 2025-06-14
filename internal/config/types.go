@@ -62,23 +62,23 @@ type BearerTokenAuthConfig struct {
 }
 
 // MCPClientConfig represents the configuration for an MCP client after parsing.
-// 
+//
 // Environment variable references using {"$env": "VAR_NAME"} syntax are resolved
 // at config load time. This explicit JSON syntax was chosen over bash-like $VAR
 // substitution for important security reasons:
 //
-// 1. Shell Safety: Config files are often manipulated in shell contexts (startup
-//    scripts, CI/CD pipelines). Using $VAR could lead to accidental expansion by
-//    the shell before the config is parsed.
+//  1. Shell Safety: Config files are often manipulated in shell contexts (startup
+//     scripts, CI/CD pipelines). Using $VAR could lead to accidental expansion by
+//     the shell before the config is parsed.
 //
-// 2. Unambiguous Intent: {"$env": "X"} clearly indicates this is a reference to
-//    be resolved by our application, not a literal string containing $.
+//  2. Unambiguous Intent: {"$env": "X"} clearly indicates this is a reference to
+//     be resolved by our application, not a literal string containing $.
 //
-// 3. Nested Value Safety: If an environment variable value contains $, it won't
-//    be accidentally re-expanded.
+//  3. Nested Value Safety: If an environment variable value contains $, it won't
+//     be accidentally re-expanded.
 //
-// 4. Type Safety: The JSON structure allows us to validate references at parse
-//    time rather than discovering invalid patterns at runtime.
+//  4. Type Safety: The JSON structure allows us to validate references at parse
+//     time rather than discovering invalid patterns at runtime.
 //
 // User token references using {"$userToken": "...{{token}}..."} follow the same
 // pattern but are resolved at request time with the authenticated user's token.
@@ -113,10 +113,10 @@ type OAuthAuthConfig struct {
 	Kind                AuthKind `json:"kind"`
 	Issuer              string   `json:"issuer"`
 	GCPProject          string   `json:"gcpProject"`
-	AllowedDomains      []string `json:"allowedDomains"`      // For Google OAuth email validation
-	AllowedOrigins      []string `json:"allowedOrigins"`      // For CORS validation
+	AllowedDomains      []string `json:"allowedDomains"` // For Google OAuth email validation
+	AllowedOrigins      []string `json:"allowedOrigins"` // For CORS validation
 	TokenTTL            string   `json:"tokenTtl"`
-	Storage             string   `json:"storage"`              // "memory" or "firestore"
+	Storage             string   `json:"storage"`                       // "memory" or "firestore"
 	FirestoreDatabase   string   `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name
 	FirestoreCollection string   `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name
 	GoogleClientID      string   `json:"googleClientId"`
@@ -143,7 +143,7 @@ type Config struct {
 // RawConfigValue represents a value that could be a string, env ref, or user token ref
 // This is only used during parsing, not in the final config
 type RawConfigValue struct {
-	value         string
+	value          string
 	needsUserToken bool
 }
 

@@ -88,7 +88,7 @@ func TestEncryptorUniqueness(t *testing.T) {
 	}
 
 	plaintext := "test secret"
-	
+
 	// Encrypt same plaintext multiple times
 	ciphertext1, err := enc.Encrypt(plaintext)
 	if err != nil {
@@ -122,7 +122,7 @@ func TestDecryptInvalidInput(t *testing.T) {
 		ciphertext string
 	}{
 		{"invalid base64", "not-base64!@#$"},
-		{"too short", "YQ=="}, // just "a" in base64
+		{"too short", "YQ=="},                   // just "a" in base64
 		{"random valid base64", "dGVzdCBkYXRh"}, // "test data" - not encrypted
 	}
 

@@ -23,9 +23,9 @@ var _ fosite.Storage = (*Storage)(nil)
 // It extends the MemoryStore with thread-safe client management
 type Storage struct {
 	*storage.MemoryStore
-	stateCache     sync.Map      // map[string]fosite.AuthorizeRequester
-	clientsMutex   sync.RWMutex  // For thread-safe client access
-	userTokens     map[string]string // map["email:service"] = token
+	stateCache      sync.Map          // map[string]fosite.AuthorizeRequester
+	clientsMutex    sync.RWMutex      // For thread-safe client access
+	userTokens      map[string]string // map["email:service"] = token
 	userTokensMutex sync.RWMutex
 }
 
@@ -128,7 +128,7 @@ func (s *Storage) makeUserTokenKey(userEmail, service string) string {
 func (s *Storage) GetUserToken(ctx context.Context, userEmail, service string) (string, error) {
 	s.userTokensMutex.RLock()
 	defer s.userTokensMutex.RUnlock()
-	
+
 	key := s.makeUserTokenKey(userEmail, service)
 	token, exists := s.userTokens[key]
 	if !exists {
@@ -141,7 +141,7 @@ func (s *Storage) GetUserToken(ctx context.Context, userEmail, service string) (
 func (s *Storage) SetUserToken(ctx context.Context, userEmail, service, token string) error {
 	s.userTokensMutex.Lock()
 	defer s.userTokensMutex.Unlock()
-	
+
 	key := s.makeUserTokenKey(userEmail, service)
 	s.userTokens[key] = token
 	return nil
@@ -151,7 +151,7 @@ func (s *Storage) SetUserToken(ctx context.Context, userEmail, service, token st
 func (s *Storage) DeleteUserToken(ctx context.Context, userEmail, service string) error {
 	s.userTokensMutex.Lock()
 	defer s.userTokensMutex.Unlock()
-	
+
 	key := s.makeUserTokenKey(userEmail, service)
 	delete(s.userTokens, key)
 	return nil
@@ -161,7 +161,7 @@ func (s *Storage) DeleteUserToken(ctx context.Context, userEmail, service string
 func (s *Storage) ListUserServices(ctx context.Context, userEmail string) ([]string, error) {
 	s.userTokensMutex.RLock()
 	defer s.userTokensMutex.RUnlock()
-	
+
 	var services []string
 	prefix := userEmail + ":"
 	for key := range s.userTokens {

@@ -30,7 +30,6 @@ type MCPClientInterface interface {
 	Close() error
 }
 
-
 // TransportCreator creates the underlying MCP transport client
 type TransportCreator func(conf *config.MCPClientConfig) (MCPClientInterface, error)
 
@@ -55,11 +54,11 @@ func NewMCPClientWith(name string, conf *config.MCPClientConfig, createTransport
 	if err != nil {
 		return nil, fmt.Errorf("creating transport: %w", err)
 	}
-	
+
 	// Determine if we need ping/manual start based on transport type
 	needPing := conf.URL != ""
 	needManualStart := conf.URL != ""
-	
+
 	return &Client{
 		name:            name,
 		needPing:        needPing,
@@ -326,45 +325,3 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// Server represents an MCP server with SSE transport
-type Server struct {
-	Tokens    []string
-	MCPServer *server.MCPServer
-	SSEServer *server.SSEServer
-}
-
-// NewMCPServer creates a new MCP server
-func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientConfig) *Server {
-	serverOpts := []server.ServerOption{
-		server.WithResourceCapabilities(true, true),
-		server.WithRecovery(),
-		server.WithLogging(), // Always enable MCP server logging
-	}
-	mcpServer := server.NewMCPServer(
-		name,
-		version,
-		serverOpts...,
-	)
-	sseServer := server.NewSSEServer(mcpServer,
-		server.WithStaticBasePath(name),
-		server.WithBaseURL(baseURL),
-	)
-
-	srv := &Server{
-		MCPServer: mcpServer,
-		SSEServer: sseServer,
-	}
-
-	if clientConfig.Options != nil && len(clientConfig.Options.AuthTokens) > 0 {
-		srv.Tokens = clientConfig.Options.AuthTokens
-	}
-
-	return srv
-}
-
-// Close closes the SSE server
-func (s *Server) Close() error {
-	// SSE server doesn't have a Close method in the current implementation
-	// This is a placeholder for future implementation
-	return nil
-}

@@ -8,16 +8,20 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 // Server represents the MCP proxy server
 type Server struct {
-	mux          *http.ServeMux
-	config       *config.Config
-	oauthServer  *oauth.Server
+	mux            *http.ServeMux
+	config         *config.Config
+	oauthServer    *oauth.Server
+	sessionManager *client.StdioSessionManager
+	sseServers     map[string]*server.SSEServer // serverName -> SSE server for stdio servers
 }
 
 // NewServer creates a new MCP proxy server handler
@@ -28,11 +32,21 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	mux := http.NewServeMux()
+
+	// Create session manager for stdio servers
+	sessionManager := client.NewStdioSessionManager(
+		client.WithTimeout(5*time.Minute),
+		client.WithMaxPerUser(10),
+		client.WithCleanupInterval(1*time.Minute),
+	)
+
 	s := &Server{
-		mux:    mux,
-		config: cfg,
+		mux:            mux,
+		config:         cfg,
+		sessionManager: sessionManager,
+		sseServers:     make(map[string]*server.SSEServer),
 	}
-	
+
 	// Build list of allowed CORS origins
 	var allowedOrigins []string
 	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
@@ -103,7 +117,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			loggerMiddleware("tokens"),
 			s.oauthServer.ValidateTokenMiddleware(),
 		}
-		
+
 		// Token management UI endpoints
 		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/set", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...))
@@ -114,27 +128,92 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	for serverName, serverConfig := range cfg.MCPServers {
 		// Build path like /notion/sse
 		ssePathPrefix := "/" + serverName + "/sse"
-		stdioPath := "/" + serverName + "/stdio"
 
 		internal.LogInfoWithFields("server", "Registering MCP server", map[string]interface{}{
-			"name":          serverName,
-			"sse_path":      ssePathPrefix,
-			"stdio_path":    stdioPath,
+			"name":                serverName,
+			"sse_path":            ssePathPrefix,
+			"transport_type":      serverConfig.TransportType,
 			"requires_user_token": serverConfig.RequiresUserToken,
 		})
+
+		// For stdio servers, create a single shared MCP server
+		if isStdioServer(serverConfig) {
+			// Create the shared MCP server for this stdio server
+			// We need to create it first so we can reference it in the hooks
+			var mcpServer *server.MCPServer
+			
+			// Create hooks for session management
+			hooks := &server.Hooks{}
+			
+			// Store reference to server name for use in hooks
+			currentServerName := serverName
+			
+			// Setup hooks that will be called when sessions are created/destroyed
+			hooks.AddOnRegisterSession(func(sessionCtx context.Context, session server.ClientSession) {
+				// Extract handler from context
+				if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
+					// Pass the MCP server to the handler
+					handler.mcpServer = mcpServer
+					// Handle session registration
+					handleSessionRegistration(sessionCtx, session, handler, s.sessionManager)
+				} else {
+					internal.LogErrorWithFields("server", "No session handler in context", map[string]interface{}{
+						"sessionID": session.SessionID(),
+						"server":    currentServerName,
+					})
+				}
+			})
+			
+			hooks.AddOnUnregisterSession(func(sessionCtx context.Context, session server.ClientSession) {
+				// Extract handler from context
+				if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
+					// Handle session cleanup
+					key := client.SessionKey{
+						UserEmail:  handler.userEmail,
+						ServerName: handler.h.serverName,
+						SessionID:  session.SessionID(),
+					}
+					s.sessionManager.RemoveSession(key)
+					internal.LogDebugWithFields("server", "Session unregistered", map[string]interface{}{
+						"sessionID": session.SessionID(),
+						"server":    currentServerName,
+						"user":      handler.userEmail,
+					})
+				}
+			})
+			
+			// Now create the MCP server with the hooks
+			mcpServer = server.NewMCPServer(serverName, "1.0.0",
+				server.WithHooks(hooks),
+				server.WithPromptCapabilities(true),
+				server.WithResourceCapabilities(true, true),
+				server.WithToolCapabilities(true),
+				server.WithLogging(),
+			)
+			
+			// Create the SSE server wrapper around the MCP server
+			sseServer := server.NewSSEServer(mcpServer,
+				server.WithStaticBasePath(serverName),
+				server.WithBaseURL(baseURL.String()),
+			)
+			
+			s.sseServers[serverName] = sseServer
+		}
 
 		// Create handler
 		var tokenStore oauth.UserTokenStore
 		if s.oauthServer != nil {
 			tokenStore = s.oauthServer.GetUserTokenStore()
 		}
-		
+
 		handler := NewMCPHandler(
 			serverName,
 			serverConfig,
 			tokenStore,
 			baseURL.String(),
 			info,
+			s.sessionManager,
+			s.sseServers[serverName], // Pass the shared MCP server (nil for non-stdio)
 		)
 
 		// Setup middlewares
@@ -157,9 +236,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 		// else: no auth required for this endpoint
 
-		// Register handler
-		mux.Handle(ssePathPrefix, chainMiddleware(handler, middlewares...))
-		
+		// Register handler - SSE server needs to handle all paths under the server name
+		// It handles both /postgres/sse and /postgres/message endpoints
+		mux.Handle("/"+serverName+"/", chainMiddleware(handler, middlewares...))
+
 		// For backward compatibility, also register without /sse suffix for SSE servers
 		if serverConfig.URL != "" {
 			ssePath := "/" + serverName
@@ -169,8 +249,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	internal.LogInfoWithFields("server", "MCP proxy server initialized", nil)
@@ -182,3 +263,80 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// Shutdown gracefully shuts down the server
+func (s *Server) Shutdown() error {
+	if s.sessionManager != nil {
+		s.sessionManager.Shutdown()
+	}
+	return nil
+}
+
+// isStdioServer checks if this is a stdio-based server
+func isStdioServer(config *config.MCPClientConfig) bool {
+	return config.Command != ""
+}
+
+// sessionHandlerKey is the context key for session handlers
+type sessionHandlerKey struct{}
+
+// sessionRequestHandler handles session-specific logic for a request
+type sessionRequestHandler struct {
+	h         *MCPHandler
+	userEmail string
+	config    *config.MCPClientConfig
+	mcpServer *server.MCPServer // The shared MCP server
+}
+
+// handleSessionRegistration handles the registration of a new session
+func handleSessionRegistration(
+	sessionCtx context.Context,
+	session server.ClientSession,
+	handler *sessionRequestHandler,
+	sessionManager *client.StdioSessionManager,
+) {
+	// Create stdio process for this session
+	key := client.SessionKey{
+		UserEmail:  handler.userEmail,
+		ServerName: handler.h.serverName,
+		SessionID:  session.SessionID(),
+	}
+
+	internal.LogDebugWithFields("server", "Registering session", map[string]interface{}{
+		"sessionID": session.SessionID(),
+		"server":    handler.h.serverName,
+		"user":      handler.userEmail,
+	})
+
+	stdioSession, err := sessionManager.GetOrCreateSession(
+		sessionCtx,
+		key,
+		handler.config,
+		handler.h.info,
+		handler.h.setupBaseURL,
+	)
+	if err != nil {
+		internal.LogErrorWithFields("server", "Failed to create stdio session", map[string]interface{}{
+			"error":     err.Error(),
+			"sessionID": session.SessionID(),
+			"server":    handler.h.serverName,
+			"user":      handler.userEmail,
+		})
+		return
+	}
+
+	// Connect stdio client directly to the shared MCP server
+	if err := stdioSession.GetClient().AddToMCPServer(sessionCtx, handler.h.info, handler.mcpServer); err != nil {
+		internal.LogErrorWithFields("server", "Failed to connect client to server", map[string]interface{}{
+			"error":     err.Error(),
+			"sessionID": session.SessionID(),
+			"server":    handler.h.serverName,
+			"user":      handler.userEmail,
+		})
+		sessionManager.RemoveSession(key)
+		return
+	}
+
+	// Note: We don't need to store anything in the session anymore
+	// The stdio client is connected directly to the shared MCP server
+	// Capabilities are automatically registered on the shared MCP server
+}
