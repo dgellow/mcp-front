@@ -82,7 +82,7 @@ func showTestFailureDiagnostics(logFile string) {
 	logsCmd := exec.Command("docker", "compose", "logs", "--tail=50")
 	logsCmd.Stdout = os.Stdout
 	logsCmd.Stderr = os.Stderr
-	logsCmd.Run()
+	_ = logsCmd.Run()
 
 	// Show mcp-front logs if available
 	if _, err := os.Stat(logFile); err == nil {
@@ -91,7 +91,7 @@ func showTestFailureDiagnostics(logFile string) {
 		tailCmd := exec.Command("tail", "-50", logFile)
 		tailCmd.Stdout = os.Stdout
 		tailCmd.Stderr = os.Stderr
-		tailCmd.Run()
+		_ = tailCmd.Run()
 	}
 
 	fmt.Println("\n==============================================")
