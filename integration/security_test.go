@@ -79,7 +79,7 @@ func TestSecurityScenarios(t *testing.T) {
 	})
 
 	t.Run("SQLInjectionAttempts", func(t *testing.T) {
-		// Test:
+		t.Skip("Skipping SQL injection tests, it's not a responsibility of mcp-front to guard mcp/postgres")
 
 		client := NewMCPClient("http://localhost:8080")
 		_ = client.Authenticate()
