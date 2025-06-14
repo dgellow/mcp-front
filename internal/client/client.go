@@ -324,4 +324,3 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
-
