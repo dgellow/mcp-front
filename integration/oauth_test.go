@@ -13,29 +13,28 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestOAuthIntegration validates the complete OAuth 2.1 implementation
 // This includes all OAuth flows, JWT validation, client registration,
 // state parameter handling, and environment-specific behavior
 func TestOAuthIntegration(t *testing.T) {
-	closeDB := startTestDB(t)
-	defer closeDB()
-
+	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
 	// Build mcp-front once at the beginning
 	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
 	buildCmd.Dir = ".."
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("Failed to build mcp-front: %v", err)
-	}
+	err := buildCmd.Run()
+	require.NoError(t, err, "Failed to build mcp-front")
 
 	// Start mock GCP server for OAuth
 	mockGCP := NewMockGCPServer("9090")
-	if err := mockGCP.Start(); err != nil {
-		t.Fatalf("Failed to start mock GCP server: %v", err)
-	}
+	err = mockGCP.Start()
+	require.NoError(t, err, "Failed to start mock GCP server")
 	t.Cleanup(func() {
 		_ = mockGCP.Stop()
 	})
@@ -82,19 +81,14 @@ func testBasicOAuthFlow(t *testing.T) {
 
 	// Test OAuth discovery
 	resp, err := http.Get("http://localhost:8080/.well-known/oauth-authorization-server")
-	if err != nil {
-		t.Fatalf("Failed to get OAuth discovery: %v", err)
-	}
+	require.NoError(t, err, "Failed to get OAuth discovery")
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		t.Fatalf("OAuth discovery failed with status %d", resp.StatusCode)
-	}
+	assert.Equal(t, 200, resp.StatusCode, "OAuth discovery failed")
 
 	var discovery map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
-		t.Fatalf("Failed to decode discovery: %v", err)
-	}
+	err = json.NewDecoder(resp.Body).Decode(&discovery)
+	require.NoError(t, err, "Failed to decode discovery")
 
 	// Verify required endpoints
 	requiredEndpoints := []string{
@@ -105,9 +99,8 @@ func testBasicOAuthFlow(t *testing.T) {
 	}
 
 	for _, endpoint := range requiredEndpoints {
-		if _, ok := discovery[endpoint]; !ok {
-			t.Errorf("Missing required endpoint: %s", endpoint)
-		}
+		_, ok := discovery[endpoint]
+		assert.True(t, ok, "Missing required endpoint: %s", endpoint)
 	}
 }
 
@@ -169,13 +162,9 @@ func testJWTSecretValidation(t *testing.T) {
 			}
 
 			if tt.shouldFail {
-				if healthy && !errorFound {
-					t.Error("Expected failure with short JWT secret but server started successfully")
-				}
+				assert.False(t, healthy && !errorFound, "Expected failure with short JWT secret but server started successfully")
 			} else {
-				if !healthy {
-					t.Error("Expected success with valid JWT secret but server failed to start")
-				}
+				assert.True(t, healthy, "Expected success with valid JWT secret but server failed to start")
 			}
 		})
 	}

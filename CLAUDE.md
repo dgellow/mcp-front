@@ -122,7 +122,7 @@ cmd/mcp-front/   # Main application entry point
 ### Testing Guidance
 
 - Unit tests: `go test ./internal/...`
-- Integration tests: `cd integration && ./run_tests.sh`
+- Integration tests: `cd integration && go test -v`
 - OAuth tests specifically: `go test ./internal/oauth -v`
 - Security tests: `go test ./integration -run TestSecurity`
 

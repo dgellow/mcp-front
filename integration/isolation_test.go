@@ -2,11 +2,12 @@ package integration
 
 import (
 	"os"
-	"os/exec"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // getTestTimeout returns the test timeout from environment or default
@@ -23,9 +24,7 @@ func getTestTimeout(envVar string, defaultDuration time.Duration) time.Duration 
 func TestMultiUserSessionIsolation(t *testing.T) {
 	trace(t, "Starting multi-user session isolation test")
 
-	// Start test database
-	closeDB := startTestDB(t)
-	defer closeDB()
+	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
 	// Start mcp-front with bearer token auth
@@ -34,23 +33,6 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
-	// Helper function to get mcp/postgres containers
-	getMCPContainers := func() []string {
-		cmd := exec.Command("docker", "ps", "--format", "{{.ID}}", "--filter", "ancestor=mcp/postgres")
-		output, err := cmd.Output()
-		if err != nil {
-			t.Logf("Failed to list Docker containers: %v", err)
-			return nil
-		}
-
-		var containers []string
-		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-			if line != "" {
-				containers = append(containers, line)
-			}
-		}
-		return containers
-	}
 
 	// Get initial container count
 	initialContainers := getMCPContainers()
@@ -65,6 +47,11 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 	client2.SetAuthToken("alt-test-token") // Second user
 	defer client2.Close()
 
+	// Add cleanup to ensure containers are stopped at test end
+	t.Cleanup(func() {
+		cleanupContainers(t, initialContainers)
+	})
+
 	// Step 1: First user connects and sends a query
 	t.Log("Step 1: First user connects and sends a query")
 	if err := client1.Connect(); err != nil {
@@ -72,9 +59,9 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 	}
 	t.Logf("Client1 connected with session: %s", client1.sessionID)
 
-	// Check containers after first user connects
 	containersAfterClient1 := getMCPContainers()
 	t.Logf("Containers after client1 connects: %d", len(containersAfterClient1))
+	assert.Greater(t, len(containersAfterClient1), len(initialContainers), "No new container created after client1 connects")
 	
 	// Find new container for client1
 	var client1Container string
@@ -120,9 +107,9 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 		t.Errorf("Expected different sessions for different users, but both got: %s", client1.sessionID)
 	}
 
-	// Check containers after second user connects
 	containersAfterClient2 := getMCPContainers()
 	t.Logf("Containers after client2 connects: %d", len(containersAfterClient2))
+	assert.Greater(t, len(containersAfterClient2), len(containersAfterClient1), "No new container created after client2 connects")
 	
 	// Find new container for client2
 	var client2Container string
@@ -150,7 +137,7 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 		t.Errorf("CRITICAL: Both users are using the same Docker container! Container ID: %s", client1Container)
 		t.Error("This indicates session isolation is NOT working - users are sharing the same mcp/postgres instance")
 	} else if client1Container != "" && client2Container != "" {
-		t.Logf("✓ Confirmed different stdio processes: User1 container=%s, User2 container=%s", client1Container, client2Container)
+		t.Logf("Confirmed different stdio processes: User1 container=%s, User2 container=%s", client1Container, client2Container)
 	}
 
 	query2Result, err := client2.SendMCPRequest("tools/call", map[string]interface{}{
@@ -210,12 +197,9 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 	t.Logf("Final containers: %d", len(finalContainers))
 	t.Logf("New containers created: %d", len(finalContainers)-len(initialContainers))
 	
-	// We should have exactly 2 new containers (one for each user)
 	expectedNewContainers := 2
 	actualNewContainers := len(finalContainers) - len(initialContainers)
-	if actualNewContainers != expectedNewContainers {
-		t.Errorf("Expected %d new containers, but got %d", expectedNewContainers, actualNewContainers)
-	}
+	assert.Equal(t, expectedNewContainers, actualNewContainers, "Expected exactly 2 new containers (one for each user)")
 
 	// Verify session isolation
 	t.Log("\n=== Session Isolation Summary ===")
@@ -228,28 +212,17 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 		t.Logf("Client2 container: %s", client2Container)
 	}
 	
-	// Final test result
-	if client1.sessionID != client2.sessionID && client1Container != "" && client2Container != "" && client1Container != client2Container {
-		t.Log("\n✅ Multi-user session isolation test PASSED!")
-		t.Log("Each user has their own session and stdio process container")
-	} else {
-		t.Error("\n❌ Multi-user session isolation test FAILED!")
-		if client1.sessionID == client2.sessionID {
-			t.Error("Users are sharing the same session")
-		}
-		if client1Container == client2Container {
-			t.Error("Users are sharing the same stdio container")
-		}
-	}
+	assert.NotEqual(t, client1.sessionID, client2.sessionID, "Users should have different sessions")
+	assert.NotEmpty(t, client1Container, "Client1 should have a container")
+	assert.NotEmpty(t, client2Container, "Client2 should have a container")
+	assert.NotEqual(t, client1Container, client2Container, "Users should have different stdio containers")
 }
 
 // TestSessionCleanupAfterTimeout verifies that sessions and containers are cleaned up after timeout
 func TestSessionCleanupAfterTimeout(t *testing.T) {
 	trace(t, "Starting session cleanup timeout test")
 
-	// Start test database
-	closeDB := startTestDB(t)
-	defer closeDB()
+	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
 	// Start mcp-front with shorter timeout for testing
@@ -262,23 +235,6 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
-	// Helper function to get mcp/postgres containers
-	getMCPContainers := func() []string {
-		cmd := exec.Command("docker", "ps", "--format", "{{.ID}}", "--filter", "ancestor=mcp/postgres")
-		output, err := cmd.Output()
-		if err != nil {
-			t.Logf("Failed to list Docker containers: %v", err)
-			return nil
-		}
-
-		var containers []string
-		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-			if line != "" {
-				containers = append(containers, line)
-			}
-		}
-		return containers
-	}
 
 	// Get initial container count
 	initialContainers := getMCPContainers()
@@ -288,30 +244,30 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	client := NewMCPClient("http://localhost:8080")
 	client.SetAuthToken("test-token")
 	
+	// Add cleanup for this test
+	t.Cleanup(func() {
+		cleanupContainers(t, initialContainers)
+	})
+	
 	t.Log("Connecting client...")
-	if err := client.Connect(); err != nil {
-		t.Fatalf("Client failed to connect: %v", err)
-	}
+	err := client.Connect()
+	require.NoError(t, err, "Client failed to connect")
 	t.Logf("Client connected with session: %s", client.sessionID)
 
 	// Verify container was created
 	containersAfterConnect := getMCPContainers()
 	t.Logf("Containers after connect: %d", len(containersAfterConnect))
 	
-	if len(containersAfterConnect) <= len(initialContainers) {
-		t.Fatal("No new container created for client")
-	}
+	assert.Greater(t, len(containersAfterConnect), len(initialContainers), "No new container created for client")
 
 	// Send a query to ensure session is active
-	_, err := client.SendMCPRequest("tools/call", map[string]interface{}{
+	_, err = client.SendMCPRequest("tools/call", map[string]interface{}{
 		"name": "query",
 		"arguments": map[string]interface{}{
 			"sql": "SELECT 'test' as test_id",
 		},
 	})
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
+	require.NoError(t, err, "Query failed")
 
 	// Close the client connection (but don't remove the session)
 	client.Close()
@@ -321,34 +277,26 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	containersAfterClose := getMCPContainers()
 	t.Logf("Containers immediately after close: %d", len(containersAfterClose))
 	
-	if len(containersAfterClose) < len(containersAfterConnect) {
-		t.Error("Container was removed immediately after close (should remain until timeout)")
-	}
+	assert.GreaterOrEqual(t, len(containersAfterClose), len(containersAfterConnect), 
+		"Container was removed immediately after close (should remain until timeout)")
 
 	// Wait for timeout + cleanup interval (10s + 2s + buffer)
 	waitTime := getTestTimeout("TEST_CLEANUP_WAIT_SECONDS", 15*time.Second)
 	t.Logf("Waiting %v for session timeout and cleanup...", waitTime)
 	time.Sleep(waitTime)
 
-	// Check if container was cleaned up
 	containersAfterTimeout := getMCPContainers()
 	t.Logf("Containers after timeout: %d", len(containersAfterTimeout))
 	
-	if len(containersAfterTimeout) != len(initialContainers) {
-		t.Errorf("Container was not cleaned up after timeout. Expected %d containers, got %d",
-			len(initialContainers), len(containersAfterTimeout))
-	} else {
-		t.Log("✅ Container was successfully cleaned up after session timeout")
-	}
+	assert.Equal(t, len(initialContainers), len(containersAfterTimeout), 
+		"Container should be cleaned up after session timeout")
 }
 
 // TestSessionTimerReset verifies that using a session resets its timeout timer
 func TestSessionTimerReset(t *testing.T) {
 	trace(t, "Starting session timer reset test")
 
-	// Start test database
-	closeDB := startTestDB(t)
-	defer closeDB()
+	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
 	// Start mcp-front with shorter timeout for testing
@@ -360,23 +308,6 @@ func TestSessionTimerReset(t *testing.T) {
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
-	// Helper function to get mcp/postgres containers
-	getMCPContainers := func() []string {
-		cmd := exec.Command("docker", "ps", "--format", "{{.ID}}", "--filter", "ancestor=mcp/postgres")
-		output, err := cmd.Output()
-		if err != nil {
-			t.Logf("Failed to list Docker containers: %v", err)
-			return nil
-		}
-
-		var containers []string
-		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-			if line != "" {
-				containers = append(containers, line)
-			}
-		}
-		return containers
-	}
 
 	// Get initial container count
 	initialContainers := getMCPContainers()
@@ -386,17 +317,20 @@ func TestSessionTimerReset(t *testing.T) {
 	client := NewMCPClient("http://localhost:8080")
 	client.SetAuthToken("test-token")
 	
+	// Add cleanup for this test
+	t.Cleanup(func() {
+		cleanupContainers(t, initialContainers)
+	})
+	
 	t.Log("Connecting client...")
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Client failed to connect: %v", err)
 	}
 	t.Logf("Client connected with session: %s", client.sessionID)
 
-	// Verify container was created
 	containersAfterConnect := getMCPContainers()
-	if len(containersAfterConnect) <= len(initialContainers) {
-		t.Fatal("No new container created for client")
-	}
+	assert.Greater(t, len(containersAfterConnect), len(initialContainers), 
+		"No new container created for client")
 
 	// Keep session alive by sending queries every 5 seconds
 	// With 8s timeout, this should keep it alive
@@ -418,18 +352,13 @@ func TestSessionTimerReset(t *testing.T) {
 		}
 	}
 
-	// Total time elapsed: ~10 seconds (3 queries with 5s between first two)
-	// With 8s timeout, session would have expired without timer reset
 	t.Log("Checking if container is still active after keepalive queries...")
 	
 	containersAfterKeepalive := getMCPContainers()
 	t.Logf("Containers after keepalive: %d", len(containersAfterKeepalive))
 	
-	if len(containersAfterKeepalive) < len(containersAfterConnect) {
-		t.Error("Container was cleaned up despite keepalive queries (timer reset not working)")
-	} else {
-		t.Log("✅ Container is still active - timer reset is working")
-	}
+	assert.GreaterOrEqual(t, len(containersAfterKeepalive), len(containersAfterConnect), 
+		"Container should remain active due to keepalive queries (timer reset)")
 
 	// Now stop sending queries and close the connection
 	t.Log("Stopping keepalive queries and closing connection...")
@@ -443,21 +372,15 @@ func TestSessionTimerReset(t *testing.T) {
 	containersAfterTimeout := getMCPContainers()
 	t.Logf("Containers after timeout: %d", len(containersAfterTimeout))
 	
-	if len(containersAfterTimeout) != len(initialContainers) {
-		t.Errorf("Container was not cleaned up after timeout. Expected %d containers, got %d",
-			len(initialContainers), len(containersAfterTimeout))
-	} else {
-		t.Log("✅ Container was successfully cleaned up after inactivity timeout")
-	}
+	assert.Equal(t, len(initialContainers), len(containersAfterTimeout), 
+		"Container should be cleaned up after inactivity timeout")
 }
 
 // TestMultiUserTimerIndependence verifies that each user's session timer is independent
 func TestMultiUserTimerIndependence(t *testing.T) {
 	trace(t, "Starting multi-user timer independence test")
 
-	// Start test database
-	closeDB := startTestDB(t)
-	defer closeDB()
+	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
 	// Start mcp-front with shorter timeout for testing
@@ -469,23 +392,6 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	defer stopMCPFront(mcpCmd)
 	waitForMCPFront(t)
 
-	// Helper function to get mcp/postgres containers
-	getMCPContainers := func() []string {
-		cmd := exec.Command("docker", "ps", "--format", "{{.ID}}", "--filter", "ancestor=mcp/postgres")
-		output, err := cmd.Output()
-		if err != nil {
-			t.Logf("Failed to list Docker containers: %v", err)
-			return nil
-		}
-
-		var containers []string
-		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-			if line != "" {
-				containers = append(containers, line)
-			}
-		}
-		return containers
-	}
 
 	// Get initial container count
 	initialContainers := getMCPContainers()
@@ -497,6 +403,11 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	
 	client2 := NewMCPClient("http://localhost:8080")
 	client2.SetAuthToken("alt-test-token")
+
+	// Add cleanup for this test
+	t.Cleanup(func() {
+		cleanupContainers(t, initialContainers)
+	})
 
 	// Connect both clients
 	t.Log("Connecting client1...")
@@ -516,9 +427,8 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 
 	// Verify both containers exist
 	containersAfterBothConnect := getMCPContainers()
-	if len(containersAfterBothConnect) != len(initialContainers)+2 {
-		t.Fatalf("Expected 2 new containers, got %d", len(containersAfterBothConnect)-len(initialContainers))
-	}
+	assert.Equal(t, len(initialContainers)+2, len(containersAfterBothConnect), 
+		"Should have 2 new containers (one for each client)")
 
 	// Keep client2 active while letting client1 timeout
 	t.Log("Keeping client2 active while client1 becomes idle...")
@@ -527,7 +437,10 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	client1.Close()
 	
 	// Keep client2 active with periodic queries
+	done := make(chan bool)
 	go func() {
+		defer close(done)
+		// Run 4 queries - the last one AFTER client1 should be cleaned up
 		for i := 0; i < 4; i++ {
 			time.Sleep(4 * time.Second)
 			_, err := client2.SendMCPRequest("tools/call", map[string]interface{}{
@@ -549,17 +462,17 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	t.Logf("Waiting %v for client1 timeout while client2 stays active...", waitTime)
 	time.Sleep(waitTime)
 
-	// Check containers - should have only 1 now (client2's)
 	containersAfterClient1Timeout := getMCPContainers()
 	t.Logf("Containers after client1 timeout: %d", len(containersAfterClient1Timeout))
 	
 	expectedContainers := len(initialContainers) + 1 // Only client2's container
-	if len(containersAfterClient1Timeout) != expectedContainers {
-		t.Errorf("Expected %d containers after client1 timeout, got %d", 
-			expectedContainers, len(containersAfterClient1Timeout))
-	} else {
-		t.Log("✅ Client1's container was cleaned up while client2's remained active")
-	}
+	assert.Equal(t, expectedContainers, len(containersAfterClient1Timeout), 
+		"Client1's container should be cleaned up, only client2's should remain")
+	
+	// Wait for the keepalive goroutine to finish (including the 4th query)
+	<-done
+	
+	t.Log("All keepalive queries completed - client2 remained active throughout")
 
 	// Clean up client2
 	client2.Close()

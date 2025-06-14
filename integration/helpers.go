@@ -1,27 +1,15 @@
 package integration
 
 import (
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 )
 
-func startTestDB(t *testing.T) func() {
-	dbCmd := exec.Command("docker", "compose", "up", "-d")
-	err := dbCmd.Run()
-	require.NoError(t, err, "Failed to start test database")
-	return func() {
-		downCmd := exec.Command("docker", "compose", "down", "-v")
-		err := downCmd.Run()
-		require.NoError(t, err, "Failed to stop test database")
-	}
-}
 
 func waitForDB(t *testing.T) {
 	waitForSec := 5
@@ -44,16 +32,6 @@ func waitForDB(t *testing.T) {
 	t.Fatalf("Database failed to become ready after %d seconds", waitForSec)
 }
 
-// TestMain provides test suite setup and teardown
-func TestMain(m *testing.M) {
-	flag.Parse()
-
-	// Run tests
-	code := m.Run()
-
-	// Exit with test result code
-	os.Exit(code)
-}
 
 // trace logs a message if TRACE environment variable is set
 func trace(t *testing.T, format string, args ...interface{}) {
@@ -126,6 +104,42 @@ func waitForMCPFront(t *testing.T) {
 	t.Fatal("mcp-front failed to become ready after 10 seconds")
 }
 
+// getMCPContainers returns a list of running mcp/postgres container IDs
+func getMCPContainers() []string {
+	cmd := exec.Command("docker", "ps", "--format", "{{.ID}}", "--filter", "ancestor=mcp/postgres")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var containers []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line != "" {
+			containers = append(containers, line)
+		}
+	}
+	return containers
+}
+
+// cleanupContainers forces cleanup of containers that weren't in the initial set
+func cleanupContainers(t *testing.T, initialContainers []string) {
+	time.Sleep(2 * time.Second)
+	containers := getMCPContainers()
+	for _, container := range containers {
+		isInitial := false
+		for _, initial := range initialContainers {
+			if container == initial {
+				isInitial = true
+				break
+			}
+		}
+		if !isInitial {
+			t.Logf("Force stopping container: %s", container)
+			exec.Command("docker", "stop", container).Run()
+		}
+	}
+}
+
 // TestQuickSmoke provides a fast validation test
 func TestQuickSmoke(t *testing.T) {
 	t.Log("Running quick smoke test...")
@@ -140,5 +154,5 @@ func TestQuickSmoke(t *testing.T) {
 		t.Fatal("Failed to set up authentication")
 	}
 
-	t.Log("✅ Quick smoke test passed - test infrastructure is working")
+	t.Log("Quick smoke test passed - test infrastructure is working")
 }

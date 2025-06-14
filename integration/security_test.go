@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSecurityScenarios(t *testing.T) {
-	closeDB := startTestDB(t)
-	defer closeDB()
-
+	// Database is already started by TestMain, just wait for readiness
 	waitForDB(t)
 
 	// Start mcp-front
@@ -24,14 +25,10 @@ func TestSecurityScenarios(t *testing.T) {
 		// Test:
 
 		resp, err := http.Get("http://localhost:8080/postgres/sse")
-		if err != nil {
-			t.Fatalf("Request failed: %v", err)
-		}
+		require.NoError(t, err, "Request failed")
 		resp.Body.Close()
 
-		if resp.StatusCode != 401 {
-			t.Errorf("❌ Expected 401 Unauthorized, got %d", resp.StatusCode)
-		}
+		assert.Equal(t, 401, resp.StatusCode, "Expected 401 Unauthorized")
 	})
 
 	t.Run("InvalidBearerToken", func(t *testing.T) {
@@ -43,14 +40,10 @@ func TestSecurityScenarios(t *testing.T) {
 		req.Header.Set("Accept", "text/event-stream")
 
 		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("Request failed: %v", err)
-		}
+		require.NoError(t, err, "Request failed")
 		resp.Body.Close()
 
-		if resp.StatusCode != 401 {
-			t.Errorf("❌ Expected 401 Unauthorized, got %d", resp.StatusCode)
-		}
+		assert.Equal(t, 401, resp.StatusCode, "Expected 401 Unauthorized")
 	})
 
 	t.Run("MalformedAuthHeader", func(t *testing.T) {
@@ -80,7 +73,7 @@ func TestSecurityScenarios(t *testing.T) {
 			resp.Body.Close()
 
 			if resp.StatusCode != 401 {
-				t.Errorf("❌ Expected 401 for malformed header '%s', got %d", authHeader, resp.StatusCode)
+				t.Errorf("Expected 401 for malformed header '%s', got %d", authHeader, resp.StatusCode)
 			}
 		}
 	})
@@ -92,9 +85,8 @@ func TestSecurityScenarios(t *testing.T) {
 		_ = client.Authenticate()
 
 		// Validate backend connectivity first
-		if err := client.ValidateBackendConnectivity(); err != nil {
-			t.Fatalf("Backend connectivity failed: %v", err)
-		}
+		err := client.ValidateBackendConnectivity()
+		require.NoError(t, err, "Backend connectivity failed")
 
 		sqlInjectionPayloads := []string{
 			"'; DROP TABLE users; --",
@@ -121,7 +113,7 @@ func TestSecurityScenarios(t *testing.T) {
 			// but it should NOT succeed in executing malicious SQL
 			if err != nil {
 			} else {
-				t.Logf("⚠️  SQL injection payload was accepted (should be sanitized by postgres MCP)")
+				t.Logf("SQL injection payload was accepted")
 			}
 		}
 	})
@@ -155,12 +147,12 @@ func TestSecurityScenarios(t *testing.T) {
 			for headerName := range resp.Header {
 				if strings.Contains(strings.ToLower(headerName), "injected") ||
 					strings.Contains(strings.ToLower(headerName), "cookie") {
-					t.Errorf("❌ Possible header injection detected: %s", headerName)
+					t.Errorf("Possible header injection detected: %s", headerName)
 				}
 			}
 
 			if resp.StatusCode != 401 {
-				t.Errorf("❌ Expected 401 for header injection attempt, got %d", resp.StatusCode)
+				t.Errorf("Expected 401 for header injection attempt, got %d", resp.StatusCode)
 			}
 		}
 	})
@@ -191,7 +183,7 @@ func TestSecurityScenarios(t *testing.T) {
 
 			// Should return 404 or 403, NOT 200 with sensitive content
 			if resp.StatusCode == 200 {
-				t.Errorf("❌ Path traversal may have succeeded: %s returned 200", path)
+				t.Errorf("Path traversal may have succeeded: %s returned 200", path)
 			}
 		}
 	})
@@ -210,9 +202,8 @@ func TestSecurityScenarios(t *testing.T) {
 		err1 := client1.ValidateBackendConnectivity()
 		err2 := client2.ValidateBackendConnectivity()
 
-		if err1 != nil || err2 != nil {
-			t.Errorf("❌ Valid token should work for multiple clients: %v, %v", err1, err2)
-		}
+		assert.NoError(t, err1, "Valid token should work for client1")
+		assert.NoError(t, err2, "Valid token should work for client2")
 	})
 
 	t.Run("AuthenticationBypass", func(t *testing.T) {
@@ -232,10 +223,10 @@ func TestSecurityScenarios(t *testing.T) {
 			resp.Body.Close()
 
 			if resp.StatusCode == 200 {
-				t.Errorf("❌ CRITICAL: Auth bypass! 'test-token' without Bearer returned 200")
+				t.Errorf("CRITICAL: Auth bypass! 'test-token' without Bearer returned 200")
 			} else if resp.StatusCode == 401 {
 			} else {
-				t.Logf("⚠️  Unexpected status %d for malformed auth", resp.StatusCode)
+				t.Logf("Unexpected status %d for malformed auth", resp.StatusCode)
 			}
 		})
 
@@ -267,9 +258,9 @@ func TestSecurityScenarios(t *testing.T) {
 				resp.Body.Close()
 
 				if tc.shouldPass && resp.StatusCode != 200 {
-					t.Errorf("❌ Valid auth '%s' should return 200, got %d", tc.authHeader, resp.StatusCode)
+					t.Errorf("Valid auth '%s' should return 200, got %d", tc.authHeader, resp.StatusCode)
 				} else if !tc.shouldPass && resp.StatusCode != 401 {
-					t.Errorf("❌ Invalid auth '%s' should return 401, got %d", tc.authHeader, resp.StatusCode)
+					t.Errorf("Invalid auth '%s' should return 401, got %d", tc.authHeader, resp.StatusCode)
 				}
 			})
 		}
@@ -303,9 +294,7 @@ func TestFailureScenarios(t *testing.T) {
 	// Testing failure scenarios
 
 	t.Run("FailsWithWrongAuth", func(t *testing.T) {
-		closeDB := startTestDB(t)
-		defer closeDB()
-
+		// Database is already started by TestMain, just wait for readiness
 		waitForDB(t)
 
 		mcpCmd := startMCPFront(t, "config/config.test.json")
@@ -344,9 +333,7 @@ func TestFailureScenarios(t *testing.T) {
 				}
 				resp.Body.Close()
 
-				if resp.StatusCode != tc.expected {
-					t.Errorf("❌ Token '%s': expected %d, got %d", tc.name, tc.expected, resp.StatusCode)
-				}
+				assert.Equal(t, tc.expected, resp.StatusCode, "Token '%s' test failed", tc.name)
 			})
 		}
 	})

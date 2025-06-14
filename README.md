@@ -146,7 +146,7 @@ Run the comprehensive integration test suite:
 
 ```bash
 cd integration
-./run_tests.sh
+go test -v
 ```
 
 This validates:
