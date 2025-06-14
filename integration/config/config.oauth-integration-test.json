@@ -8,7 +8,9 @@
       "kind": "oauth",
       "issuer": "http://localhost:8080",
       "gcpProject": "test-project",
-      "allowedDomains": ["test.com"],
+      "allowedDomains": [
+        "test.com"
+      ],
       "tokenTtl": "1h",
       "storage": "memory",
       "googleClientId": "test-client-id",
@@ -19,9 +21,14 @@
   },
   "mcpServers": {
     "postgres": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
-        "run", "--rm", "-i", "--network", "host",
+        "run",
+        "--rm",
+        "-i",
+        "--network",
+        "host",
         "mcp/postgres",
         "postgresql://testuser:testpass@localhost:15432/testdb"
       ]

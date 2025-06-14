@@ -43,8 +43,8 @@ func GetUserContextKey() contextKey {
 
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
-	provider    fosite.OAuth2Provider
-	storage     interface {
+	provider fosite.OAuth2Provider
+	storage  interface {
 		fosite.Storage
 		generateState() string
 		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)

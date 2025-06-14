@@ -98,6 +98,15 @@ func LogInfoWithFields(component, message string, fields map[string]interface{})
 	logger.Info(message, args...)
 }
 
+func LogDebugWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	logger.Debug(message, args...)
+}
+
 func LogErrorWithFields(component, message string, fields map[string]interface{}) {
 	args := make([]any, 0, len(fields)*2+2)
 	args = append(args, "component", component)

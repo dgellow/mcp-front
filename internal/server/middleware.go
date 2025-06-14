@@ -26,11 +26,11 @@ func corsMiddleware(allowedOrigins []string) MiddlewareFunc {
 	for _, origin := range allowedOrigins {
 		allowedMap[origin] = true
 	}
-	
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			
+
 			// Only set CORS headers if origin is allowed
 			if origin != "" && allowedMap[origin] {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
@@ -40,7 +40,7 @@ func corsMiddleware(allowedOrigins []string) MiddlewareFunc {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 			}
 			// If origin not allowed, don't set Access-Control-Allow-Origin header
-			
+
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cache-Control, mcp-protocol-version")
 			w.Header().Set("Access-Control-Max-Age", "3600")
@@ -56,38 +56,65 @@ func corsMiddleware(allowedOrigins []string) MiddlewareFunc {
 	}
 }
 
-// responseWriter wraps http.ResponseWriter to capture status and bytes written
-type responseWriter struct {
+// responseWriterDelegator wraps http.ResponseWriter to capture status and bytes written
+// while properly delegating all optional interfaces through Unwrap
+type responseWriterDelegator struct {
 	http.ResponseWriter
-	status int
-	bytes  int
+	status      int
+	written     int
+	wroteHeader bool
 }
 
-func wrapResponseWriter(w http.ResponseWriter) *responseWriter {
-	return &responseWriter{
+func wrapResponseWriter(w http.ResponseWriter) *responseWriterDelegator {
+	return &responseWriterDelegator{
 		ResponseWriter: w,
 		status:         http.StatusOK,
 	}
 }
 
-func (rw *responseWriter) Status() int {
-	return rw.status
+func (r *responseWriterDelegator) Status() int {
+	return r.status
 }
 
-func (rw *responseWriter) BytesWritten() int {
-	return rw.bytes
+func (r *responseWriterDelegator) BytesWritten() int {
+	return r.written
 }
 
-func (rw *responseWriter) WriteHeader(statusCode int) {
-	rw.status = statusCode
-	rw.ResponseWriter.WriteHeader(statusCode)
+func (r *responseWriterDelegator) WriteHeader(code int) {
+	if r.wroteHeader {
+		return
+	}
+	r.status = code
+	r.wroteHeader = true
+	r.ResponseWriter.WriteHeader(code)
 }
 
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	n, err := rw.ResponseWriter.Write(b)
-	rw.bytes += n
+func (r *responseWriterDelegator) Write(b []byte) (int, error) {
+	if !r.wroteHeader {
+		r.WriteHeader(http.StatusOK)
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.written += n
 	return n, err
 }
+
+// Unwrap returns the underlying ResponseWriter for interface detection
+// This allows Go 1.20+ to automatically detect interfaces like http.Flusher
+// when used with http.ResponseController
+func (r *responseWriterDelegator) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
+// Flush implements http.Flusher
+func (r *responseWriterDelegator) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Verify interfaces
+var _ http.ResponseWriter = (*responseWriterDelegator)(nil)
+var _ http.Flusher = (*responseWriterDelegator)(nil)
 
 // loggerMiddleware adds request/response logging
 func loggerMiddleware(prefix string) MiddlewareFunc {
@@ -99,14 +126,21 @@ func loggerMiddleware(prefix string) MiddlewareFunc {
 			next.ServeHTTP(wrapped, r)
 
 			// Log request with response details
-			internal.LogInfoWithFields(prefix, "request", map[string]interface{}{
+			fields := map[string]interface{}{
 				"method":      r.Method,
 				"path":        r.URL.Path,
 				"status":      wrapped.Status(),
 				"duration_ms": time.Since(start).Milliseconds(),
 				"bytes":       wrapped.BytesWritten(),
 				"remote_addr": r.RemoteAddr,
-			})
+			}
+
+			// Add query string if present
+			if r.URL.RawQuery != "" {
+				fields["query"] = r.URL.RawQuery
+			}
+
+			internal.LogInfoWithFields(prefix, "request", fields)
 		})
 	}
 }

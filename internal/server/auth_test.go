@@ -127,10 +127,10 @@ func TestAuthenticationBoundaries(t *testing.T) {
 // Test that MCP endpoints respect auth configuration
 func TestMCPAuthConfiguration(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *config.Config
-		expectAuth     bool
-		description    string
+		name        string
+		config      *config.Config
+		expectAuth  bool
+		description string
 	}{
 		{
 			name: "mcp_without_oauth_is_public",
@@ -152,7 +152,7 @@ func TestMCPAuthConfiguration(t *testing.T) {
 					BaseURL: "https://test.example.com",
 					Auth: &config.OAuthAuthConfig{
 						Kind:               config.AuthKindOAuth,
-						GoogleClientID:     "test-client-id", 
+						GoogleClientID:     "test-client-id",
 						GoogleClientSecret: "test-client-secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
 						JWTSecret:          strings.Repeat("a", 32),
@@ -259,7 +259,7 @@ func TestBearerTokenAuth(t *testing.T) {
 			expectPass: true,
 		},
 		{
-			name:       "valid_token_2", 
+			name:       "valid_token_2",
 			authHeader: "Bearer another-valid-token",
 			expectPass: true,
 		},

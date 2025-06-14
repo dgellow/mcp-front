@@ -11,12 +11,12 @@ import (
 
 func TestParseConfigValue(t *testing.T) {
 	tests := []struct {
-		name           string
-		input          string
-		envVars        map[string]string
-		expectedValue  string
-		expectedToken  bool
-		expectedError  bool
+		name          string
+		input         string
+		envVars       map[string]string
+		expectedValue string
+		expectedToken bool
+		expectedError bool
 	}{
 		{
 			name:          "plain string",
@@ -252,7 +252,7 @@ func TestOAuthAuthConfig_ValidationErrors(t *testing.T) {
 				"kind": "oauth",
 				"jwtSecret": {"$env": "SHORT_SECRET"}
 			}`,
-			envVars: map[string]string{"SHORT_SECRET": "too-short"},
+			envVars:       map[string]string{"SHORT_SECRET": "too-short"},
 			expectedError: "JWT secret must be at least 32 bytes",
 		},
 		{

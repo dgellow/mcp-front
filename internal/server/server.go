@@ -70,6 +70,11 @@ func Run(cfg *config.Config) error {
 		return err
 	}
 
+	// Shutdown the handler (which includes session manager)
+	if err := handler.Shutdown(); err != nil {
+		internal.Logf("Handler shutdown error: %v", err)
+	}
+
 	internal.Logf("Server shutdown complete")
 	return nil
 }
