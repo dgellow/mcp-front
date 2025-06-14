@@ -3,10 +3,8 @@ package integration
 import (
 	"fmt"
 	"net/http"
-	"os/exec"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestSecurityScenarios(t *testing.T) {
@@ -16,18 +14,11 @@ func TestSecurityScenarios(t *testing.T) {
 	waitForDB(t)
 
 	// Start mcp-front
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.test.json")
-	if err := mcpCmd.Start(); err != nil {
-		t.Fatalf("Failed to start mcp-front: %v", err)
-	}
-	defer func() {
-		if mcpCmd.Process != nil {
-			_ = mcpCmd.Process.Kill()
-			_ = mcpCmd.Wait()
-		}
-	}()
+	mcpCmd := startMCPFront(t, "config/config.test.json")
+	defer stopMCPFront(mcpCmd)
 
-	time.Sleep(5 * time.Second)
+	// Wait for server to be ready
+	waitForMCPFront(t)
 
 	t.Run("NoAuthToken", func(t *testing.T) {
 		// Test:
@@ -317,18 +308,11 @@ func TestFailureScenarios(t *testing.T) {
 
 		waitForDB(t)
 
-		mcpCmd := exec.Command("../mcp-front", "-config", "config/config.test.json")
-		if err := mcpCmd.Start(); err != nil {
-			t.Fatalf("Failed to start mcp-front: %v", err)
-		}
-		defer func() {
-			if mcpCmd.Process != nil {
-				_ = mcpCmd.Process.Kill()
-				_ = mcpCmd.Wait()
-			}
-		}()
+		mcpCmd := startMCPFront(t, "config/config.test.json")
+		defer stopMCPFront(mcpCmd)
 
-		time.Sleep(5 * time.Second)
+		// Wait for server to be ready
+		waitForMCPFront(t)
 
 		// Test comprehensive token validation
 		testCases := []struct {
