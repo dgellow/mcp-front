@@ -10,12 +10,12 @@ import (
 
 func TestCorsMiddleware(t *testing.T) {
 	tests := []struct {
-		name                string
-		allowedOrigins      []string
-		requestOrigin       string
-		expectAllowOrigin   string
-		expectCredentials   bool
-		expectWildcard      bool
+		name              string
+		allowedOrigins    []string
+		requestOrigin     string
+		expectAllowOrigin string
+		expectCredentials bool
+		expectWildcard    bool
 	}{
 		{
 			name:              "allowed origin",
@@ -124,7 +124,7 @@ func TestCorsMiddleware_CaseSensitivity(t *testing.T) {
 	// Test with different case
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Origin", "https://claude.ai")
-	
+
 	rr := httptest.NewRecorder()
 	corsHandler.ServeHTTP(rr, req)
 
@@ -151,7 +151,7 @@ func TestCorsMiddleware_MultipleOrigins(t *testing.T) {
 		t.Run(origin, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/test", nil)
 			req.Header.Set("Origin", origin)
-			
+
 			rr := httptest.NewRecorder()
 			corsHandler.ServeHTTP(rr, req)
 

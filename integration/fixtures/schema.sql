@@ -1,3 +1,5 @@
+ALTER SYSTEM SET log_statement = 'all';
+
 -- Test schema for MCP integration tests
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -15,12 +17,12 @@ CREATE TABLE orders (
 );
 
 -- Insert test data
-INSERT INTO users (name, email) VALUES 
+INSERT INTO users (name, email) VALUES
     ('Alice', 'alice@test.com'),
     ('Bob', 'bob@test.com'),
     ('Charlie', 'charlie@test.com');
 
-INSERT INTO orders (user_id, product, amount) VALUES 
+INSERT INTO orders (user_id, product, amount) VALUES
     (1, 'Widget A', 29.99),
     (1, 'Widget B', 49.99),
     (2, 'Gadget X', 99.99),

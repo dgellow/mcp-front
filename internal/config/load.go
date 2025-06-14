@@ -134,7 +134,7 @@ func ValidateConfig(config *Config) error {
 		if err := validateMCPServer(name, server); err != nil {
 			return err
 		}
-		
+
 		// Validate that user tokens require OAuth
 		if server.RequiresUserToken && !hasOAuth {
 			return fmt.Errorf("server %s requires user tokens but OAuth is not configured - user tokens require OAuth authentication", name)

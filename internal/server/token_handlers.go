@@ -208,10 +208,10 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 				helpMsg = fmt.Sprintf("%s token should not include 'Bearer' prefix - just the token value", displayName)
 			default:
 				if serviceConfig.TokenSetup.HelpURL != "" {
-					helpMsg = fmt.Sprintf("Invalid %s token format. Please check the required format at %s", 
+					helpMsg = fmt.Sprintf("Invalid %s token format. Please check the required format at %s",
 						displayName, serviceConfig.TokenSetup.HelpURL)
 				} else {
-					helpMsg = fmt.Sprintf("Invalid %s token format. Expected pattern: %s", 
+					helpMsg = fmt.Sprintf("Invalid %s token format. Expected pattern: %s",
 						displayName, serviceConfig.TokenSetup.TokenFormat)
 				}
 			}
@@ -235,7 +235,7 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 	if serviceConfig.TokenSetup != nil && serviceConfig.TokenSetup.DisplayName != "" {
 		displayName = serviceConfig.TokenSetup.DisplayName
 	}
-	
+
 	internal.LogInfoWithFields("token", "User configured token", map[string]interface{}{
 		"user":    userEmail,
 		"service": serviceName,
@@ -282,7 +282,7 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Service not found", http.StatusNotFound)
 		return
 	}
-	
+
 	tokenStore := h.oauthServer.GetUserTokenStore()
 	if err := tokenStore.DeleteUserToken(r.Context(), userEmail, serviceName); err != nil {
 		internal.LogErrorWithFields("token", "Failed to delete token", map[string]interface{}{
@@ -293,7 +293,7 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 		redirectWithMessage(w, r, "Failed to delete token", "error")
 		return
 	}
-	
+
 	displayName := serviceName
 	if serviceConfig.TokenSetup != nil && serviceConfig.TokenSetup.DisplayName != "" {
 		displayName = serviceConfig.TokenSetup.DisplayName
@@ -309,6 +309,6 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 
 // redirectWithMessage redirects back to the token list page with a message
 func redirectWithMessage(w http.ResponseWriter, r *http.Request, message, messageType string) {
-	http.Redirect(w, r, fmt.Sprintf("/my/tokens?message=%s&type=%s", 
+	http.Redirect(w, r, fmt.Sprintf("/my/tokens?message=%s&type=%s",
 		strings.ReplaceAll(message, " ", "+"), messageType), http.StatusSeeOther)
 }

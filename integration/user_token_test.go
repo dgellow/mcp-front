@@ -51,9 +51,9 @@ func TestUserTokenFlow(t *testing.T) {
 				URL:               "https://github-mcp.example.com",
 				RequiresUserToken: true,
 				TokenSetup: &config.TokenSetupConfig{
-					DisplayName: "GitHub",
+					DisplayName:  "GitHub",
 					Instructions: "Create a GitHub personal access token",
-					HelpURL:     "https://github.com/settings/tokens",
+					HelpURL:      "https://github.com/settings/tokens",
 				},
 			},
 		},

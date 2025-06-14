@@ -37,8 +37,11 @@ func execDockerCompose(args ...string) *exec.Cmd {
 
 // MCPClient simulates an MCP client for testing
 type MCPClient struct {
-	baseURL string
-	token   string
+	baseURL         string
+	token           string
+	sseConn         io.ReadCloser
+	messageEndpoint string
+	sseScanner      *bufio.Scanner
 }
 
 // NewMCPClient creates a new MCP client for testing
@@ -54,95 +57,97 @@ func (c *MCPClient) Authenticate() error {
 	return nil
 }
 
-// ValidateBackendConnectivity checks if the postgres container can actually connect to the database
-func (c *MCPClient) ValidateBackendConnectivity() error {
-	req, err := http.NewRequest("GET", c.baseURL+"/postgres/sse", nil)
+// Connect establishes an SSE connection and retrieves the message endpoint
+func (c *MCPClient) Connect() error {
+	// Close any existing connection
+	if c.sseConn != nil {
+		c.sseConn.Close()
+		c.sseConn = nil
+		c.messageEndpoint = ""
+	}
+
+	url := c.baseURL + "/postgres/sse"
+	tracef("Connect: requesting %s", url)
+
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create SSE request: %v", err)
 	}
 
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Cache-Control", "no-cache")
+	tracef("Connect: headers set, making request")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	// Don't use a timeout on the client for SSE
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("SSE connection failed: %v", err)
 	}
-	defer resp.Body.Close()
 
+	tracef("Connect: got response status %d", resp.StatusCode)
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		return fmt.Errorf("SSE connection returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	timeout := time.After(5 * time.Second)
-	sessionFound := make(chan bool, 1)
+	// Store the connection
+	c.sseConn = resp.Body
+	c.sseScanner = bufio.NewScanner(resp.Body)
 
-	go func() {
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.HasPrefix(line, "data: ") && strings.Contains(line, "sessionId=") {
-				sessionFound <- true
-				return
+	// Read initial SSE messages to get the endpoint
+	for c.sseScanner.Scan() {
+		line := c.sseScanner.Text()
+		tracef("Connect: SSE line: %s", line)
+
+		// Look for data lines containing the endpoint
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			if strings.Contains(data, "http://") || strings.Contains(data, "https://") {
+				c.messageEndpoint = data
+				tracef("Connect: found endpoint: %s", c.messageEndpoint)
+				break
 			}
 		}
-		sessionFound <- false
-	}()
+	}
 
-	select {
-	case found := <-sessionFound:
-		if !found {
-			return fmt.Errorf("no valid session endpoint received from SSE")
-		}
-		return nil
-	case <-timeout:
-		return fmt.Errorf("timeout waiting for SSE session endpoint")
+	if c.messageEndpoint == "" {
+		c.sseConn.Close()
+		c.sseConn = nil
+		return fmt.Errorf("no message endpoint received")
+	}
+
+	tracef("Connect: successfully connected to MCP server")
+	return nil
+}
+
+// ValidateBackendConnectivity checks if we can connect to the MCP server
+func (c *MCPClient) ValidateBackendConnectivity() error {
+	return c.Connect()
+}
+
+// Close closes the SSE connection
+func (c *MCPClient) Close() {
+	if c.sseConn != nil {
+		c.sseConn.Close()
+		c.sseConn = nil
+		c.messageEndpoint = ""
+		c.sseScanner = nil
 	}
 }
 
 // SendMCPRequest sends an MCP JSON-RPC request and returns the response
 func (c *MCPClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
-	// Step 1: Connect to SSE endpoint to get session
-	req, err := http.NewRequest("GET", c.baseURL+"/postgres/sse", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("SSE connection failed: %d - %s", resp.StatusCode, string(body))
-	}
-
-	// Read the first SSE message to get the session endpoint
-	scanner := bufio.NewScanner(resp.Body)
-	var messageEndpoint string
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
-			messageEndpoint = data
-			break
+	// Ensure we have a connection
+	if c.messageEndpoint == "" {
+		if err := c.Connect(); err != nil {
+			return nil, fmt.Errorf("failed to connect: %v", err)
 		}
 	}
 
-	if messageEndpoint == "" {
-		return nil, fmt.Errorf("no session endpoint received")
-	}
-
-	// Step 2: Send MCP request to session endpoint
+	// Send MCP request to the message endpoint
 	request := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      1,
@@ -155,7 +160,7 @@ func (c *MCPClient) SendMCPRequest(method string, params interface{}) (map[strin
 		return nil, err
 	}
 
-	msgReq, err := http.NewRequest("POST", messageEndpoint, bytes.NewBuffer(reqBody))
+	msgReq, err := http.NewRequest("POST", c.messageEndpoint, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +168,7 @@ func (c *MCPClient) SendMCPRequest(method string, params interface{}) (map[strin
 	msgReq.Header.Set("Content-Type", "application/json")
 	msgReq.Header.Set("Authorization", "Bearer "+c.token)
 
+	client := &http.Client{Timeout: 30 * time.Second}
 	msgResp, err := client.Do(msgReq)
 	if err != nil {
 		return nil, err
@@ -178,13 +184,30 @@ func (c *MCPClient) SendMCPRequest(method string, params interface{}) (map[strin
 		return nil, fmt.Errorf("MCP request failed: %d - %s", msgResp.StatusCode, string(respBody))
 	}
 
-	// Handle 202 and empty responses - this is normal for async MCP operations
+	// Handle 202 and empty responses - read response from SSE stream
 	if msgResp.StatusCode == 202 || len(respBody) == 0 {
-		return map[string]interface{}{
-			"status":  "accepted",
-			"message": "Request accepted by MCP server",
-			"method":  method,
-		}, nil
+		// Read response from SSE stream
+		for c.sseScanner.Scan() {
+			line := c.sseScanner.Text()
+
+			if strings.HasPrefix(line, "data: ") {
+				data := strings.TrimPrefix(line, "data: ")
+				// Try to parse as JSON
+				var msg map[string]interface{}
+				if err := json.Unmarshal([]byte(data), &msg); err == nil {
+					// Check if this is our response (matching ID)
+					if id, ok := msg["id"]; ok && id == float64(1) {
+						return msg, nil
+					}
+				}
+			}
+		}
+
+		if err := c.sseScanner.Err(); err != nil {
+			return nil, fmt.Errorf("SSE scanner error: %v", err)
+		}
+
+		return nil, fmt.Errorf("no response received from SSE stream")
 	}
 
 	var result map[string]interface{}

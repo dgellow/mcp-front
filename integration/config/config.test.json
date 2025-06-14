@@ -7,15 +7,22 @@
     "auth": {
       "kind": "bearerToken",
       "tokens": {
-        "postgres": ["test-token", "alt-test-token"]
+        "postgres": [
+          "test-token",
+          "alt-test-token"
+        ]
       }
     }
   },
   "mcpServers": {
     "postgres": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
-        "run", "--rm", "-i", "--network", "host",
+        "run",
+        "-i",
+        "--network",
+        "host",
         "mcp/postgres",
         "postgresql://testuser:testpass@localhost:15432/testdb"
       ],
