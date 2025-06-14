@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -26,8 +28,7 @@ func TestOAuthIntegration(t *testing.T) {
 	waitForDB(t)
 
 	// Build mcp-front once at the beginning
-	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-	buildCmd.Dir = ".."
+	buildCmd := exec.Command("go", "build", "-o", "../mcp-front", "../cmd/mcp-front")
 	err := buildCmd.Run()
 	require.NoError(t, err, "Failed to build mcp-front")
 
@@ -47,6 +48,7 @@ func TestOAuthIntegration(t *testing.T) {
 	t.Run("DevelopmentVsProduction", testEnvironmentModes)
 	t.Run("OAuthEndpoints", testOAuthEndpoints)
 	t.Run("CORSHeaders", testCORSHeaders)
+	t.Run("UserTokenFlow", testUserTokenFlow)
 }
 
 // testBasicOAuthFlow tests the basic OAuth server functionality
@@ -56,6 +58,7 @@ func testBasicOAuthFlow(t *testing.T) {
 	mcpCmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"JWT_SECRET=test-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-for-oauth",
 		"GOOGLE_CLIENT_SECRET=test-client-secret-for-oauth",
 		"MCP_FRONT_ENV=development",
@@ -257,6 +260,152 @@ func testClientRegistration(t *testing.T) {
 			}
 		}
 
+	})
+}
+
+// testUserTokenFlow tests the user token management functionality with browser-based SSO
+// This test expects the /my/* routes to work with Google SSO (session-based auth),
+// not Bearer token auth.
+func testUserTokenFlow(t *testing.T) {
+	// Start OAuth server with user token configuration
+	mcpCmd := startOAuthServerWithTokenConfig(t)
+	defer stopServer(mcpCmd)
+
+	if !waitForHealthCheck(t, 30) {
+		t.Fatal("Server failed to start")
+	}
+
+	// Create a client with cookie jar to simulate browser behavior
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Allow up to 10 redirects
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+
+	t.Run("UnauthenticatedRedirectsToSSO", func(t *testing.T) {
+		// Create a client that doesn't follow redirects to test the initial redirect
+		noRedirectClient := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		// Try to access /my/tokens without authentication
+		resp, err := noRedirectClient.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should get a redirect response
+		assert.Equal(t, http.StatusFound, resp.StatusCode, "Should get redirect status")
+
+		// Check the redirect location
+		location := resp.Header.Get("Location")
+		assert.Contains(t, location, "localhost:9090/auth", "Should redirect to Google OAuth")
+		assert.Contains(t, location, "client_id=", "Should include client_id")
+		assert.Contains(t, location, "redirect_uri=", "Should include redirect_uri")
+		// The state should be URL-encoded: "browser:/my/tokens" becomes "browser%3A%2Fmy%2Ftokens"
+		assert.Contains(t, location, "state=browser%3A%2Fmy%2Ftokens", "Should include browser prefix and return URL in state")
+	})
+
+	t.Run("AuthenticatedUserCanAccessTokens", func(t *testing.T) {
+		// The client with cookie jar will automatically follow the full SSO flow:
+		// 1. GET /my/tokens -> redirect to Google OAuth
+		// 2. Google OAuth redirects to /oauth/callback with code
+		// 3. Callback sets session cookie and redirects to /my/tokens
+		// 4. Client follows redirect with cookie and gets the page
+
+		resp, err := client.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// After following all redirects, we should be at /my/tokens with 200 OK
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should access /my/tokens after SSO")
+		finalURL := resp.Request.URL.String()
+		assert.Contains(t, finalURL, "/my/tokens", "Should end up at /my/tokens after SSO")
+
+		// Read response body
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		bodyStr := string(body)
+
+		// Should show both services without tokens
+		assert.Contains(t, bodyStr, "Notion", "Expected Notion service in response")
+		assert.Contains(t, bodyStr, "GitHub", "Expected GitHub service in response")
+	})
+
+	t.Run("SetTokenWithValidation", func(t *testing.T) {
+		// Assume we're already authenticated from previous test
+		// Get CSRF token first
+		resp, err := client.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// Extract CSRF token from response
+		csrfToken := extractCSRFToken(t, string(body))
+
+		// Try to set invalid Notion token
+		form := url.Values{
+			"service":    {"notion"},
+			"token":      {"invalid-token"},
+			"csrf_token": {csrfToken},
+		}
+
+		req, _ := http.NewRequest("POST", "http://localhost:8080/my/tokens/set", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		// Use custom client that doesn't follow redirects for this test
+		noRedirectClient := &http.Client{
+			Jar: jar, // Use same cookie jar
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		resp, err = noRedirectClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should redirect with error
+		assert.Equal(t, http.StatusSeeOther, resp.StatusCode, "Expected redirect")
+		location := resp.Header.Get("Location")
+		assert.Contains(t, location, "error", "Expected error in redirect")
+
+		// Get new CSRF token
+		resp, err = client.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		csrfToken = extractCSRFToken(t, string(body))
+
+		// Set valid Notion token (regex expects exactly 43 chars after "secret_")
+		form = url.Values{
+			"service":    {"notion"},
+			"token":      {"secret_1234567890123456789012345678901234567890123"},
+			"csrf_token": {csrfToken},
+		}
+
+		req, _ = http.NewRequest("POST", "http://localhost:8080/my/tokens/set", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err = noRedirectClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should redirect with success
+		assert.Equal(t, http.StatusSeeOther, resp.StatusCode, "Expected redirect")
+		location = resp.Header.Get("Location")
+		assert.Contains(t, location, "success", "Expected success in redirect")
 	})
 }
 
@@ -570,9 +719,46 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 		mcpCmd.Env = append(mcpCmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
-	// Capture stderr for debugging
+	// Capture stderr for debugging and also output to test log
 	var stderr bytes.Buffer
-	mcpCmd.Stderr = &stderr
+	mcpCmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+
+	if err := mcpCmd.Start(); err != nil {
+		t.Fatalf("Failed to start OAuth server: %v", err)
+	}
+
+	// Give a moment for immediate failures
+	time.Sleep(100 * time.Millisecond)
+
+	// Check if process died immediately
+	if mcpCmd.ProcessState != nil {
+		t.Fatalf("OAuth server died immediately: %s", stderr.String())
+	}
+
+	return mcpCmd
+}
+
+// startOAuthServerWithTokenConfig starts the OAuth server with user token configuration
+func startOAuthServerWithTokenConfig(t *testing.T) *exec.Cmd {
+	// Start with user token config
+	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-token-test.json")
+
+	// Set default environment
+	mcpCmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
+		"GOOGLE_CLIENT_ID=test-client-id-oauth",
+		"GOOGLE_CLIENT_SECRET=test-client-secret-oauth",
+		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
+		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
+		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
+		"MCP_FRONT_ENV=development",
+	}
+
+	// Capture stderr for debugging and also output to test log
+	var stderr bytes.Buffer
+	mcpCmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
 
 	if err := mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start OAuth server: %v", err)
@@ -645,6 +831,119 @@ func registerTestClient(t *testing.T) string {
 	var clientResp map[string]interface{}
 	_ = json.NewDecoder(resp.Body).Decode(&clientResp)
 	return clientResp["client_id"].(string)
+}
+
+// createTestOAuthToken creates a valid OAuth token for testing
+func createTestOAuthToken(t *testing.T) string {
+	// Register a test client
+	clientID := registerTestClient(t)
+
+	// Start authorization flow with proper PKCE
+	state := "test-state-123"
+	// For testing, we'll use a simple verifier and its S256 challenge
+	// In real PKCE, verifier is random 43-128 chars
+	codeVerifier := "test-verifier-43-chars-long-for-pkce-challenge"
+	// This is the base64url(sha256(codeVerifier))
+	codeChallenge := "Xd4nK7YcH1MexTwF7AL2WspXU4S-_3mLA5U9IyDyN4s"
+	params := url.Values{
+		"response_type":         {"code"},
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:6274/oauth/callback"},
+		"state":                 {state},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {"S256"},
+		"scope":                 {"read write"},
+	}
+
+	// Create a client that captures redirects
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Make authorization request
+	resp, err := client.Get("http://localhost:8080/authorize?" + params.Encode())
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// Should redirect to Google OAuth
+	if resp.StatusCode != http.StatusFound {
+		// Read the error response body
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Expected status 302 (Found), got %d. Response body: %s", resp.StatusCode, string(body))
+	}
+	location, err := resp.Location()
+	require.NoError(t, err)
+
+	// Extract state from Google OAuth URL
+	googleState := location.Query().Get("state")
+	require.NotEmpty(t, googleState)
+	t.Logf("Google OAuth state: %s", googleState)
+
+	// Simulate Google OAuth callback
+	callbackParams := url.Values{
+		"code":  {"test-auth-code"},
+		"state": {googleState},
+	}
+
+	callbackResp, err := client.Get("http://localhost:8080/oauth/callback?" + callbackParams.Encode())
+	require.NoError(t, err)
+	defer callbackResp.Body.Close()
+
+	// Should redirect back to client with authorization code
+	// Accept both 302 (Found) and 303 (See Other) as valid redirect statuses
+	if callbackResp.StatusCode != http.StatusFound && callbackResp.StatusCode != http.StatusSeeOther {
+		// Read the error response body
+		body, _ := io.ReadAll(callbackResp.Body)
+		t.Fatalf("Expected redirect status (302 or 303) for callback, got %d. Response body: %s", callbackResp.StatusCode, string(body))
+	}
+	callbackLocation, err := callbackResp.Location()
+	require.NoError(t, err)
+
+	authCode := callbackLocation.Query().Get("code")
+	require.NotEmpty(t, authCode)
+	t.Logf("Authorization code from callback: %s", authCode)
+
+	// Exchange authorization code for token
+	tokenReq := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {authCode},
+		"redirect_uri":  {"http://127.0.0.1:6274/oauth/callback"},
+		"client_id":     {clientID},
+		"code_verifier": {codeVerifier}, // Must match the verifier used to generate the challenge
+	}
+
+	tokenResp, err := http.PostForm("http://localhost:8080/token", tokenReq)
+	require.NoError(t, err)
+	defer tokenResp.Body.Close()
+
+	if tokenResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(tokenResp.Body)
+		t.Fatalf("Token exchange failed with status %d. Response body: %s", tokenResp.StatusCode, string(body))
+	}
+
+	var tokenData map[string]interface{}
+	err = json.NewDecoder(tokenResp.Body).Decode(&tokenData)
+	require.NoError(t, err)
+
+	accessToken, ok := tokenData["access_token"].(string)
+	require.True(t, ok, "No access token in response")
+	require.NotEmpty(t, accessToken)
+
+	// Log the full token response for debugging
+	t.Logf("Token response: %+v", tokenData)
+
+	return accessToken
+}
+
+// extractCSRFToken extracts the CSRF token from the HTML response
+func extractCSRFToken(t *testing.T, html string) string {
+	// Look for <input type="hidden" name="csrf_token" value="...">
+	re := regexp.MustCompile(`<input[^>]+name="csrf_token"[^>]+value="([^"]+)"`)
+	matches := re.FindStringSubmatch(html)
+	require.GreaterOrEqual(t, len(matches), 2, "CSRF token not found in response")
+	return matches[1]
 }
 
 func contains(s, substr string) bool {

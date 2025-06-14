@@ -347,12 +347,24 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve original authorize request
-	ar, found := s.storage.getAuthorizeRequest(state)
-	if !found {
-		internal.LogError("Invalid or expired state: %s", state)
-		http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
-		return
+	// Check if this is a browser SSO flow
+	var ar fosite.AuthorizeRequester
+	var isBrowserFlow bool
+	var returnURL string
+
+	if strings.HasPrefix(state, "browser:") {
+		// Browser SSO flow - no stored authorize request
+		isBrowserFlow = true
+		returnURL = strings.TrimPrefix(state, "browser:")
+	} else {
+		// OAuth client flow - retrieve stored authorize request
+		var found bool
+		ar, found = s.storage.getAuthorizeRequest(state)
+		if !found {
+			internal.LogError("Invalid or expired state: %s", state)
+			http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Exchange code for token with timeout
@@ -375,6 +387,22 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	internal.Logf("User validated successfully: %s", userInfo.Email)
 
+	// Handle browser SSO flow
+	if isBrowserFlow {
+		// Set session cookie
+		if err := s.setBrowserSessionCookie(w, userInfo.Email); err != nil {
+			internal.LogError("Failed to set browser session cookie: %v", err)
+			http.Error(w, "Failed to create session", http.StatusInternalServerError)
+			return
+		}
+
+		// Redirect to the original URL
+		internal.Logf("Browser SSO successful for %s, redirecting to %s", userInfo.Email, returnURL)
+		http.Redirect(w, r, returnURL, http.StatusFound)
+		return
+	}
+
+	// Handle OAuth client flow
 	// Create session with user info
 	session := NewSession(userInfo)
 	internal.Logf("Session created for user: %s", userInfo.Email)
@@ -393,7 +421,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write the response (redirects back to client)
+	// Continue with normal OAuth flow
 	s.provider.WriteAuthorizeResponse(w, ar, response)
 }
 

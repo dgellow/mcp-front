@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/dgellow/mcp-front/internal"
@@ -29,6 +30,15 @@ type UserInfo struct {
 
 // newAuthService creates a new auth service instance
 func newAuthService(config Config) (*authService, error) {
+	// Use custom OAuth endpoints if provided (for testing)
+	endpoint := google.Endpoint
+	if authURL := os.Getenv("GOOGLE_OAUTH_AUTH_URL"); authURL != "" {
+		endpoint.AuthURL = authURL
+	}
+	if tokenURL := os.Getenv("GOOGLE_OAUTH_TOKEN_URL"); tokenURL != "" {
+		endpoint.TokenURL = tokenURL
+	}
+
 	googleConfig := &oauth2.Config{
 		ClientID:     config.GoogleClientID,
 		ClientSecret: config.GoogleClientSecret,
@@ -37,7 +47,7 @@ func newAuthService(config Config) (*authService, error) {
 			"openid",
 			"email",
 		},
-		Endpoint: google.Endpoint,
+		Endpoint: endpoint,
 	}
 
 	internal.Logf("Google OAuth config - ClientID: %s, RedirectURL: %s", config.GoogleClientID, config.GoogleRedirectURI)
@@ -65,7 +75,11 @@ func (s *authService) exchangeCodeForToken(ctx context.Context, code string) (*o
 func (s *authService) validateUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
 	// Get user info from Google
 	client := s.googleOAuth.Client(ctx, token)
-	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
+	userInfoURL := "https://www.googleapis.com/oauth2/v2/userinfo"
+	if customURL := os.Getenv("GOOGLE_USERINFO_URL"); customURL != "" {
+		userInfoURL = customURL
+	}
+	resp, err := client.Get(userInfoURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
