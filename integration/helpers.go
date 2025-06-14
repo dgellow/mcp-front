@@ -132,8 +132,12 @@ func cleanupContainers(t *testing.T, initialContainers []string) {
 			}
 		}
 		if !isInitial {
-			t.Logf("Force stopping container: %s", container)
-			exec.Command("docker", "stop", container).Run()
+			t.Logf("Force stopping container: %s...", container)
+			if err := exec.Command("docker", "stop", container).Run(); err != nil {
+				t.Logf("Failed to stop container %s: %v", container, err)
+			} else {
+				t.Logf("Stopped container: %s", container)
+			}
 		}
 	}
 }
