@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -42,6 +43,7 @@ type MCPClient struct {
 	sseConn         io.ReadCloser
 	messageEndpoint string
 	sseScanner      *bufio.Scanner
+	sessionID       string
 }
 
 // NewMCPClient creates a new MCP client for testing
@@ -57,6 +59,11 @@ func (c *MCPClient) Authenticate() error {
 	return nil
 }
 
+// SetAuthToken sets a specific auth token for the client
+func (c *MCPClient) SetAuthToken(token string) {
+	c.token = token
+}
+
 // Connect establishes an SSE connection and retrieves the message endpoint
 func (c *MCPClient) Connect() error {
 	// Close any existing connection
@@ -66,10 +73,10 @@ func (c *MCPClient) Connect() error {
 		c.messageEndpoint = ""
 	}
 
-	url := c.baseURL + "/postgres/sse"
-	tracef("Connect: requesting %s", url)
+	sseURL := c.baseURL + "/postgres/sse"
+	tracef("Connect: requesting %s", sseURL)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", sseURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create SSE request: %v", err)
 	}
@@ -107,6 +114,12 @@ func (c *MCPClient) Connect() error {
 			data := strings.TrimPrefix(line, "data: ")
 			if strings.Contains(data, "http://") || strings.Contains(data, "https://") {
 				c.messageEndpoint = data
+
+				// Extract session ID from endpoint URL
+				if u, err := url.Parse(data); err == nil {
+					c.sessionID = u.Query().Get("sessionId")
+				}
+
 				tracef("Connect: found endpoint: %s", c.messageEndpoint)
 				break
 			}
