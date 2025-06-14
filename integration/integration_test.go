@@ -71,15 +71,15 @@ func TestIntegration(t *testing.T) {
 
 	// Verify we got a successful response
 	require.NotNil(t, result, "Expected some response from MCP server")
-	
+
 	// Check for error in response
 	errorMap, hasError := result["error"].(map[string]interface{})
 	assert.False(t, hasError, "Query returned error: %v", errorMap)
-	
+
 	// Verify we got result content
 	resultMap, ok := result["result"].(map[string]interface{})
 	require.True(t, ok, "Expected result in response")
-	
+
 	content, ok := resultMap["content"].([]interface{})
 	require.True(t, ok, "Expected content in result")
 	assert.NotEmpty(t, content, "Query result missing content")
@@ -90,19 +90,18 @@ func TestIntegration(t *testing.T) {
 	require.NoError(t, err, "Failed to list resources")
 
 	t.Logf("Resources response: %+v", resourcesResult)
-	
+
 	// Check for error in resources response
 	errorMap, hasError = resourcesResult["error"].(map[string]interface{})
 	assert.False(t, hasError, "Resources list returned error: %v", errorMap)
-	
+
 	// Verify we got resources
 	resultMap, ok = resourcesResult["result"].(map[string]interface{})
 	require.True(t, ok, "Expected result in resources response")
-	
+
 	resources, ok := resultMap["resources"].([]interface{})
 	require.True(t, ok, "Expected resources array in result")
 	assert.NotEmpty(t, resources, "Expected at least one resource")
 	t.Logf("Found %d resources", len(resources))
 
 }
-
