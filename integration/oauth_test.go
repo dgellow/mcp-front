@@ -128,6 +128,7 @@ func testJWTSecretValidation(t *testing.T) {
 			mcpCmd.Env = []string{
 				"PATH=" + os.Getenv("PATH"),
 				"JWT_SECRET=" + tt.secret,
+				"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 				"GOOGLE_CLIENT_ID=test-client-id",
 				"GOOGLE_CLIENT_SECRET=test-client-secret",
 				"MCP_FRONT_ENV=development",
@@ -309,8 +310,21 @@ func testUserTokenFlow(t *testing.T) {
 		assert.Contains(t, location, "localhost:9090/auth", "Should redirect to Google OAuth")
 		assert.Contains(t, location, "client_id=", "Should include client_id")
 		assert.Contains(t, location, "redirect_uri=", "Should include redirect_uri")
-		// The state should be URL-encoded: "browser:/my/tokens" becomes "browser%3A%2Fmy%2Ftokens"
-		assert.Contains(t, location, "state=browser%3A%2Fmy%2Ftokens", "Should include browser prefix and return URL in state")
+		// The state should be URL-encoded and include signed CSRF: "browser:nonce:signature:/my/tokens"
+		// Extract and validate the state parameter
+		parsedURL, err := url.Parse(location)
+		require.NoError(t, err)
+		stateParam := parsedURL.Query().Get("state")
+		require.NotEmpty(t, stateParam, "State parameter should be present")
+		
+		// State format should be "browser:nonce:signature:returnURL"
+		assert.True(t, strings.HasPrefix(stateParam, "browser:"), "State should start with browser:")
+		parts := strings.SplitN(stateParam, ":", 4)
+		require.Len(t, parts, 4, "State should have 4 parts: browser:nonce:signature:url")
+		assert.Equal(t, "browser", parts[0], "First part should be 'browser'")
+		assert.NotEmpty(t, parts[1], "Nonce should not be empty")
+		assert.NotEmpty(t, parts[2], "Signature should not be empty")
+		assert.Equal(t, "/my/tokens", parts[3], "Return URL should be /my/tokens")
 	})
 
 	t.Run("AuthenticatedUserCanAccessTokens", func(t *testing.T) {
@@ -707,6 +721,7 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 	mcpCmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-oauth",
 		"GOOGLE_CLIENT_SECRET=test-client-secret-oauth",
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",

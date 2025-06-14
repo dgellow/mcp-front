@@ -58,8 +58,9 @@ type Server struct {
 		DeleteUserToken(ctx context.Context, userEmail, service string) error
 		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
 	}
-	authService *authService
-	config      Config
+	authService       *authService
+	config            Config
+	sessionEncryptor  crypto.Encryptor // Created once for browser SSO performance
 }
 
 // UserTokenStore defines methods for managing user tokens
@@ -79,6 +80,7 @@ func (s *Server) GetUserTokenStore() UserTokenStore {
 type Config struct {
 	Issuer              string
 	TokenTTL            time.Duration
+	SessionDuration     time.Duration // Duration for browser session cookies (default: 24h)
 	AllowedDomains      []string
 	AllowedOrigins      []string // For CORS validation
 	GoogleClientID      string
@@ -105,23 +107,26 @@ func NewServer(config Config) (*Server, error) {
 		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
 	}
 
-	// Create encryptor for sensitive data if using persistent storage
+	// Create encryptors (encryption key is always validated in config loading)
+	key := []byte(config.EncryptionKey)
+	var err error
+	
+	// Create storage encryptor if needed
 	var encryptor crypto.Encryptor
 	if needsEncryption {
-		// Non-memory storage requires encryption
-		if config.EncryptionKey == "" {
-			return nil, fmt.Errorf("encryptionKey is required when using %s storage (set via config or ENCRYPTION_KEY env var)", config.StorageType)
-		}
-		key := []byte(config.EncryptionKey)
-		if len(key) != 32 {
-			return nil, fmt.Errorf("encryption key must be exactly 32 bytes for AES-256, got %d bytes", len(key))
-		}
-		var err error
 		encryptor, err = crypto.NewEncryptor(key)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create encryptor: %w", err)
+			return nil, fmt.Errorf("failed to create storage encryptor: %w", err)
 		}
 	}
+	
+	// Always create session encryptor for browser SSO
+	var sessionEncryptor crypto.Encryptor
+	sessionEncryptor, err = crypto.NewEncryptor(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session encryptor: %w", err)
+	}
+	internal.Logf("Session encryptor initialized for browser SSO")
 
 	// Create storage (data layer)
 	var storage interface {
@@ -138,7 +143,6 @@ func NewServer(config Config) (*Server, error) {
 		DeleteUserToken(ctx context.Context, userEmail, service string) error
 		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
 	}
-	var err error
 
 	switch config.StorageType {
 	case "firestore":
@@ -226,11 +230,17 @@ func NewServer(config Config) (*Server, error) {
 		compose.OAuth2TokenIntrospectionFactory,
 	)
 
+	// Set default session duration if not configured
+	if config.SessionDuration == 0 {
+		config.SessionDuration = 24 * time.Hour
+	}
+
 	return &Server{
-		provider:    provider,
-		storage:     storage,
-		authService: authService,
-		config:      config,
+		provider:         provider,
+		storage:          storage,
+		authService:      authService,
+		config:           config,
+		sessionEncryptor: sessionEncryptor,
 	}, nil
 }
 
@@ -353,9 +363,27 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	var returnURL string
 
 	if strings.HasPrefix(state, "browser:") {
-		// Browser SSO flow - no stored authorize request
+		// Browser SSO flow - validate signature and extract return URL
 		isBrowserFlow = true
-		returnURL = strings.TrimPrefix(state, "browser:")
+		// Format: "browser:nonce:signature:returnURL"
+		parts := strings.SplitN(state, ":", 4)
+		if len(parts) != 4 {
+			internal.LogError("Invalid browser state format: %s", state)
+			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			return
+		}
+		// parts[0] = "browser", parts[1] = nonce, parts[2] = signature, parts[3] = return URL
+		nonce := parts[1]
+		signature := parts[2]
+		returnURL = parts[3]
+		
+		// Validate HMAC signature
+		data := nonce + ":" + returnURL
+		if !s.validateSignedData(data, signature) {
+			internal.LogError("Invalid CSRF signature in browser flow")
+			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			return
+		}
 	} else {
 		// OAuth client flow - retrieve stored authorize request
 		var found bool
