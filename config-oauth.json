@@ -7,62 +7,53 @@
     "auth": {
       "kind": "oauth",
       "issuer": "https://mcp-internal.yourcompany.org",
-      "gcpProject": "your-gcp-project-id",
+      "gcpProject": {"$env": "GCP_PROJECT"},
       "allowedDomains": ["yourcompany.com"],
-      "tokenTtl": "1h",
+      "allowedOrigins": ["https://claude.ai"],
+      "tokenTtl": "24h",
       "storage": "memory",
       "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
       "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
       "googleRedirectUri": "https://mcp-internal.yourcompany.org/oauth/callback",
-      "jwtSecret": {"$env": "JWT_SECRET"}
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
     }
   },
   "mcpServers": {
+    "postgres": {
+      "transportType": "stdio",
+      "command": "docker", 
+      "args": [
+        "run", "--rm", "-i",
+        "mcp/postgres:latest",
+        "postgresql://user:password@localhost:5432/database"
+      ]
+    },
     "notion": {
+      "transportType": "stdio",
+      "requiresUserToken": true,
+      "tokenSetup": {
+        "displayName": "Notion Integration Token",
+        "instructions": "Create an integration at https://www.notion.so/my-integrations and copy the token",
+        "helpUrl": "https://developers.notion.com/docs/create-a-notion-integration"
+      },
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
         "mcp/notion:latest"
       ],
       "env": {
-        "NOTION_TOKEN": "${NOTION_TOKEN}"
-      },
-      "options": {
-        "logEnabled": true
-      }
-    },
-    "postgres": {
-      "command": "docker", 
-      "args": [
-        "run", "--rm", "-i",
-        "mcp/postgres:latest"
-      ],
-      "env": {
-        "DATABASE_URL": "${DATABASE_URL}"
-      },
-      "options": {
-        "logEnabled": true
+        "OPENAPI_MCP_HEADERS": {"$userToken": "{\"Authorization\": \"Bearer {{token}}\"}"}
       }
     },
     "git": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i", 
         "-v", "/repos:/repos:ro",
         "mcp/git:latest"
-      ],
-      "options": {
-        "logEnabled": true
-      }
-    },
-    "external-api": {
-      "url": "https://external-mcp-server.example.com/sse",
-      "headers": {
-        "Authorization": "Bearer ${EXTERNAL_API_TOKEN}"
-      },
-      "options": {
-        "logEnabled": true
-      }
+      ]
     }
   }
 }

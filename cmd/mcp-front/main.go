@@ -21,34 +21,36 @@ func init() {
 }
 
 func generateDefaultConfig(path string) error {
-	defaultConfig := map[string]interface{}{
-		"mcpProxy": map[string]interface{}{
-			"baseURL": "http://localhost:8080",
+	defaultConfig := map[string]any{
+		"version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+		"proxy": map[string]any{
+			"baseURL": "https://mcp.yourcompany.com",
 			"addr":    ":8080",
 			"name":    "mcp-front",
-		},
-		"mcpServers": map[string]interface{}{
-			"postgres": map[string]interface{}{
-				"command": "docker",
-				"args": []string{
-					"run", "--rm", "-i", "--network", "host",
-					"mcp/postgres", "postgresql://user:password@localhost:5432/database",
-				},
-				"options": map[string]interface{}{
-					"authTokens": []string{"your-secret-token"},
-					"logEnabled": true,
-				},
+			"auth": map[string]any{
+				"kind":               "oauth",
+				"issuer":             "https://mcp.yourcompany.com",
+				"allowedDomains":     []string{"yourcompany.com"},
+				"allowedOrigins":     []string{"https://claude.ai"},
+				"tokenTtl":           "24h",
+				"storage":            "memory",
+				"googleClientId":     map[string]string{"$env": "GOOGLE_CLIENT_ID"},
+				"googleClientSecret": map[string]string{"$env": "GOOGLE_CLIENT_SECRET"},
+				"googleRedirectUri":  "https://mcp.yourcompany.com/oauth/callback",
+				"jwtSecret":          map[string]string{"$env": "JWT_SECRET"},
+				"encryptionKey":      map[string]string{"$env": "ENCRYPTION_KEY"},
 			},
 		},
-		"oauth": map[string]interface{}{
-			"issuer":             "https://your-domain.com",
-			"gcpProject":         "your-gcp-project",
-			"allowedDomains":     []string{"your-company.com"},
-			"tokenTtl":           "24h",
-			"storage":            "memory",
-			"googleClientId":     "your-google-client-id",
-			"googleClientSecret": "your-google-client-secret",
-			"googleRedirectUri":  "https://your-domain.com/oauth/callback",
+		"mcpServers": map[string]any{
+			"postgres": map[string]any{
+				"transportType": "stdio",
+				"command":       "docker",
+				"args": []any{
+					"run", "--rm", "-i",
+					"mcp/postgres:latest",
+					map[string]string{"$env": "POSTGRES_URL"},
+				},
+			},
 		},
 	}
 
@@ -64,11 +66,61 @@ func generateDefaultConfig(path string) error {
 	return nil
 }
 
+// validateConfig performs validation on a config file and reports issues
+func validateConfig(path string) error {
+	result, err := config.ValidateFile(path)
+	if err != nil {
+		return fmt.Errorf("error during validation: %w", err)
+	}
+
+	// Print validation result
+	fmt.Printf("Validating: %s\n", path)
+
+	if len(result.Errors) > 0 {
+		fmt.Printf("\nErrors (%d):\n", len(result.Errors))
+		for _, err := range result.Errors {
+			if err.Path != "" {
+				fmt.Printf("  - %s: %s\n", err.Path, err.Message)
+			} else {
+				fmt.Printf("  - %s\n", err.Message)
+			}
+		}
+	}
+
+	if len(result.Warnings) > 0 {
+		fmt.Printf("\nWarnings (%d):\n", len(result.Warnings))
+		for _, warn := range result.Warnings {
+			if warn.Path != "" {
+				fmt.Printf("  - %s: %s\n", warn.Path, warn.Message)
+			} else {
+				fmt.Printf("  - %s\n", warn.Message)
+			}
+		}
+	}
+
+	// Print summary
+	fmt.Println()
+	if len(result.Errors) == 0 && len(result.Warnings) == 0 {
+		fmt.Println("Result: PASS")
+	} else if len(result.Errors) == 0 {
+		fmt.Println("Result: FAIL (warnings present)")
+	} else {
+		fmt.Println("Result: FAIL")
+	}
+
+	// For -validate command, fail on warnings too
+	if len(result.Errors) > 0 || len(result.Warnings) > 0 {
+		return fmt.Errorf("validation failed: %d error(s), %d warning(s)", len(result.Errors), len(result.Warnings))
+	}
+	return nil
+}
+
 func main() {
 	conf := flag.String("config", "", "path to config file (required)")
 	version := flag.Bool("version", false, "print version and exit")
 	help := flag.Bool("help", false, "print help and exit")
 	configInit := flag.String("config-init", "", "generate default config file at specified path")
+	validate := flag.Bool("validate", false, "validate config file and exit")
 	flag.Parse()
 	if *help {
 		flag.Usage()
@@ -84,6 +136,17 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("Generated default config at: %s\n", *configInit)
+		return
+	}
+
+	if *validate {
+		if *conf == "" {
+			fmt.Fprintf(os.Stderr, "Error: -config flag is required for validation\n")
+			os.Exit(1)
+		}
+		if err := validateConfig(*conf); err != nil {
+			os.Exit(1)
+		}
 		return
 	}
 
