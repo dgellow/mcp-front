@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
@@ -33,11 +34,41 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	mux := http.NewServeMux()
 
-	// Create session manager for stdio servers
+	// Create session manager for stdio servers with configurable timeouts
+	sessionTimeout := 5 * time.Minute
+	if timeoutStr := os.Getenv("SESSION_TIMEOUT"); timeoutStr != "" {
+		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+			sessionTimeout = timeout
+			internal.LogInfoWithFields("server", "Using custom session timeout", map[string]interface{}{
+				"timeout": sessionTimeout,
+			})
+		} else {
+			internal.LogWarnWithFields("server", "Invalid SESSION_TIMEOUT value", map[string]interface{}{
+				"value": timeoutStr,
+				"error": err.Error(),
+			})
+		}
+	}
+
+	cleanupInterval := 1 * time.Minute
+	if intervalStr := os.Getenv("SESSION_CLEANUP_INTERVAL"); intervalStr != "" {
+		if interval, err := time.ParseDuration(intervalStr); err == nil {
+			cleanupInterval = interval
+			internal.LogInfoWithFields("server", "Using custom cleanup interval", map[string]interface{}{
+				"interval": cleanupInterval,
+			})
+		} else {
+			internal.LogWarnWithFields("server", "Invalid SESSION_CLEANUP_INTERVAL value", map[string]interface{}{
+				"value": intervalStr,
+				"error": err.Error(),
+			})
+		}
+	}
+
 	sessionManager := client.NewStdioSessionManager(
-		client.WithTimeout(5*time.Minute),
+		client.WithTimeout(sessionTimeout),
 		client.WithMaxPerUser(10),
-		client.WithCleanupInterval(1*time.Minute),
+		client.WithCleanupInterval(cleanupInterval),
 	)
 
 	s := &Server{
