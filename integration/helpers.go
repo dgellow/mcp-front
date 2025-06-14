@@ -10,6 +10,46 @@ import (
 	"time"
 )
 
+// TestConfig holds all timeout configurations for integration tests
+type TestConfig struct {
+	SessionTimeout        string
+	CleanupInterval       string
+	CleanupWaitTime       string
+	TimerResetWaitTime    string
+	MultiUserWaitTime     string
+}
+
+// GetTestConfig returns test configuration from environment variables or defaults
+func GetTestConfig() TestConfig {
+	c := TestConfig{
+		// Default values
+		SessionTimeout:       "10s",
+		CleanupInterval:      "2s",
+		CleanupWaitTime:      "15s",
+		TimerResetWaitTime:   "12s",
+		MultiUserWaitTime:    "15s",
+	}
+
+	// Override from environment if set
+	if v := os.Getenv("SESSION_TIMEOUT"); v != "" {
+		c.SessionTimeout = v
+	}
+	if v := os.Getenv("SESSION_CLEANUP_INTERVAL"); v != "" {
+		c.CleanupInterval = v
+	}
+	if v := os.Getenv("TEST_CLEANUP_WAIT_TIME"); v != "" {
+		c.CleanupWaitTime = v
+	}
+	if v := os.Getenv("TEST_TIMER_RESET_WAIT_TIME"); v != "" {
+		c.TimerResetWaitTime = v
+	}
+	if v := os.Getenv("TEST_MULTI_USER_WAIT_TIME"); v != "" {
+		c.MultiUserWaitTime = v
+	}
+
+	return c
+}
+
 func waitForDB(t *testing.T) {
 	waitForSec := 5
 	for i := 0; i < waitForSec; i++ {
@@ -48,9 +88,24 @@ func tracef(format string, args ...interface{}) {
 // startMCPFront starts the mcp-front server with the given config and returns the command
 func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cmd {
 	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", configPath)
-
-	// Pass through environment
-	mcpCmd.Env = append(mcpCmd.Environ(), extraEnv...)
+	
+	// Get test config for session timeouts
+	testConfig := GetTestConfig()
+	
+	// Build default environment with test timeouts
+	defaultEnv := []string{
+		"SESSION_TIMEOUT=" + testConfig.SessionTimeout,
+		"SESSION_CLEANUP_INTERVAL=" + testConfig.CleanupInterval,
+	}
+	
+	// Start with system environment
+	mcpCmd.Env = os.Environ()
+	
+	// Apply defaults first
+	mcpCmd.Env = append(mcpCmd.Env, defaultEnv...)
+	
+	// Apply extra env (can override defaults)
+	mcpCmd.Env = append(mcpCmd.Env, extraEnv...)
 
 	// Pass through LOG_LEVEL and LOG_FORMAT if set
 	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
