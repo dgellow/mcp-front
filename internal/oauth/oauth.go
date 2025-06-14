@@ -58,9 +58,9 @@ type Server struct {
 		DeleteUserToken(ctx context.Context, userEmail, service string) error
 		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
 	}
-	authService       *authService
-	config            Config
-	sessionEncryptor  crypto.Encryptor // Created once for browser SSO performance
+	authService      *authService
+	config           Config
+	sessionEncryptor crypto.Encryptor // Created once for browser SSO performance
 }
 
 // UserTokenStore defines methods for managing user tokens
@@ -110,7 +110,7 @@ func NewServer(config Config) (*Server, error) {
 	// Create encryptors (encryption key is always validated in config loading)
 	key := []byte(config.EncryptionKey)
 	var err error
-	
+
 	// Create storage encryptor if needed
 	var encryptor crypto.Encryptor
 	if needsEncryption {
@@ -119,7 +119,7 @@ func NewServer(config Config) (*Server, error) {
 			return nil, fmt.Errorf("failed to create storage encryptor: %w", err)
 		}
 	}
-	
+
 	// Always create session encryptor for browser SSO
 	var sessionEncryptor crypto.Encryptor
 	sessionEncryptor, err = crypto.NewEncryptor(key)
@@ -185,7 +185,6 @@ func NewServer(config Config) (*Server, error) {
 			return nil, fmt.Errorf("JWT secret must be at least 32 bytes long for security, got %d bytes", len(secret))
 		}
 	} else {
-		// Generate a cryptographically secure random secret
 		secret = make([]byte, 32)
 		if _, err := rand.Read(secret); err != nil {
 			return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
@@ -339,11 +338,9 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get state and code from query params
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
 
-	// Check for errors from Google
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		errDesc := r.URL.Query().Get("error_description")
 		internal.LogError("Google OAuth error: %s - %s", errMsg, errDesc)
@@ -376,7 +373,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		nonce := parts[1]
 		signature := parts[2]
 		returnURL = parts[3]
-		
+
 		// Validate HMAC signature
 		data := nonce + ":" + returnURL
 		if !s.validateSignedData(data, signature) {
@@ -435,7 +432,6 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	session := NewSession(userInfo)
 	internal.Logf("Session created for user: %s", userInfo.Email)
 
-	// Complete the authorization request
 	internal.Logf("Creating authorize response for client: %s", ar.GetClient().GetID())
 	response, err := s.provider.NewAuthorizeResponse(ctx, ar, session)
 	if err != nil {

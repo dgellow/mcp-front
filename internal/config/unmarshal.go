@@ -29,7 +29,6 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Copy simple fields
 	c.TransportType = raw.TransportType
 	c.Timeout = raw.Timeout
 	c.Options = raw.Options
@@ -261,7 +260,6 @@ func (c *MCPClientConfig) ApplyUserToken(userToken string) *MCPClientConfig {
 		return c
 	}
 
-	// Create a copy
 	result := *c
 
 	// Copy and apply token to env vars
@@ -305,7 +303,7 @@ func (c *MCPClientConfig) ApplyUserToken(userToken string) *MCPClientConfig {
 		}
 	}
 
-	// Clear the tracking maps in the copy as they're no longer needed
+	// Clear tracking maps (no longer needed after token substitution)
 	result.EnvNeedsToken = nil
 	result.ArgsNeedToken = nil
 	result.URLNeedsToken = false

@@ -73,7 +73,6 @@ func (s *authService) exchangeCodeForToken(ctx context.Context, code string) (*o
 
 // validateUser validates the Google OAuth token and checks domain membership
 func (s *authService) validateUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
-	// Get user info from Google
 	client := s.googleOAuth.Client(ctx, token)
 	userInfoURL := "https://www.googleapis.com/oauth2/v2/userinfo"
 	if customURL := os.Getenv("GOOGLE_USERINFO_URL"); customURL != "" {
