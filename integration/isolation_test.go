@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 // TestMultiUserSessionIsolation validates that multiple users have separate stdio instances
 func TestMultiUserSessionIsolation(t *testing.T) {
 	trace(t, "Starting multi-user session isolation test")

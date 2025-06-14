@@ -12,22 +12,22 @@ import (
 
 // TestConfig holds all timeout configurations for integration tests
 type TestConfig struct {
-	SessionTimeout        string
-	CleanupInterval       string
-	CleanupWaitTime       string
-	TimerResetWaitTime    string
-	MultiUserWaitTime     string
+	SessionTimeout     string
+	CleanupInterval    string
+	CleanupWaitTime    string
+	TimerResetWaitTime string
+	MultiUserWaitTime  string
 }
 
 // GetTestConfig returns test configuration from environment variables or defaults
 func GetTestConfig() TestConfig {
 	c := TestConfig{
 		// Default values
-		SessionTimeout:       "10s",
-		CleanupInterval:      "2s",
-		CleanupWaitTime:      "15s",
-		TimerResetWaitTime:   "12s",
-		MultiUserWaitTime:    "15s",
+		SessionTimeout:     "10s",
+		CleanupInterval:    "2s",
+		CleanupWaitTime:    "15s",
+		TimerResetWaitTime: "12s",
+		MultiUserWaitTime:  "15s",
 	}
 
 	// Override from environment if set
@@ -88,22 +88,22 @@ func tracef(format string, args ...interface{}) {
 // startMCPFront starts the mcp-front server with the given config and returns the command
 func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cmd {
 	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", configPath)
-	
+
 	// Get test config for session timeouts
 	testConfig := GetTestConfig()
-	
+
 	// Build default environment with test timeouts
 	defaultEnv := []string{
 		"SESSION_TIMEOUT=" + testConfig.SessionTimeout,
 		"SESSION_CLEANUP_INTERVAL=" + testConfig.CleanupInterval,
 	}
-	
+
 	// Start with system environment
 	mcpCmd.Env = os.Environ()
-	
+
 	// Apply defaults first
 	mcpCmd.Env = append(mcpCmd.Env, defaultEnv...)
-	
+
 	// Apply extra env (can override defaults)
 	mcpCmd.Env = append(mcpCmd.Env, extraEnv...)
 
