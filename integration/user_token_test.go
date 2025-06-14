@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/server"
 )
@@ -62,9 +65,7 @@ func TestUserTokenFlow(t *testing.T) {
 	// Create server
 	ctx := context.Background()
 	handler, err := server.NewServer(ctx, cfg)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
+	require.NoError(t, err, "Failed to create server")
 
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -79,18 +80,12 @@ func TestUserTokenFlow(t *testing.T) {
 
 		handler.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
-		}
+		assert.Equal(t, http.StatusOK, w.Code, "Expected status 200: %s", w.Body.String())
 
 		// Should show both services without tokens
 		body := w.Body.String()
-		if !strings.Contains(body, "Notion") {
-			t.Error("Expected Notion service in response")
-		}
-		if !strings.Contains(body, "GitHub") {
-			t.Error("Expected GitHub service in response")
-		}
+		assert.Contains(t, body, "Notion", "Expected Notion service in response")
+		assert.Contains(t, body, "GitHub", "Expected GitHub service in response")
 	})
 
 	t.Run("SetTokenWithValidation", func(t *testing.T) {
@@ -166,8 +161,6 @@ func extractCSRFToken(t *testing.T, html string) string {
 	// Look for <input type="hidden" name="csrf_token" value="...">
 	re := regexp.MustCompile(`<input[^>]+name="csrf_token"[^>]+value="([^"]+)"`)
 	matches := re.FindStringSubmatch(html)
-	if len(matches) < 2 {
-		t.Fatal("CSRF token not found in response")
-	}
+	require.GreaterOrEqual(t, len(matches), 2, "CSRF token not found in response")
 	return matches[1]
 }

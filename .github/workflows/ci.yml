@@ -87,6 +87,5 @@ jobs:
         TEST_MULTI_USER_WAIT_SECONDS: 10
       run: |
         cd integration
-        chmod +x run_tests.sh
-        ./run_tests.sh
+        go test -v -timeout 2m
 

@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git
@@ -20,7 +20,7 @@ COPY . .
 RUN go build -o mcp-front ./cmd/mcp-front
 
 # Runtime stage with Docker client
-FROM alpine:3.20
+FROM alpine:latest
 
 # Install Docker CLI only (not the daemon)
 RUN apk add --no-cache \
