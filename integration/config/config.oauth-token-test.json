@@ -1,0 +1,44 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-oauth-token-test",
+    "auth": {
+      "kind": "oauth",
+      "issuer": "http://localhost:8080",
+      "gcpProject": "test-project",
+      "allowedDomains": ["test.com"],
+      "tokenTtl": "1h",
+      "storage": "memory",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
+      "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
+      "googleRedirectUri": "http://localhost:8080/oauth/callback",
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
+    }
+  },
+  "mcpServers": {
+    "notion": {
+      "transportType": "sse",
+      "url": "https://notion-mcp.example.com",
+      "requiresUserToken": true,
+      "tokenSetup": {
+        "displayName": "Notion",
+        "instructions": "Create a Notion integration token",
+        "helpUrl": "https://developers.notion.com",
+        "tokenFormat": "^secret_[a-zA-Z0-9]{43}$"
+      }
+    },
+    "github": {
+      "transportType": "sse",
+      "url": "https://github-mcp.example.com",
+      "requiresUserToken": true,
+      "tokenSetup": {
+        "displayName": "GitHub",
+        "instructions": "Create a GitHub personal access token",
+        "helpUrl": "https://github.com/settings/tokens"
+      }
+    }
+  }
+}

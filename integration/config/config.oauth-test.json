@@ -8,14 +8,15 @@
       "kind": "oauth",
       "issuer": "http://localhost:8080",
       "gcpProject": "test-project",
-      "allowedDomains": ["test.com", "stainless.com"],
+      "allowedDomains": ["test.com", "stainless.com", "claude.ai"],
       "allowedOrigins": ["https://claude.ai"],
       "tokenTtl": "1h",
       "storage": "memory",
       "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
       "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
       "googleRedirectUri": "http://localhost:8080/oauth/callback",
-      "jwtSecret": {"$env": "JWT_SECRET"}
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
     }
   },
   "mcpServers": {

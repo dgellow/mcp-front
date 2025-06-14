@@ -146,7 +146,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		tokenMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
-			s.oauthServer.ValidateTokenMiddleware(),
+			s.oauthServer.SSOMiddleware(),
 		}
 
 		// Token management UI endpoints
