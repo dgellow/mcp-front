@@ -75,7 +75,7 @@ func TestMain(m *testing.M) {
 // showTestFailureDiagnostics displays logs when tests fail
 func showTestFailureDiagnostics(logFile string) {
 	fmt.Println("\n========== TEST FAILURE DIAGNOSTICS ==========")
-	
+
 	// Show Docker compose logs
 	fmt.Println("\nDocker logs:")
 	fmt.Println("----------------------------------------------")
@@ -83,7 +83,7 @@ func showTestFailureDiagnostics(logFile string) {
 	logsCmd.Stdout = os.Stdout
 	logsCmd.Stderr = os.Stderr
 	logsCmd.Run()
-	
+
 	// Show mcp-front logs if available
 	if _, err := os.Stat(logFile); err == nil {
 		fmt.Println("\nmcp-front logs (last 50 lines):")
@@ -93,6 +93,6 @@ func showTestFailureDiagnostics(logFile string) {
 		tailCmd.Stderr = os.Stderr
 		tailCmd.Run()
 	}
-	
+
 	fmt.Println("\n==============================================")
 }

@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 func waitForDB(t *testing.T) {
 	waitForSec := 5
 	for i := 0; i < waitForSec; i++ {
@@ -31,7 +30,6 @@ func waitForDB(t *testing.T) {
 
 	t.Fatalf("Database failed to become ready after %d seconds", waitForSec)
 }
-
 
 // trace logs a message if TRACE environment variable is set
 func trace(t *testing.T, format string, args ...interface{}) {

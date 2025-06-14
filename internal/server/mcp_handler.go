@@ -18,13 +18,13 @@ import (
 
 // MCPHandler handles MCP requests with session management for stdio servers
 type MCPHandler struct {
-	serverName         string
-	serverConfig       *config.MCPClientConfig
-	tokenStore         oauth.UserTokenStore
-	setupBaseURL       string
-	info               mcp.Implementation
-	sessionManager     *client.StdioSessionManager
-	sharedSSEServer    *server.SSEServer // Shared SSE server for stdio servers
+	serverName      string
+	serverConfig    *config.MCPClientConfig
+	tokenStore      oauth.UserTokenStore
+	setupBaseURL    string
+	info            mcp.Implementation
+	sessionManager  *client.StdioSessionManager
+	sharedSSEServer *server.SSEServer // Shared SSE server for stdio servers
 }
 
 // NewMCPHandler creates a new MCP handler with session management
