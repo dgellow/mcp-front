@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/client"
@@ -26,8 +25,6 @@ type MCPHandler struct {
 	info               mcp.Implementation
 	sessionManager     *client.StdioSessionManager
 	sharedSSEServer    *server.SSEServer // Shared SSE server for stdio servers
-	capabilitiesLoaded bool              // Track if capabilities have been loaded
-	capabilitiesMu     sync.RWMutex      // Protect capabilities loading
 }
 
 // NewMCPHandler creates a new MCP handler with session management
