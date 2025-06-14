@@ -1,11 +1,23 @@
 package integration
 
 import (
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+// getTestTimeout returns the test timeout from environment or default
+func getTestTimeout(envVar string, defaultDuration time.Duration) time.Duration {
+	if timeoutStr := os.Getenv(envVar); timeoutStr != "" {
+		if seconds, err := strconv.Atoi(timeoutStr); err == nil && seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return defaultDuration
+}
 
 // TestMultiUserSessionIsolation validates that multiple users have separate stdio instances
 func TestMultiUserSessionIsolation(t *testing.T) {
@@ -314,8 +326,9 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	}
 
 	// Wait for timeout + cleanup interval (10s + 2s + buffer)
-	t.Log("Waiting 15 seconds for session timeout and cleanup...")
-	time.Sleep(15 * time.Second)
+	waitTime := getTestTimeout("TEST_CLEANUP_WAIT_SECONDS", 15*time.Second)
+	t.Logf("Waiting %v for session timeout and cleanup...", waitTime)
+	time.Sleep(waitTime)
 
 	// Check if container was cleaned up
 	containersAfterTimeout := getMCPContainers()
@@ -423,8 +436,9 @@ func TestSessionTimerReset(t *testing.T) {
 	client.Close()
 	
 	// Wait for timeout
-	t.Log("Waiting for session timeout...")
-	time.Sleep(12 * time.Second) // 8s timeout + 2s cleanup interval + buffer
+	waitTime := getTestTimeout("TEST_TIMER_RESET_WAIT_SECONDS", 12*time.Second)
+	t.Logf("Waiting %v for session timeout...", waitTime)
+	time.Sleep(waitTime)
 
 	containersAfterTimeout := getMCPContainers()
 	t.Logf("Containers after timeout: %d", len(containersAfterTimeout))
@@ -531,8 +545,9 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	}()
 
 	// Wait for client1's timeout (10s + cleanup interval)
-	t.Log("Waiting for client1 timeout while client2 stays active...")
-	time.Sleep(15 * time.Second)
+	waitTime := getTestTimeout("TEST_MULTI_USER_WAIT_SECONDS", 15*time.Second)
+	t.Logf("Waiting %v for client1 timeout while client2 stays active...", waitTime)
+	time.Sleep(waitTime)
 
 	// Check containers - should have only 1 now (client2's)
 	containersAfterClient1Timeout := getMCPContainers()

@@ -81,6 +81,10 @@ jobs:
         GOOGLE_CLIENT_SECRET: test-client-secret
         JWT_SECRET: test-jwt-secret-that-is-32-bytes!
         DATABASE_URL: postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable
+        # Shorter timeouts for CI environment
+        TEST_CLEANUP_WAIT_SECONDS: 8
+        TEST_TIMER_RESET_WAIT_SECONDS: 6
+        TEST_MULTI_USER_WAIT_SECONDS: 10
       run: |
         cd integration
         chmod +x run_tests.sh
