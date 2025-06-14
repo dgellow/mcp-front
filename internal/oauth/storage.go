@@ -41,8 +41,7 @@ func newStorage() *Storage {
 func (s *Storage) generateState() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		// Log the error and return empty string which will fail validation
-		internal.LogError("Failed to generate random state: %v", err)
+		internal.LogError("Failed to generate random state: %v", err) // Returns empty string to fail validation
 		return ""
 	}
 	return base64.URLEncoding.EncodeToString(b)
@@ -104,8 +103,7 @@ func (s *Storage) GetAllClients() map[string]fosite.Client {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 
-	// Create a copy to avoid race conditions
-	clients := make(map[string]fosite.Client, len(s.MemoryStore.Clients))
+	clients := make(map[string]fosite.Client, len(s.MemoryStore.Clients)) // Copy to avoid races
 	for id, client := range s.MemoryStore.Clients {
 		clients[id] = client
 	}

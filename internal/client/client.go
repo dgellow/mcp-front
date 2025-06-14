@@ -49,7 +49,6 @@ func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
 
 // NewMCPClientWith creates a new MCP client with a custom transport creator
 func NewMCPClientWith(name string, conf *config.MCPClientConfig, createTransport TransportCreator) (*Client, error) {
-	// Create the transport
 	transport, err := createTransport(conf)
 	if err != nil {
 		return nil, fmt.Errorf("creating transport: %w", err)
@@ -76,7 +75,6 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 			return nil, errors.New("command is required for stdio transport")
 		}
 
-		// Convert env map to slice for stdio client
 		envs := make([]string, 0, len(conf.Env))
 		for k, v := range conf.Env {
 			envs = append(envs, fmt.Sprintf("%s=%s", k, v))

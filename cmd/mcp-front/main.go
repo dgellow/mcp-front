@@ -15,7 +15,6 @@ import (
 var BuildVersion = "dev"
 
 func init() {
-	// Set standardized log format: yyyy-mm-dd hh:mm:ss.sss+TZ
 	log.SetFlags(0)
 	log.SetOutput(os.Stderr)
 	log.SetPrefix("")

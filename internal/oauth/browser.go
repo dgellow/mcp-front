@@ -77,12 +77,12 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 func (s *Server) generateBrowserState(returnURL string) string {
 	// Generate random nonce
 	nonce := s.storage.generateState() // Reuse existing secure random generation
-	
+
 	// Create signed CSRF token: nonce + HMAC(nonce + returnURL)
 	// This ensures the token is tied to the specific return URL
 	data := nonce + ":" + returnURL
 	signature := s.signData(data)
-	
+
 	// Format: "browser:nonce:signature:returnURL"
 	return fmt.Sprintf("browser:%s:%s:%s", nonce, signature, returnURL)
 }
@@ -102,7 +102,6 @@ func (s *Server) validateSignedData(data, signature string) bool {
 
 // setBrowserSessionCookie sets an encrypted session cookie for browser-based authentication
 func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string) error {
-	// Create session data
 	sessionData := SessionData{
 		Email:   userEmail,
 		Expires: time.Now().Add(s.config.SessionDuration),
@@ -118,7 +117,6 @@ func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string
 		return fmt.Errorf("failed to encrypt session: %w", err)
 	}
 
-	// Set secure cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "mcp_session",
 		Value:    encrypted,
