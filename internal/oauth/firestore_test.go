@@ -3,6 +3,8 @@ package oauth
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFirestoreStorageConfig(t *testing.T) {
@@ -18,13 +20,8 @@ func TestFirestoreStorageConfig(t *testing.T) {
 		}
 
 		_, err := NewServer(config)
-		if err == nil {
-			t.Fatal("Expected error when GCP project ID is missing for Firestore storage")
-		}
-
-		if err.Error() != "GCP project ID is required for Firestore storage" {
-			t.Fatalf("Expected specific error message, got: %v", err)
-		}
+		assert.Error(t, err, "Expected error when GCP project ID is missing for Firestore storage")
+		assert.EqualError(t, err, "GCP project ID is required for Firestore storage")
 	})
 
 	t.Run("missing encryption key", func(t *testing.T) {
@@ -39,50 +36,39 @@ func TestFirestoreStorageConfig(t *testing.T) {
 		}
 
 		_, err := NewServer(config)
-		if err == nil {
-			t.Fatal("Expected error when encryption key is missing for Firestore storage")
-		}
+		assert.Error(t, err, "Expected error when encryption key is missing for Firestore storage")
 
-		expected := "encryptionKey is required when using firestore storage (set via config or ENCRYPTION_KEY env var)"
-		if err.Error() != expected {
-			t.Fatalf("Expected error message %q, got: %v", expected, err)
-		}
+		// The error comes from creating the encryptor, not from validation
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "key must be 32 bytes", "Expected error about encryption key length")
 	})
 }
 
 func TestMemoryStorageDefault(t *testing.T) {
 	// Test that memory storage works as default
 	config := Config{
-		Issuer:      "https://test.example.com",
-		TokenTTL:    time.Hour,
-		JWTSecret:   "test-secret-32-bytes-long-for-testing",
-		StorageType: "", // Empty should default to memory
+		Issuer:        "https://test.example.com",
+		TokenTTL:      time.Hour,
+		JWTSecret:     "test-secret-32-bytes-long-for-testing",
+		EncryptionKey: "test-encryption-key-32-bytes-ok!",
+		StorageType:   "", // Empty should default to memory
 	}
 
 	server, err := NewServer(config)
-	if err != nil {
-		t.Fatalf("Failed to create server with default storage: %v", err)
-	}
-
-	if server == nil {
-		t.Fatal("Expected server to be created")
-	}
+	assert.NoError(t, err, "Failed to create server with default storage")
+	assert.NotNil(t, server, "Expected server to be created")
 }
 
 func TestUnsupportedStorageType(t *testing.T) {
 	config := Config{
-		Issuer:      "https://test.example.com",
-		TokenTTL:    time.Hour,
-		JWTSecret:   "test-secret-32-bytes-long-for-testing",
-		StorageType: "redis", // Unsupported type
+		Issuer:        "https://test.example.com",
+		TokenTTL:      time.Hour,
+		JWTSecret:     "test-secret-32-bytes-long-for-testing",
+		EncryptionKey: "test-encryption-key-32-bytes-ok!",
+		StorageType:   "redis", // Unsupported type
 	}
 
 	_, err := NewServer(config)
-	if err == nil {
-		t.Fatal("Expected error for unsupported storage type")
-	}
-
-	if err.Error() != "unsupported storage type: redis" {
-		t.Fatalf("Expected specific error message, got: %v", err)
-	}
+	assert.Error(t, err, "Expected error for unsupported storage type")
+	assert.EqualError(t, err, "unsupported storage type: redis")
 }

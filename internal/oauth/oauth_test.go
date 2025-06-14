@@ -19,6 +19,7 @@ func TestNewServer(t *testing.T) {
 		GoogleClientSecret: "test-client-secret",
 		GoogleRedirectURI:  "https://test.example.com/callback",
 		JWTSecret:          "test-secret-32-bytes-long-for-testing",
+		EncryptionKey:      "test-encryption-key-32-bytes-ok!",
 	}
 
 	server, err := NewServer(config)
@@ -47,6 +48,7 @@ func TestNewServerWithoutJWTSecret(t *testing.T) {
 		GoogleClientID:     "test-client-id",
 		GoogleClientSecret: "test-client-secret",
 		GoogleRedirectURI:  "https://test.example.com/callback",
+		EncryptionKey:      "test-encryption-key-32-bytes-ok!",
 		// JWTSecret is empty - should generate random secret
 	}
 
@@ -62,9 +64,10 @@ func TestNewServerWithoutJWTSecret(t *testing.T) {
 
 func TestWellKnownHandler(t *testing.T) {
 	config := Config{
-		Issuer:    "https://test.example.com",
-		TokenTTL:  time.Hour,
-		JWTSecret: "test-secret-32-bytes-long-for-testing",
+		Issuer:        "https://test.example.com",
+		TokenTTL:      time.Hour,
+		JWTSecret:     "test-secret-32-bytes-long-for-testing",
+		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
 	server, err := NewServer(config)
@@ -116,9 +119,10 @@ func TestWellKnownHandler(t *testing.T) {
 
 func TestRegisterHandler(t *testing.T) {
 	config := Config{
-		Issuer:    "https://test.example.com",
-		TokenTTL:  time.Hour,
-		JWTSecret: "test-secret-32-bytes-long-for-testing",
+		Issuer:        "https://test.example.com",
+		TokenTTL:      time.Hour,
+		JWTSecret:     "test-secret-32-bytes-long-for-testing",
+		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
 	server, err := NewServer(config)
@@ -166,9 +170,10 @@ func TestRegisterHandler(t *testing.T) {
 
 func TestRegisterHandlerInvalidMethod(t *testing.T) {
 	config := Config{
-		Issuer:    "https://test.example.com",
-		TokenTTL:  time.Hour,
-		JWTSecret: "test-secret-32-bytes-long-for-testing",
+		Issuer:        "https://test.example.com",
+		TokenTTL:      time.Hour,
+		JWTSecret:     "test-secret-32-bytes-long-for-testing",
+		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
 	server, err := NewServer(config)
@@ -188,9 +193,10 @@ func TestRegisterHandlerInvalidMethod(t *testing.T) {
 
 func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 	config := Config{
-		Issuer:    "https://test.example.com",
-		TokenTTL:  time.Hour,
-		JWTSecret: "test-secret-32-bytes-long-for-testing",
+		Issuer:        "https://test.example.com",
+		TokenTTL:      time.Hour,
+		JWTSecret:     "test-secret-32-bytes-long-for-testing",
+		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
 	server, err := NewServer(config)
