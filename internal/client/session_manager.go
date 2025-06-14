@@ -217,12 +217,10 @@ func (sm *StdioSessionManager) Shutdown() {
 	}
 }
 
-
 // GetClient returns the MCP client for this session
 func (s *StdioSession) GetClient() *Client {
 	return s.client
 }
-
 
 // checkUserLimits verifies user hasn't exceeded session limits
 func (sm *StdioSessionManager) checkUserLimits(userEmail string) error {

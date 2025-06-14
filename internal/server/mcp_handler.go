@@ -19,15 +19,15 @@ import (
 
 // MCPHandler handles MCP requests with session management for stdio servers
 type MCPHandler struct {
-	serverName      string
-	serverConfig    *config.MCPClientConfig
-	tokenStore      oauth.UserTokenStore
-	setupBaseURL    string
-	info            mcp.Implementation
-	sessionManager  *client.StdioSessionManager
-	sharedSSEServer *server.SSEServer // Shared SSE server for stdio servers
-	capabilitiesLoaded bool // Track if capabilities have been loaded
-	capabilitiesMu     sync.RWMutex // Protect capabilities loading
+	serverName         string
+	serverConfig       *config.MCPClientConfig
+	tokenStore         oauth.UserTokenStore
+	setupBaseURL       string
+	info               mcp.Implementation
+	sessionManager     *client.StdioSessionManager
+	sharedSSEServer    *server.SSEServer // Shared SSE server for stdio servers
+	capabilitiesLoaded bool              // Track if capabilities have been loaded
+	capabilitiesMu     sync.RWMutex      // Protect capabilities loading
 }
 
 // NewMCPHandler creates a new MCP handler with session management
@@ -72,16 +72,16 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Determine request type and route accordingly
 	if h.isMessageRequest(r) {
 		internal.LogInfoWithFields("mcp", "Handling message request", map[string]interface{}{
-			"path":   r.URL.Path,
-			"server": h.serverName,
+			"path":    r.URL.Path,
+			"server":  h.serverName,
 			"isStdio": isStdioServer(config),
 		})
 		h.handleMessageRequest(ctx, w, r, userEmail, config)
 	} else {
 		// Handle as SSE request (including legacy paths)
 		internal.LogInfoWithFields("mcp", "Handling SSE request", map[string]interface{}{
-			"path":   r.URL.Path,
-			"server": h.serverName,
+			"path":    r.URL.Path,
+			"server":  h.serverName,
 			"isStdio": isStdioServer(config),
 		})
 		h.handleSSERequest(ctx, w, r, userEmail, config)
@@ -134,7 +134,6 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 	// Use the shared SSE server directly
 	h.sharedSSEServer.ServeHTTP(w, r)
 }
-
 
 // handleMessageRequest handles message endpoint requests for stdio servers
 func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
@@ -353,7 +352,6 @@ func (h *MCPHandler) sendTokenSetupInstructions(w http.ResponseWriter, userEmail
 		flusher.Flush()
 	}
 }
-
 
 // writeJSONRPCError writes a JSON-RPC error response
 func (h *MCPHandler) writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {

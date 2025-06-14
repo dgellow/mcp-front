@@ -72,10 +72,10 @@ func tracef(format string, args ...interface{}) {
 // startMCPFront starts the mcp-front server with the given config and returns the command
 func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cmd {
 	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", configPath)
-	
+
 	// Pass through environment
 	mcpCmd.Env = append(mcpCmd.Environ(), extraEnv...)
-	
+
 	// Pass through LOG_LEVEL and LOG_FORMAT if set
 	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
 		mcpCmd.Env = append(mcpCmd.Env, "LOG_LEVEL="+logLevel)
@@ -83,7 +83,7 @@ func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cm
 	if logFormat := os.Getenv("LOG_FORMAT"); logFormat != "" {
 		mcpCmd.Env = append(mcpCmd.Env, "LOG_FORMAT="+logFormat)
 	}
-	
+
 	// Capture output to log file if MCP_LOG_FILE is set
 	if logFile := os.Getenv("MCP_LOG_FILE"); logFile != "" {
 		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -93,11 +93,11 @@ func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cm
 			t.Cleanup(func() { f.Close() })
 		}
 	}
-	
+
 	if err := mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start mcp-front: %v", err)
 	}
-	
+
 	return mcpCmd
 }
 

@@ -141,13 +141,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			// Create the shared MCP server for this stdio server
 			// We need to create it first so we can reference it in the hooks
 			var mcpServer *server.MCPServer
-			
+
 			// Create hooks for session management
 			hooks := &server.Hooks{}
-			
+
 			// Store reference to server name for use in hooks
 			currentServerName := serverName
-			
+
 			// Setup hooks that will be called when sessions are created/destroyed
 			hooks.AddOnRegisterSession(func(sessionCtx context.Context, session server.ClientSession) {
 				// Extract handler from context
@@ -163,7 +163,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 					})
 				}
 			})
-			
+
 			hooks.AddOnUnregisterSession(func(sessionCtx context.Context, session server.ClientSession) {
 				// Extract handler from context
 				if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
@@ -181,7 +181,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 					})
 				}
 			})
-			
+
 			// Now create the MCP server with the hooks
 			mcpServer = server.NewMCPServer(serverName, "1.0.0",
 				server.WithHooks(hooks),
@@ -190,13 +190,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 				server.WithToolCapabilities(true),
 				server.WithLogging(),
 			)
-			
+
 			// Create the SSE server wrapper around the MCP server
 			sseServer := server.NewSSEServer(mcpServer,
 				server.WithStaticBasePath(serverName),
 				server.WithBaseURL(baseURL.String()),
 			)
-			
+
 			s.sseServers[serverName] = sseServer
 		}
 

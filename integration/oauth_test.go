@@ -591,7 +591,7 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 
 	// Give a moment for immediate failures
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Check if process died immediately
 	if mcpCmd.ProcessState != nil {
 		t.Fatalf("OAuth server died immediately: %s", stderr.String())
