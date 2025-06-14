@@ -586,7 +586,7 @@ jobs:
     - name: Run integration tests
       run: |
         cd integration
-        ./run_tests.sh
+        go test -v -timeout 2m
     
     - name: Upload coverage
       uses: codecov/codecov-action@v3

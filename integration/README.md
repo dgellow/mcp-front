@@ -3,11 +3,14 @@
 ## Run Tests
 
 ```bash
-# Complete test suite (CI/fresh env)
-./run_tests.sh
-
-# Quick test (assumes binary exists)
+# Run all integration tests
 go test -v
+
+# Run specific test
+go test -v -run TestOAuthIntegration
+
+# With custom timeout
+go test -v -timeout 2m
 ```
 
 ## Run Demo
@@ -44,5 +47,4 @@ The integration tests validate:
 - `config/config.demo-token.json` - Demo config with tokens
 - `config/docker-compose.test.yml` - Test database  
 - `fixtures/schema.sql` - Test data
-- `run_tests.sh` - CI-ready test runner (runs all tests)
 - `run_demo.sh` - Demo environment
