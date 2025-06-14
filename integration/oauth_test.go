@@ -316,7 +316,7 @@ func testUserTokenFlow(t *testing.T) {
 		require.NoError(t, err)
 		stateParam := parsedURL.Query().Get("state")
 		require.NotEmpty(t, stateParam, "State parameter should be present")
-		
+
 		// State format should be "browser:nonce:signature:returnURL"
 		assert.True(t, strings.HasPrefix(stateParam, "browser:"), "State should start with browser:")
 		parts := strings.SplitN(stateParam, ":", 4)

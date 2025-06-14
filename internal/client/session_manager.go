@@ -119,12 +119,10 @@ func (sm *StdioSessionManager) GetOrCreateSession(
 		return session, nil
 	}
 
-	// Check user limits before creating new session
 	if err := sm.checkUserLimits(key.UserEmail); err != nil {
 		return nil, err
 	}
 
-	// Create new session
 	return sm.createSession(ctx, key, config, info, baseURL)
 }
 
@@ -135,11 +133,9 @@ func (sm *StdioSessionManager) GetSession(key SessionKey) (*StdioSession, bool) 
 	sm.mu.RUnlock()
 
 	if ok {
-		// Update last accessed time
 		now := time.Now()
 		session.lastAccessed.Store(&now)
 
-		// Check if process is still alive
 		select {
 		case <-session.ctx.Done():
 			// Process died, remove it
@@ -203,7 +199,6 @@ func (sm *StdioSessionManager) Shutdown() {
 	close(sm.stopCleanup)
 	sm.wg.Wait()
 
-	// Remove all sessions
 	sm.mu.Lock()
 	sessions := make([]*StdioSession, 0, len(sm.sessions))
 	for _, session := range sm.sessions {
@@ -266,17 +261,14 @@ func (sm *StdioSessionManager) createSession(
 	info mcp.Implementation,
 	baseURL string,
 ) (*StdioSession, error) {
-	// Create context for this session
 	sessionCtx, cancel := context.WithCancel(context.Background())
 
-	// Create MCP client
 	client, err := sm.createClient(key.ServerName, config)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("%w: %v", ErrSessionCreationFailed, err)
 	}
 
-	// Create session
 	now := time.Now()
 	session := &StdioSession{
 		client:  client,
@@ -334,7 +326,6 @@ func (sm *StdioSessionManager) cleanupTimedOutSessions() {
 	}
 	sm.mu.RUnlock()
 
-	// Remove timed out sessions
 	for _, key := range timedOut {
 		internal.LogInfoWithFields("session_manager", "Removing timed out session", map[string]interface{}{
 			"sessionID": key.SessionID,

@@ -9,7 +9,6 @@ import (
 
 // Load loads and processes the config with immediate env var resolution
 func Load(path string) (*Config, error) {
-	// Read config file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
@@ -21,7 +20,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config JSON: %w", err)
 	}
 
-	// Check version
 	version, ok := rawConfig["version"].(string)
 	if !ok {
 		return nil, fmt.Errorf("config version is required")
@@ -30,7 +28,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unsupported config version: %s", version)
 	}
 
-	// Validate raw config structure (before env resolution)
 	if err := validateRawConfig(rawConfig); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
@@ -42,7 +39,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 
-	// Validate the resolved config
 	if err := ValidateConfig(&config); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
@@ -108,7 +104,6 @@ func validateRawConfig(rawConfig map[string]interface{}) error {
 
 // ValidateConfig validates the resolved configuration
 func ValidateConfig(config *Config) error {
-	// Validate proxy config
 	if config.Proxy.BaseURL == "" {
 		return fmt.Errorf("proxy.baseURL is required")
 	}
@@ -116,20 +111,17 @@ func ValidateConfig(config *Config) error {
 		return fmt.Errorf("proxy.addr is required")
 	}
 
-	// Validate OAuth config if present
 	if oauth, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
 		if err := validateOAuthConfig(oauth); err != nil {
 			return fmt.Errorf("oauth config: %w", err)
 		}
 	}
 
-	// Check if OAuth is configured
 	hasOAuth := false
 	if _, ok := config.Proxy.Auth.(*OAuthAuthConfig); ok {
 		hasOAuth = true
 	}
 
-	// Validate MCP servers
 	for name, server := range config.MCPServers {
 		if err := validateMCPServer(name, server); err != nil {
 			return err

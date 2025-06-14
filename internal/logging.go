@@ -11,10 +11,8 @@ import (
 var logger *slog.Logger
 
 func init() {
-	// Configure structured logging using Go's standard slog package
 	var level slog.Level
 
-	// Check LOG_LEVEL environment variable
 	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
 	case "ERROR":
 		level = slog.LevelError
@@ -28,7 +26,6 @@ func init() {
 		level = slog.LevelInfo
 	}
 
-	// Check LOG_FORMAT environment variable
 	var handler slog.Handler
 	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
 		// Production: structured JSON logs
