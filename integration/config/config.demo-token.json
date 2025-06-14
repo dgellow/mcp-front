@@ -13,6 +13,7 @@
   },
   "mcpServers": {
     "postgres": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i", "--network", "host",

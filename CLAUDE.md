@@ -37,6 +37,22 @@ mcp-front is a Go-based OAuth 2.1 proxy server for MCP (Model Context Protocol) 
 - **ALWAYS** use structured logging with slog at INFO level
 - **ALWAYS** handle errors properly - no ignored errors
 
+## Technical Excellence
+
+### 🔐 Security
+
+- **ALWAYS** encrypt sensitive data at rest (OAuth secrets, bearer tokens)
+- **NEVER** store plaintext secrets in Firestore
+- **ALWAYS** use AES-256-GCM for encryption
+- **NEVER** log secrets
+
+### 🏗️ Go Idioms
+
+- Write simple, idiomatic Go - no Java patterns
+- Use interfaces, not inheritance
+- Handle errors explicitly
+- Prefer flat structures over nested hierarchies
+
 ## Key Technical Context
 
 ### OAuth Implementation
@@ -106,7 +122,7 @@ cmd/mcp-front/   # Main application entry point
 ### Testing Guidance
 
 - Unit tests: `go test ./internal/...`
-- Integration tests: `cd integration && ./run_tests.sh`
+- Integration tests: `cd integration && go test -v`
 - OAuth tests specifically: `go test ./internal/oauth -v`
 - Security tests: `go test ./integration -run TestSecurity`
 

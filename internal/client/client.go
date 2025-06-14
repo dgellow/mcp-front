@@ -15,74 +15,111 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// MCPClientInterface is the interface we need from mcp-go client
+type MCPClientInterface interface {
+	Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error)
+	ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+	CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	ListPrompts(ctx context.Context, request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error)
+	GetPrompt(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
+	ListResources(ctx context.Context, request mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error)
+	ReadResource(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)
+	ListResourceTemplates(ctx context.Context, request mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error)
+	Ping(ctx context.Context) error
+	Start(ctx context.Context) error
+	Close() error
+}
+
+// TransportCreator creates the underlying MCP transport client
+type TransportCreator func(conf *config.MCPClientConfig) (MCPClientInterface, error)
+
+// Client represents an MCP client wrapper
 type Client struct {
 	name            string
 	needPing        bool
 	needManualStart bool
-	client          *client.Client
+	client          MCPClientInterface
 	options         *config.Options
 }
 
+// NewMCPClient creates a new MCP client using the default transport creator
 func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
-	clientInfo, pErr := config.ParseMCPClientConfig(conf)
-	if pErr != nil {
-		return nil, pErr
-	}
-	switch v := clientInfo.(type) {
-	case *config.StdioMCPClientConfig:
-		envs := make([]string, 0, len(v.Env))
-		for kk, vv := range v.Env {
-			envs = append(envs, fmt.Sprintf("%s=%s", kk, vv))
-		}
-		mcpClient, err := client.NewStdioMCPClient(v.Command, envs, v.Args...)
-		if err != nil {
-			return nil, err
-		}
-
-		return &Client{
-			name:    name,
-			client:  mcpClient,
-			options: conf.Options,
-		}, nil
-	case *config.SSEMCPClientConfig:
-		var options []transport.ClientOption
-		if len(v.Headers) > 0 {
-			options = append(options, client.WithHeaders(v.Headers))
-		}
-		mcpClient, err := client.NewSSEMCPClient(v.URL, options...)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{
-			name:            name,
-			needPing:        true,
-			needManualStart: true,
-			client:          mcpClient,
-			options:         conf.Options,
-		}, nil
-	case *config.StreamableMCPClientConfig:
-		var options []transport.StreamableHTTPCOption
-		if len(v.Headers) > 0 {
-			options = append(options, transport.WithHTTPHeaders(v.Headers))
-		}
-		if v.Timeout > 0 {
-			options = append(options, transport.WithHTTPTimeout(v.Timeout))
-		}
-		mcpClient, err := client.NewStreamableHttpClient(v.URL, options...)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{
-			name:            name,
-			needPing:        true,
-			needManualStart: true,
-			client:          mcpClient,
-			options:         conf.Options,
-		}, nil
-	}
-	return nil, errors.New("invalid client type")
+	return NewMCPClientWith(name, conf, DefaultTransportCreator)
 }
 
+// NewMCPClientWith creates a new MCP client with a custom transport creator
+func NewMCPClientWith(name string, conf *config.MCPClientConfig, createTransport TransportCreator) (*Client, error) {
+	transport, err := createTransport(conf)
+	if err != nil {
+		return nil, fmt.Errorf("creating transport: %w", err)
+	}
+
+	// Determine if we need ping/manual start based on transport type
+	needPing := conf.URL != ""
+	needManualStart := conf.URL != ""
+
+	return &Client{
+		name:            name,
+		needPing:        needPing,
+		needManualStart: needManualStart,
+		client:          transport,
+		options:         conf.Options,
+	}, nil
+}
+
+// DefaultTransportCreator creates the appropriate MCP transport based on config
+func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, error) {
+	// Determine transport type
+	if conf.Command != "" || conf.TransportType == config.MCPClientTypeStdio {
+		if conf.Command == "" {
+			return nil, errors.New("command is required for stdio transport")
+		}
+
+		envs := make([]string, 0, len(conf.Env))
+		for k, v := range conf.Env {
+			envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		mcpClient, err := client.NewStdioMCPClient(conf.Command, envs, conf.Args...)
+		if err != nil {
+			return nil, err
+		}
+
+		return mcpClient, nil
+	}
+
+	if conf.URL != "" {
+		if conf.TransportType == config.MCPClientTypeStreamable {
+			var options []transport.StreamableHTTPCOption
+			if len(conf.Headers) > 0 {
+				options = append(options, transport.WithHTTPHeaders(conf.Headers))
+			}
+			if conf.Timeout > 0 {
+				options = append(options, transport.WithHTTPTimeout(conf.Timeout))
+			}
+			mcpClient, err := client.NewStreamableHttpClient(conf.URL, options...)
+			if err != nil {
+				return nil, err
+			}
+			return mcpClient, nil
+		} else {
+			// SSE transport
+			var options []transport.ClientOption
+			if len(conf.Headers) > 0 {
+				options = append(options, client.WithHeaders(conf.Headers))
+			}
+			mcpClient, err := client.NewSSEMCPClient(conf.URL, options...)
+			if err != nil {
+				return nil, err
+			}
+			return mcpClient, nil
+		}
+	}
+
+	return nil, errors.New("invalid client type: must have either command or url")
+}
+
+// AddToMCPServer connects the client to an MCP server
 func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementation, mcpServer *server.MCPServer) error {
 	if c.needManualStart {
 		err := c.client.Start(ctx)
@@ -118,6 +155,11 @@ func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	return nil
 }
 
+// startPingTask runs a goroutine that pings the MCP server every 30 seconds.
+// The goroutine lifecycle is tied to the provided context:
+// - For stdio clients: context is cancelled when the request ends, stopping pings
+// - For SSE/HTTP clients: context lives as long as the connection, which is correct
+// This ensures no goroutine leaks as the ping task stops when the connection closes.
 func (c *Client) startPingTask(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -273,43 +315,10 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 	return nil
 }
 
+// Close closes the MCP client
 func (c *Client) Close() error {
 	if c.client != nil {
 		return c.client.Close()
 	}
 	return nil
-}
-
-type Server struct {
-	Tokens    []string
-	MCPServer *server.MCPServer
-	SSEServer *server.SSEServer
-}
-
-func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientConfig) *Server {
-	serverOpts := []server.ServerOption{
-		server.WithResourceCapabilities(true, true),
-		server.WithRecovery(),
-		server.WithLogging(), // Always enable MCP server logging
-	}
-	mcpServer := server.NewMCPServer(
-		name,
-		version,
-		serverOpts...,
-	)
-	sseServer := server.NewSSEServer(mcpServer,
-		server.WithStaticBasePath(name),
-		server.WithBaseURL(baseURL),
-	)
-
-	srv := &Server{
-		MCPServer: mcpServer,
-		SSEServer: sseServer,
-	}
-
-	if clientConfig.Options != nil && len(clientConfig.Options.AuthTokens) > 0 {
-		srv.Tokens = clientConfig.Options.AuthTokens
-	}
-
-	return srv
 }

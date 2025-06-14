@@ -7,40 +7,35 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestOAuthIntegration validates the complete OAuth 2.1 implementation
 // This includes all OAuth flows, JWT validation, client registration,
 // state parameter handling, and environment-specific behavior
 func TestOAuthIntegration(t *testing.T) {
-	// Start test database
-	dbCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "up", "-d")
-	if err := dbCmd.Run(); err != nil {
-		t.Fatalf("Failed to start test database: %v", err)
-	}
+	// Database is already started by TestMain, just wait for readiness
+	waitForDB(t)
 
-	// Ensure cleanup
-	t.Cleanup(func() {
-		downCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "down", "-v")
-		if err := downCmd.Run(); err != nil {
-			t.Logf("Warning: cleanup failed: %v", err)
-		}
-	})
-
-	// Wait for database
-	waitForDatabase(t)
+	// Build mcp-front once at the beginning
+	buildCmd := exec.Command("go", "build", "-o", "../mcp-front", "../cmd/mcp-front")
+	err := buildCmd.Run()
+	require.NoError(t, err, "Failed to build mcp-front")
 
 	// Start mock GCP server for OAuth
 	mockGCP := NewMockGCPServer("9090")
-	if err := mockGCP.Start(); err != nil {
-		t.Fatalf("Failed to start mock GCP server: %v", err)
-	}
+	err = mockGCP.Start()
+	require.NoError(t, err, "Failed to start mock GCP server")
 	t.Cleanup(func() {
 		_ = mockGCP.Stop()
 	})
@@ -53,21 +48,17 @@ func TestOAuthIntegration(t *testing.T) {
 	t.Run("DevelopmentVsProduction", testEnvironmentModes)
 	t.Run("OAuthEndpoints", testOAuthEndpoints)
 	t.Run("CORSHeaders", testCORSHeaders)
+	t.Run("UserTokenFlow", testUserTokenFlow)
 }
 
 // testBasicOAuthFlow tests the basic OAuth server functionality
 func testBasicOAuthFlow(t *testing.T) {
-	// Build and start mcp-front with OAuth config
-	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-	buildCmd.Dir = ".."
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("Failed to build mcp-front: %v", err)
-	}
-
+	// Start mcp-front with OAuth config
 	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
 	mcpCmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"JWT_SECRET=test-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-for-oauth",
 		"GOOGLE_CLIENT_SECRET=test-client-secret-for-oauth",
 		"MCP_FRONT_ENV=development",
@@ -87,25 +78,20 @@ func testBasicOAuthFlow(t *testing.T) {
 	}()
 
 	// Wait for startup
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(t, 10) {
 		t.Fatal("mcp-front failed to start")
 	}
 
 	// Test OAuth discovery
 	resp, err := http.Get("http://localhost:8080/.well-known/oauth-authorization-server")
-	if err != nil {
-		t.Fatalf("Failed to get OAuth discovery: %v", err)
-	}
+	require.NoError(t, err, "Failed to get OAuth discovery")
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		t.Fatalf("OAuth discovery failed with status %d", resp.StatusCode)
-	}
+	assert.Equal(t, 200, resp.StatusCode, "OAuth discovery failed")
 
 	var discovery map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
-		t.Fatalf("Failed to decode discovery: %v", err)
-	}
+	err = json.NewDecoder(resp.Body).Decode(&discovery)
+	require.NoError(t, err, "Failed to decode discovery")
 
 	// Verify required endpoints
 	requiredEndpoints := []string{
@@ -116,9 +102,8 @@ func testBasicOAuthFlow(t *testing.T) {
 	}
 
 	for _, endpoint := range requiredEndpoints {
-		if _, ok := discovery[endpoint]; !ok {
-			t.Errorf("Missing required endpoint: %s", endpoint)
-		}
+		_, ok := discovery[endpoint]
+		assert.True(t, ok, "Missing required endpoint: %s", endpoint)
 	}
 }
 
@@ -137,18 +122,13 @@ func testJWTSecretValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Build mcp-front
-			buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-			buildCmd.Dir = ".."
-			if err := buildCmd.Run(); err != nil {
-				t.Fatalf("Failed to build mcp-front: %v", err)
-			}
 
 			// Start mcp-front with specific JWT secret
 			mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
 			mcpCmd.Env = []string{
 				"PATH=" + os.Getenv("PATH"),
 				"JWT_SECRET=" + tt.secret,
+				"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 				"GOOGLE_CLIENT_ID=test-client-id",
 				"GOOGLE_CLIENT_SECRET=test-client-secret",
 				"MCP_FRONT_ENV=development",
@@ -186,13 +166,9 @@ func testJWTSecretValidation(t *testing.T) {
 			}
 
 			if tt.shouldFail {
-				if healthy && !errorFound {
-					t.Error("Expected failure with short JWT secret but server started successfully")
-				}
+				assert.False(t, healthy && !errorFound, "Expected failure with short JWT secret but server started successfully")
 			} else {
-				if !healthy {
-					t.Error("Expected success with valid JWT secret but server failed to start")
-				}
+				assert.True(t, healthy, "Expected success with valid JWT secret but server failed to start")
 			}
 		})
 	}
@@ -288,6 +264,165 @@ func testClientRegistration(t *testing.T) {
 	})
 }
 
+// testUserTokenFlow tests the user token management functionality with browser-based SSO
+// This test expects the /my/* routes to work with Google SSO (session-based auth),
+// not Bearer token auth.
+func testUserTokenFlow(t *testing.T) {
+	// Start OAuth server with user token configuration
+	mcpCmd := startOAuthServerWithTokenConfig(t)
+	defer stopServer(mcpCmd)
+
+	if !waitForHealthCheck(t, 30) {
+		t.Fatal("Server failed to start")
+	}
+
+	// Create a client with cookie jar to simulate browser behavior
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Allow up to 10 redirects
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+
+	t.Run("UnauthenticatedRedirectsToSSO", func(t *testing.T) {
+		// Create a client that doesn't follow redirects to test the initial redirect
+		noRedirectClient := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		// Try to access /my/tokens without authentication
+		resp, err := noRedirectClient.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should get a redirect response
+		assert.Equal(t, http.StatusFound, resp.StatusCode, "Should get redirect status")
+
+		// Check the redirect location
+		location := resp.Header.Get("Location")
+		assert.Contains(t, location, "localhost:9090/auth", "Should redirect to Google OAuth")
+		assert.Contains(t, location, "client_id=", "Should include client_id")
+		assert.Contains(t, location, "redirect_uri=", "Should include redirect_uri")
+		// The state should be URL-encoded and include signed CSRF: "browser:nonce:signature:/my/tokens"
+		// Extract and validate the state parameter
+		parsedURL, err := url.Parse(location)
+		require.NoError(t, err)
+		stateParam := parsedURL.Query().Get("state")
+		require.NotEmpty(t, stateParam, "State parameter should be present")
+
+		// State format should be "browser:nonce:signature:returnURL"
+		assert.True(t, strings.HasPrefix(stateParam, "browser:"), "State should start with browser:")
+		parts := strings.SplitN(stateParam, ":", 4)
+		require.Len(t, parts, 4, "State should have 4 parts: browser:nonce:signature:url")
+		assert.Equal(t, "browser", parts[0], "First part should be 'browser'")
+		assert.NotEmpty(t, parts[1], "Nonce should not be empty")
+		assert.NotEmpty(t, parts[2], "Signature should not be empty")
+		assert.Equal(t, "/my/tokens", parts[3], "Return URL should be /my/tokens")
+	})
+
+	t.Run("AuthenticatedUserCanAccessTokens", func(t *testing.T) {
+		// The client with cookie jar will automatically follow the full SSO flow:
+		// 1. GET /my/tokens -> redirect to Google OAuth
+		// 2. Google OAuth redirects to /oauth/callback with code
+		// 3. Callback sets session cookie and redirects to /my/tokens
+		// 4. Client follows redirect with cookie and gets the page
+
+		resp, err := client.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// After following all redirects, we should be at /my/tokens with 200 OK
+		assert.Equal(t, http.StatusOK, resp.StatusCode, "Should access /my/tokens after SSO")
+		finalURL := resp.Request.URL.String()
+		assert.Contains(t, finalURL, "/my/tokens", "Should end up at /my/tokens after SSO")
+
+		// Read response body
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		bodyStr := string(body)
+
+		// Should show both services without tokens
+		assert.Contains(t, bodyStr, "Notion", "Expected Notion service in response")
+		assert.Contains(t, bodyStr, "GitHub", "Expected GitHub service in response")
+	})
+
+	t.Run("SetTokenWithValidation", func(t *testing.T) {
+		// Assume we're already authenticated from previous test
+		// Get CSRF token first
+		resp, err := client.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// Extract CSRF token from response
+		csrfToken := extractCSRFToken(t, string(body))
+
+		// Try to set invalid Notion token
+		form := url.Values{
+			"service":    {"notion"},
+			"token":      {"invalid-token"},
+			"csrf_token": {csrfToken},
+		}
+
+		req, _ := http.NewRequest("POST", "http://localhost:8080/my/tokens/set", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		// Use custom client that doesn't follow redirects for this test
+		noRedirectClient := &http.Client{
+			Jar: jar, // Use same cookie jar
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		resp, err = noRedirectClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should redirect with error
+		assert.Equal(t, http.StatusSeeOther, resp.StatusCode, "Expected redirect")
+		location := resp.Header.Get("Location")
+		assert.Contains(t, location, "error", "Expected error in redirect")
+
+		// Get new CSRF token
+		resp, err = client.Get("http://localhost:8080/my/tokens")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		body, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		csrfToken = extractCSRFToken(t, string(body))
+
+		// Set valid Notion token (regex expects exactly 43 chars after "secret_")
+		form = url.Values{
+			"service":    {"notion"},
+			"token":      {"secret_1234567890123456789012345678901234567890123"},
+			"csrf_token": {csrfToken},
+		}
+
+		req, _ = http.NewRequest("POST", "http://localhost:8080/my/tokens/set", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err = noRedirectClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should redirect with success
+		assert.Equal(t, http.StatusSeeOther, resp.StatusCode, "Expected redirect")
+		location = resp.Header.Get("Location")
+		assert.Contains(t, location, "success", "Expected success in redirect")
+	})
+}
+
 // testStateParameterHandling tests OAuth state parameter requirements
 func testStateParameterHandling(t *testing.T) {
 	tests := []struct {
@@ -303,6 +438,7 @@ func testStateParameterHandling(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			// Start server with specific environment
 			mcpCmd := startOAuthServer(t, map[string]string{
@@ -310,7 +446,7 @@ func testStateParameterHandling(t *testing.T) {
 			})
 			defer stopServer(mcpCmd)
 
-			if !waitForHealthCheck(t, 30) {
+			if !waitForHealthCheck(t, 10) {
 				t.Fatal("Server failed to start")
 			}
 
@@ -471,7 +607,7 @@ func testOAuthEndpoints(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(t, 10) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -539,7 +675,7 @@ func testCORSHeaders(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(t, 10) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -578,13 +714,6 @@ func testCORSHeaders(t *testing.T) {
 // Helper functions
 
 func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
-	// Build mcp-front
-	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-	buildCmd.Dir = ".."
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("Failed to build mcp-front: %v", err)
-	}
-
 	// Start with OAuth config
 	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
 
@@ -592,6 +721,7 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 	mcpCmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-oauth",
 		"GOOGLE_CLIENT_SECRET=test-client-secret-oauth",
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
@@ -604,8 +734,57 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 		mcpCmd.Env = append(mcpCmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
+	// Capture stderr for debugging and also output to test log
+	var stderr bytes.Buffer
+	mcpCmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+
 	if err := mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start OAuth server: %v", err)
+	}
+
+	// Give a moment for immediate failures
+	time.Sleep(100 * time.Millisecond)
+
+	// Check if process died immediately
+	if mcpCmd.ProcessState != nil {
+		t.Fatalf("OAuth server died immediately: %s", stderr.String())
+	}
+
+	return mcpCmd
+}
+
+// startOAuthServerWithTokenConfig starts the OAuth server with user token configuration
+func startOAuthServerWithTokenConfig(t *testing.T) *exec.Cmd {
+	// Start with user token config
+	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-token-test.json")
+
+	// Set default environment
+	mcpCmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
+		"GOOGLE_CLIENT_ID=test-client-id-oauth",
+		"GOOGLE_CLIENT_SECRET=test-client-secret-oauth",
+		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
+		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
+		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
+		"MCP_FRONT_ENV=development",
+	}
+
+	// Capture stderr for debugging and also output to test log
+	var stderr bytes.Buffer
+	mcpCmd.Stderr = io.MultiWriter(&stderr, os.Stderr)
+
+	if err := mcpCmd.Start(); err != nil {
+		t.Fatalf("Failed to start OAuth server: %v", err)
+	}
+
+	// Give a moment for immediate failures
+	time.Sleep(100 * time.Millisecond)
+
+	// Check if process died immediately
+	if mcpCmd.ProcessState != nil {
+		t.Fatalf("OAuth server died immediately: %s", stderr.String())
 	}
 
 	return mcpCmd
@@ -615,6 +794,8 @@ func stopServer(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
+		// Give the OS time to release the port
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -667,24 +848,13 @@ func registerTestClient(t *testing.T) string {
 	return clientResp["client_id"].(string)
 }
 
-func waitForDatabase(t *testing.T) {
-	for i := 0; i < 60; i++ {
-		// Check if container is running
-		psCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "ps", "-q", "test-postgres")
-		if output, err := psCmd.Output(); err != nil || len(output) == 0 {
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		// Check if database is ready
-		checkCmd := exec.Command("docker-compose", "-f", "config/docker-compose.test.yml", "exec", "-T", "test-postgres", "pg_isready", "-U", "testuser", "-d", "testdb")
-		if err := checkCmd.Run(); err == nil {
-			return
-		}
-		time.Sleep(1 * time.Second)
-	}
-
-	t.Fatal("Database failed to become ready after 60 seconds")
+// extractCSRFToken extracts the CSRF token from the HTML response
+func extractCSRFToken(t *testing.T, html string) string {
+	// Look for <input type="hidden" name="csrf_token" value="...">
+	re := regexp.MustCompile(`<input[^>]+name="csrf_token"[^>]+value="([^"]+)"`)
+	matches := re.FindStringSubmatch(html)
+	require.GreaterOrEqual(t, len(matches), 2, "CSRF token not found in response")
+	return matches[1]
 }
 
 func contains(s, substr string) bool {
