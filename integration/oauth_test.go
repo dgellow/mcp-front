@@ -24,6 +24,13 @@ func TestOAuthIntegration(t *testing.T) {
 
 	waitForDB(t)
 
+	// Build mcp-front once at the beginning
+	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
+	buildCmd.Dir = ".."
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("Failed to build mcp-front: %v", err)
+	}
+
 	// Start mock GCP server for OAuth
 	mockGCP := NewMockGCPServer("9090")
 	if err := mockGCP.Start(); err != nil {
@@ -45,13 +52,7 @@ func TestOAuthIntegration(t *testing.T) {
 
 // testBasicOAuthFlow tests the basic OAuth server functionality
 func testBasicOAuthFlow(t *testing.T) {
-	// Build and start mcp-front with OAuth config
-	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-	buildCmd.Dir = ".."
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("Failed to build mcp-front: %v", err)
-	}
-
+	// Start mcp-front with OAuth config
 	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
 	mcpCmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
@@ -75,7 +76,7 @@ func testBasicOAuthFlow(t *testing.T) {
 	}()
 
 	// Wait for startup
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(t, 10) {
 		t.Fatal("mcp-front failed to start")
 	}
 
@@ -125,12 +126,6 @@ func testJWTSecretValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Build mcp-front
-			buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-			buildCmd.Dir = ".."
-			if err := buildCmd.Run(); err != nil {
-				t.Fatalf("Failed to build mcp-front: %v", err)
-			}
 
 			// Start mcp-front with specific JWT secret
 			mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
@@ -291,6 +286,7 @@ func testStateParameterHandling(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			// Start server with specific environment
 			mcpCmd := startOAuthServer(t, map[string]string{
@@ -298,7 +294,7 @@ func testStateParameterHandling(t *testing.T) {
 			})
 			defer stopServer(mcpCmd)
 
-			if !waitForHealthCheck(t, 30) {
+			if !waitForHealthCheck(t, 10) {
 				t.Fatal("Server failed to start")
 			}
 
@@ -459,7 +455,7 @@ func testOAuthEndpoints(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(t, 10) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -527,7 +523,7 @@ func testCORSHeaders(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(t, 10) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -566,13 +562,6 @@ func testCORSHeaders(t *testing.T) {
 // Helper functions
 
 func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
-	// Build mcp-front
-	buildCmd := exec.Command("go", "build", "-o", "mcp-front", "./cmd/mcp-front")
-	buildCmd.Dir = ".."
-	if err := buildCmd.Run(); err != nil {
-		t.Fatalf("Failed to build mcp-front: %v", err)
-	}
-
 	// Start with OAuth config
 	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
 
@@ -592,8 +581,20 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 		mcpCmd.Env = append(mcpCmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
+	// Capture stderr for debugging
+	var stderr bytes.Buffer
+	mcpCmd.Stderr = &stderr
+
 	if err := mcpCmd.Start(); err != nil {
 		t.Fatalf("Failed to start OAuth server: %v", err)
+	}
+
+	// Give a moment for immediate failures
+	time.Sleep(100 * time.Millisecond)
+	
+	// Check if process died immediately
+	if mcpCmd.ProcessState != nil {
+		t.Fatalf("OAuth server died immediately: %s", stderr.String())
 	}
 
 	return mcpCmd
@@ -603,6 +604,8 @@ func stopServer(cmd *exec.Cmd) {
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
+		// Give the OS time to release the port
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
