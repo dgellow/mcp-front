@@ -1,12 +1,12 @@
 {
   "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
   "proxy": {
-    "baseURL": {"$env": "BASE_URL", "default": "https://mcp.yourcompany.com"},
-    "addr": {"$env": "ADDR", "default": ":8080"},
+    "baseURL": {"$env": "BASE_URL"},
+    "addr": {"$env": "ADDR"},
     "name": "mcp-front",
     "auth": {
       "kind": "oauth",
-      "issuer": {"$env": "OAUTH_ISSUER", "default": "https://mcp.yourcompany.com"},
+      "issuer": {"$env": "OAUTH_ISSUER"},
       "gcpProject": {"$env": "GCP_PROJECT"},
       "allowedDomains": ["yourcompany.com", "contractors.yourcompany.com"],
       "allowedOrigins": ["https://claude.ai", "https://yourcompany.com"],
@@ -14,12 +14,14 @@
       "storage": "memory",
       "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
       "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
-      "googleRedirectUri": {"$env": "GOOGLE_REDIRECT_URI", "default": "https://mcp.yourcompany.com/oauth/callback"},
-      "jwtSecret": {"$env": "JWT_SECRET"}
+      "googleRedirectUri": {"$env": "GOOGLE_REDIRECT_URI"},
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
     }
   },
   "mcpServers": {
     "postgres": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i", "--network", "host",
@@ -31,6 +33,7 @@
       }
     },
     "notion": {
+      "transportType": "stdio",
       "command": "docker",
       "args": ["run", "--rm", "-i", "mcp/notion"],
       "env": {
@@ -38,6 +41,7 @@
       }
     },
     "git": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i",

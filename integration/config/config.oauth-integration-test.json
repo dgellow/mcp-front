@@ -16,7 +16,8 @@
       "googleClientId": "test-client-id",
       "googleClientSecret": "test-client-secret-for-integration-testing",
       "googleRedirectUri": "http://localhost:8080/oauth/callback",
-      "jwtSecret": "test-jwt-secret-for-integration-testing-32-chars-long"
+      "jwtSecret": "test-jwt-secret-for-integration-testing-32-chars-long",
+      "encryptionKey": "test-encryption-key-32-bytes-aes"
     }
   },
   "mcpServers": {
