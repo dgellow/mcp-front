@@ -27,21 +27,24 @@ Create `config.json` based on `config-oauth.json`:
 
 ```json
 {
-  "mcpProxy": {
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
     "baseURL": "https://mcp.yourcompany.com",
     "addr": ":8080",
     "name": "Company MCP Front",
-    "version": "1.0.0"
-  },
-  "oauth": {
-    "issuer": "https://mcp.yourcompany.com",
-    "gcp_project": "your-gcp-project",
-    "allowed_domains": ["yourcompany.com"],
-    "token_ttl": "1h",
-    "storage": "memory",
-    "google_client_id": "${GOOGLE_CLIENT_ID}",
-    "google_client_secret": "${GOOGLE_CLIENT_SECRET}",
-    "google_redirect_uri": "https://mcp.yourcompany.com/oauth/callback"
+    "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.yourcompany.com",
+      "gcpProject": "your-gcp-project",
+      "allowedDomains": ["yourcompany.com"],
+      "tokenTtl": "1h",
+      "storage": "memory",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
+      "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
+      "googleRedirectUri": "https://mcp.yourcompany.com/oauth/callback",
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
+    }
   },
   "mcpServers": {
     "notion": {
@@ -70,6 +73,7 @@ Set these environment variables:
 export GOOGLE_CLIENT_ID="your-oauth-client-id"
 export GOOGLE_CLIENT_SECRET="your-oauth-client-secret"
 export JWT_SECRET="your-32-byte-jwt-secret-for-oauth!"
+export ENCRYPTION_KEY="your-32-byte-encryption-key-here!"
 export NOTION_TOKEN="your-notion-token"
 export DATABASE_URL="postgresql://..."
 
@@ -107,6 +111,7 @@ docker run -d -p 8080:8080 \
   -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
   -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
   -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
+  -e ENCRYPTION_KEY="your-32-byte-encryption-key-here!" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/config.json:/app/config.json \
   dgellow/mcp-front:main-a734cfc
@@ -117,6 +122,7 @@ docker run -d -p 8080:8080 \
   -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
   -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
   -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
+  -e ENCRYPTION_KEY="your-32-byte-encryption-key-here!" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd)/config.json:/app/config.json \
   mcp-front
@@ -135,6 +141,7 @@ docker run -d -p 8080:8080 \
   -e GOOGLE_CLIENT_ID="your-oauth-client-id" \
   -e GOOGLE_CLIENT_SECRET="your-oauth-client-secret" \
   -e JWT_SECRET="your-32-byte-jwt-secret-for-oauth!" \
+  -e ENCRYPTION_KEY="your-32-byte-encryption-key-here!" \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v $(pwd)/config.json:/app/config.json:ro \
   --group-add $(stat -c '%g' /var/run/docker.sock) \
@@ -209,10 +216,11 @@ For production, use a load balancer with HTTPS termination and mount Docker sock
 - `/token` - Token exchange and refresh
 - `/oauth/callback` - Google OAuth callback
 - `/register` - Dynamic client registration
+- `/my/tokens` - Browser-based token management (uses encrypted session cookies)
 
 ## Security
 
-All authorization flows require PKCE. Users must belong to Google Workspace domains in the `allowed_domains` list. Tokens are scoped to MCP endpoints and expire based on `token_ttl` configuration.
+All authorization flows require PKCE. Users must belong to Google Workspace domains in the `allowedDomains` list. Tokens are scoped to MCP endpoints and expire based on `tokenTtl` configuration.
 
 The system includes protection against:
 
@@ -231,8 +239,10 @@ OAuth client data can be stored using different backends:
 
 ```json
 {
-  "oauth": {
-    "storage": "memory"
+  "proxy": {
+    "auth": {
+      "storage": "memory"
+    }
   }
 }
 ```
@@ -245,11 +255,13 @@ OAuth client data can be stored using different backends:
 
 ```json
 {
-  "oauth": {
-    "storage": "firestore",
-    "gcp_project": "your-gcp-project",
-    "firestore_database": "my-firestore-db", // Optional, defaults to "(default)"
-    "firestore_collection": "custom_oauth_clients" // Optional, defaults to "mcp_front_oauth_clients"
+  "proxy": {
+    "auth": {
+      "storage": "firestore",
+      "gcpProject": "your-gcp-project",
+      "firestoreDatabase": "my-firestore-db", // Optional, defaults to "(default)"
+      "firestoreCollection": "custom_oauth_clients" // Optional, defaults to "mcp_front_oauth_clients"
+    }
   }
 }
 ```
@@ -298,6 +310,7 @@ The OAuth implementation uses:
 - Comprehensive OAuth integration test suite
 - Security scenario validation and bypass protection
 - GCP domain validation with Google Workspace integration
+- Browser-based SSO with encrypted session cookies (AES-256-GCM)
 
 🔧 **Testing & Development:**
 
