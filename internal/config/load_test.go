@@ -71,6 +71,7 @@ func TestValidateConfig_UserTokensRequireOAuth(t *testing.T) {
 						GoogleClientSecret: "secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
 						JWTSecret:          "12345678901234567890123456789012",
+						EncryptionKey:      "test-encryption-key-32-bytes-ok!",
 						AllowedDomains:     []string{"example.com"},
 						Storage:            "memory",
 					},
