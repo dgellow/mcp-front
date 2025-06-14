@@ -76,7 +76,7 @@ func validateRawConfig(rawConfig map[string]interface{}) error {
 				}{
 					{"googleClientSecret", true},
 					{"jwtSecret", true},
-					{"encryptionKey", false}, // Only required for non-memory storage
+					{"encryptionKey", true}, // Always required for OAuth
 				}
 
 				for _, secret := range secrets {
@@ -160,15 +160,15 @@ func validateOAuthConfig(oauth *OAuthAuthConfig) error {
 	if len(oauth.JWTSecret) < 32 {
 		return fmt.Errorf("jwtSecret must be at least 32 bytes")
 	}
+	if len(oauth.EncryptionKey) != 32 {
+		return fmt.Errorf("encryptionKey must be exactly 32 bytes")
+	}
 	if len(oauth.AllowedDomains) == 0 {
 		return fmt.Errorf("at least one allowed domain is required")
 	}
 	if oauth.Storage == "firestore" {
 		if oauth.GCPProject == "" {
 			return fmt.Errorf("gcpProject is required when using firestore storage")
-		}
-		if len(oauth.EncryptionKey) != 32 {
-			return fmt.Errorf("encryptionKey must be exactly 32 bytes when using firestore storage")
 		}
 	}
 	return nil

@@ -2,12 +2,15 @@ package oauth
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal/crypto"
+	"github.com/dgellow/mcp-front/internal"
 )
 
 // SessionData represents the data stored in the encrypted session cookie
@@ -24,25 +27,19 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			cookie, err := r.Cookie("mcp_session")
 			if err != nil {
 				// No cookie, redirect directly to Google OAuth
-				// Store return URL in state parameter with a marker prefix
-				state := "browser:" + r.URL.String()
+				state := s.generateBrowserState(r.URL.String())
 				googleURL := s.authService.googleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
 			}
 
 			// Decrypt cookie
-			encryptor, err := crypto.NewEncryptor([]byte(s.config.EncryptionKey))
-			if err != nil {
-				http.Error(w, "Server configuration error", http.StatusInternalServerError)
-				return
-			}
-
-			decrypted, err := encryptor.Decrypt(cookie.Value)
+			decrypted, err := s.sessionEncryptor.Decrypt(cookie.Value)
 			if err != nil {
 				// Invalid cookie, redirect to OAuth
+				internal.LogDebug("Invalid session cookie: %v", err)
 				http.SetCookie(w, &http.Cookie{Name: "mcp_session", MaxAge: -1}) // Clear bad cookie
-				state := "browser:" + r.URL.String()
+				state := s.generateBrowserState(r.URL.String())
 				googleURL := s.authService.googleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
@@ -60,9 +57,10 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			// Check expiration
 			if time.Now().After(sessionData.Expires) {
 				// Expired session
+				internal.LogDebug("Session expired for user %s", sessionData.Email)
 				http.SetCookie(w, &http.Cookie{Name: "mcp_session", MaxAge: -1})
 				// Redirect directly to Google OAuth
-				state := "browser:" + r.URL.String()
+				state := s.generateBrowserState(r.URL.String())
 				googleURL := s.authService.googleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
@@ -75,17 +73,39 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// generateBrowserState creates a secure state parameter for browser SSO
+func (s *Server) generateBrowserState(returnURL string) string {
+	// Generate random nonce
+	nonce := s.storage.generateState() // Reuse existing secure random generation
+	
+	// Create signed CSRF token: nonce + HMAC(nonce + returnURL)
+	// This ensures the token is tied to the specific return URL
+	data := nonce + ":" + returnURL
+	signature := s.signData(data)
+	
+	// Format: "browser:nonce:signature:returnURL"
+	return fmt.Sprintf("browser:%s:%s:%s", nonce, signature, returnURL)
+}
+
+// signData creates an HMAC signature of the data
+func (s *Server) signData(data string) string {
+	h := hmac.New(sha256.New, []byte(s.config.EncryptionKey))
+	h.Write([]byte(data))
+	return base64.URLEncoding.EncodeToString(h.Sum(nil))
+}
+
+// validateSignedData verifies the HMAC signature
+func (s *Server) validateSignedData(data, signature string) bool {
+	expectedSig := s.signData(data)
+	return hmac.Equal([]byte(expectedSig), []byte(signature))
+}
+
 // setBrowserSessionCookie sets an encrypted session cookie for browser-based authentication
 func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string) error {
-	encryptor, err := crypto.NewEncryptor([]byte(s.config.EncryptionKey))
-	if err != nil {
-		return fmt.Errorf("failed to create encryptor: %w", err)
-	}
-
 	// Create session data
 	sessionData := SessionData{
 		Email:   userEmail,
-		Expires: time.Now().Add(24 * time.Hour),
+		Expires: time.Now().Add(s.config.SessionDuration),
 	}
 
 	jsonData, err := json.Marshal(sessionData)
@@ -93,7 +113,7 @@ func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	encrypted, err := encryptor.Encrypt(string(jsonData))
+	encrypted, err := s.sessionEncryptor.Encrypt(string(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt session: %w", err)
 	}
