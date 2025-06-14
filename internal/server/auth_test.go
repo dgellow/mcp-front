@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/crypto"
+	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +36,7 @@ func TestAuthenticationBoundaries(t *testing.T) {
 						GoogleClientSecret: "test-client-secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
 						JWTSecret:          strings.Repeat("a", 32),
+						EncryptionKey:      strings.Repeat("b", 32),
 						TokenTTL:           "1h",
 						Storage:            "memory",
 					},
@@ -52,6 +57,7 @@ func TestAuthenticationBoundaries(t *testing.T) {
 						GoogleClientSecret: "test-client-secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
 						JWTSecret:          strings.Repeat("a", 32),
+						EncryptionKey:      strings.Repeat("b", 32),
 						TokenTTL:           "1h",
 						Storage:            "memory",
 					},
@@ -72,6 +78,7 @@ func TestAuthenticationBoundaries(t *testing.T) {
 						GoogleClientSecret: "test-client-secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
 						JWTSecret:          strings.Repeat("a", 32),
+						EncryptionKey:      strings.Repeat("b", 32),
 						TokenTTL:           "1h",
 						Storage:            "memory",
 					},
@@ -91,34 +98,66 @@ func TestAuthenticationBoundaries(t *testing.T) {
 			srv := httptest.NewServer(server)
 			defer srv.Close()
 
-			// Test without auth header
+			// Test without session cookie
 			req, err := http.NewRequest("GET", srv.URL+tt.path, nil)
 			require.NoError(t, err)
 
-			resp, err := http.DefaultClient.Do(req)
+			// Use a client that doesn't follow redirects to check auth behavior
+			client := &http.Client{
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			}
+
+			resp, err := client.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 
 			if tt.expectAuth {
-				// Should be blocked by auth middleware
-				assert.Equal(t, http.StatusUnauthorized, resp.StatusCode, tt.description+" - should require auth")
+				// Browser SSO redirects to OAuth when no session cookie
+				assert.Equal(t, http.StatusFound, resp.StatusCode, tt.description+" - should redirect to OAuth")
+				location := resp.Header.Get("Location")
+				assert.Contains(t, location, "auth", tt.description+" - should redirect to Google OAuth")
 			} else {
 				// Should not be blocked by auth
 				assert.NotEqual(t, http.StatusUnauthorized, resp.StatusCode, tt.description+" - should not require auth")
 				assert.NotEqual(t, http.StatusForbidden, resp.StatusCode, tt.description+" - should not require auth")
+				assert.NotEqual(t, http.StatusFound, resp.StatusCode, tt.description+" - should not redirect for auth")
 			}
 
-			// Test with invalid auth header (if auth is expected)
+			// Test with valid session cookie (if auth is expected)
 			if tt.expectAuth {
-				req2, err := http.NewRequest("GET", srv.URL+tt.path, nil)
-				require.NoError(t, err)
-				req2.Header.Set("Authorization", "Bearer invalid-token")
+				// Create a valid session cookie using the encryptor
+				if oauthConfig, ok := tt.config.Proxy.Auth.(*config.OAuthAuthConfig); ok {
+					// Create session data
+					sessionData := oauth.SessionData{
+						Email:   "test@example.com",
+						Expires: time.Now().Add(24 * time.Hour),
+					}
+					jsonData, err := json.Marshal(sessionData)
+					require.NoError(t, err)
 
-				resp2, err := http.DefaultClient.Do(req2)
-				require.NoError(t, err)
-				defer resp2.Body.Close()
+					// Encrypt the session data
+					encryptor, err := crypto.NewEncryptor([]byte(oauthConfig.EncryptionKey))
+					require.NoError(t, err)
+					encrypted, err := encryptor.Encrypt(string(jsonData))
+					require.NoError(t, err)
 
-				assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode, tt.description+" - should reject invalid tokens")
+					// Test with valid session cookie
+					req2, err := http.NewRequest("GET", srv.URL+tt.path, nil)
+					require.NoError(t, err)
+					req2.AddCookie(&http.Cookie{
+						Name:  "mcp_session",
+						Value: encrypted,
+					})
+
+					resp2, err := client.Do(req2)
+					require.NoError(t, err)
+					defer resp2.Body.Close()
+
+					// Should allow access with valid session
+					assert.Equal(t, http.StatusOK, resp2.StatusCode, tt.description+" - should allow with valid session")
+				}
 			}
 		})
 	}
@@ -156,6 +195,7 @@ func TestMCPAuthConfiguration(t *testing.T) {
 						GoogleClientSecret: "test-client-secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
 						JWTSecret:          strings.Repeat("a", 32),
+						EncryptionKey:      strings.Repeat("b", 32),
 						TokenTTL:           "1h",
 						Storage:            "memory",
 					},

@@ -55,6 +55,7 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 		GoogleClientSecret: "test-client-secret",
 		GoogleRedirectURI:  "https://test.example.com/callback",
 		JWTSecret:          "test-secret-32-bytes-long-for-testing",
+		EncryptionKey:      "test-encryption-key-32-bytes-ok!",
 		StorageType:        "memory",
 	}
 
