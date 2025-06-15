@@ -63,6 +63,29 @@ jobs:
     - name: Run unit tests
       run: go test -v ./internal/... ./cmd/...
 
+    - name: Build mcp-front CLI
+      run: go build -o mcp-front ./cmd/mcp-front
+
+    - name: Validate config files
+      run: |
+        echo "Validating all config files in the repository..."
+        
+        # Check root level config files
+        for config in *.json; do
+          if [[ -f "$config" ]]; then
+            echo "Checking $config..."
+            ./mcp-front -validate -config "$config" || exit 1
+          fi
+        done
+        
+        # Check integration test config files
+        for config in integration/config/*.json; do
+          if [[ -f "$config" ]]; then
+            echo "Checking $config..."
+            ./mcp-front -validate -config "$config" || exit 1
+          fi
+        done
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
