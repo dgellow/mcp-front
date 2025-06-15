@@ -15,14 +15,8 @@ func TestIntegration(t *testing.T) {
 	trace(t, "Waiting for database readiness")
 	waitForDB(t)
 
-	// Start mock GCP server
-	// Starting mock GCP server
-	mockGCP := NewMockGCPServer("9090")
-	err := mockGCP.Start()
-	require.NoError(t, err, "Failed to start mock GCP server")
-	t.Cleanup(func() {
-		_ = mockGCP.Stop()
-	})
+	// Mock GCP server is already started by TestMain on port 9090
+	// No need to start another one
 
 	// Start mcp-front
 	trace(t, "Starting mcp-front")
@@ -44,7 +38,7 @@ func TestIntegration(t *testing.T) {
 	defer client.Close() // Ensure SSE connection is closed
 
 	// Authenticate
-	err = client.Authenticate()
+	err := client.Authenticate()
 	require.NoError(t, err, "Authentication failed")
 
 	// For stdio transports, we need to use the proper session-based approach

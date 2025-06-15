@@ -248,6 +248,24 @@ func NewMockGCPServer(port string) *MockGCPServer {
 	})
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		// Parse the form data
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		// Check the authorization code
+		code := r.FormValue("code")
+		if code != "test-auth-code" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":             "invalid_grant",
+				"error_description": "Invalid authorization code",
+			})
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"access_token": "test-access-token",

@@ -52,6 +52,26 @@ mcp-front is a Go-based OAuth 2.1 proxy server for MCP (Model Context Protocol) 
 - Use interfaces, not inheritance
 - Handle errors explicitly
 - Prefer flat structures over nested hierarchies
+- **Accept interfaces, return structs** - Fundamental Go principle
+- **Define interfaces where they are used** - Not in the package that implements them
+- **Avoid circular imports** - Use interface segregation in separate packages when needed
+- **Dependency injection over getter methods** - Pass dependencies to constructors
+
+### 🎯 Core Development Principles (from Zig Zen)
+
+- **Communicate intent precisely** - Clear, unambiguous code and APIs
+- **Edge cases matter** - Handle all scenarios, especially error paths
+- **Favor reading code over writing code** - Optimize for maintainability
+- **Only one obvious way to do things** - Avoid multiple patterns for the same task
+- **Runtime crashes are better than bugs** - Fail fast and visibly
+- **Compile errors are better than runtime crashes** - Catch issues early
+- **Incremental improvements** - Small, focused changes over rewrites
+- **Avoid local maximums** - Think holistically about the architecture
+- **Reduce the amount one must remember** - Make APIs intuitive and consistent
+- **Focus on code rather than style** - Substance over form
+- **Resource allocation may fail; resource deallocation must succeed** - Always clean up
+- **Memory is a resource** - Be conscious of allocations
+- **Together we serve the users** - User needs drive decisions
 
 ## Key Technical Context
 
@@ -141,6 +161,18 @@ cmd/mcp-front/   # Main application entry point
 3. Check existing patterns in similar files
 4. Run tests incrementally as you work
 5. Verify with `go build` before committing
+6. **Review git diff carefully** - Previous changes may have issues
+7. **Ask questions when uncertain** - Don't assume and proceed
+8. **No hacks or shortcuts** - Only clean, maintainable solutions
+
+### Refactoring Guidelines
+
+When refactoring for better design:
+1. **Identify the core issue** - Don't just patch symptoms
+2. **Use proper dependency injection** - Pass dependencies to constructors
+3. **Extract interfaces to break circular dependencies** - Put in `internal/interfaces`
+4. **Test the refactoring** - Ensure all tests still pass
+5. **Update documentation** - Keep CLAUDE.md current with best practices
 
 ### Security Boundaries
 

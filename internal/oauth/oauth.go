@@ -63,16 +63,9 @@ type Server struct {
 	sessionEncryptor crypto.Encryptor // Created once for browser SSO performance
 }
 
-// UserTokenStore defines methods for managing user tokens
-type UserTokenStore interface {
-	GetUserToken(ctx context.Context, userEmail, service string) (string, error)
-	SetUserToken(ctx context.Context, userEmail, service, token string) error
-	DeleteUserToken(ctx context.Context, userEmail, service string) error
-	ListUserServices(ctx context.Context, userEmail string) ([]string, error)
-}
-
-// GetUserTokenStore returns the storage for use by handlers that need user token methods
-func (s *Server) GetUserTokenStore() UserTokenStore {
+// GetStorage returns the underlying storage implementation
+// This allows handlers to access user token functionality
+func (s *Server) GetStorage() interface{} {
 	return s.storage
 }
 
@@ -453,16 +446,22 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Create session for the token
-	session := &fosite.DefaultSession{}
+	// Create session for the token exchange
+	// Note: We create our custom Session type here, and fosite will populate it
+	// with the session data from the authorization code during NewAccessRequest
+	session := &Session{DefaultSession: &fosite.DefaultSession{}}
 
-	// Handle token request
+	// Handle token request - this retrieves the session from the authorization code
 	accessRequest, err := s.provider.NewAccessRequest(ctx, r, session)
 	if err != nil {
 		internal.LogError("Access request error: %v", err)
 		s.provider.WriteAccessError(w, accessRequest, err)
 		return
 	}
+
+	// At this point, accessRequest.GetSession() contains the session data from
+	// the authorization phase (including our custom UserInfo). Fosite handles
+	// the session propagation internally when creating the access token.
 
 	// Generate tokens
 	response, err := s.provider.NewAccessResponse(ctx, accessRequest)
@@ -574,16 +573,32 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 			token := parts[1]
 
 			// Validate token and extract session
-			session := &Session{}
-			_, _, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, session)
+			// IMPORTANT: Fosite's IntrospectToken behavior is non-intuitive:
+			// - The session parameter passed to IntrospectToken is NOT populated with data
+			// - This is documented fosite behavior, not a bug
+			// - The actual session data must be retrieved from the returned AccessRequester
+			// See: https://github.com/ory/fosite/issues/256
+			session := &Session{DefaultSession: &fosite.DefaultSession{}}
+			_, accessRequest, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, session)
 			if err != nil {
 				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 				return
 			}
 
+			// Get the actual session from the access request (not the input session parameter)
+			// This is the correct way to retrieve session data after token introspection
+			var userEmail string
+			if accessRequest != nil {
+				if reqSession, ok := accessRequest.GetSession().(*Session); ok {
+					if reqSession.UserInfo != nil && reqSession.UserInfo.Email != "" {
+						userEmail = reqSession.UserInfo.Email
+					}
+				}
+			}
+
 			// Pass user info through context
-			if session.UserInfo != nil && session.UserInfo.Email != "" {
-				ctx = context.WithValue(ctx, userContextKey, session.UserInfo.Email)
+			if userEmail != "" {
+				ctx = context.WithValue(ctx, userContextKey, userEmail)
 				r = r.WithContext(ctx)
 			}
 

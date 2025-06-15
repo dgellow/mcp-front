@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/interfaces"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -121,6 +123,21 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 
 // AddToMCPServer connects the client to an MCP server
 func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementation, mcpServer *server.MCPServer) error {
+	return c.AddToMCPServerWithTokenCheck(ctx, clientInfo, mcpServer, "", false, nil, "", "", nil)
+}
+
+// AddToMCPServerWithTokenCheck connects the client to an MCP server with optional token checking
+func (c *Client) AddToMCPServerWithTokenCheck(
+	ctx context.Context,
+	clientInfo mcp.Implementation,
+	mcpServer *server.MCPServer,
+	userEmail string,
+	requiresToken bool,
+	tokenStore interfaces.UserTokenStore,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+) error {
 	if c.needManualStart {
 		err := c.client.Start(ctx)
 		if err != nil {
@@ -141,7 +158,7 @@ func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	}
 	internal.Logf("<%s> Successfully initialized MCP client", c.name)
 
-	err = c.addToolsToServer(ctx, mcpServer)
+	err = c.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup)
 	if err != nil {
 		return err
 	}
@@ -175,7 +192,16 @@ PingLoop:
 	}
 }
 
-func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServer) error {
+func (c *Client) addToolsToServer(
+	ctx context.Context,
+	mcpServer *server.MCPServer,
+	userEmail string,
+	requiresToken bool,
+	tokenStore interfaces.UserTokenStore,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+) error {
 	toolsRequest := mcp.ListToolsRequest{}
 	filterFunc := func(toolName string) bool {
 		return true
@@ -221,7 +247,22 @@ func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServ
 		for _, tool := range tools.Tools {
 			if filterFunc(tool.Name) {
 				internal.Logf("<%s> Adding tool %s", c.name, tool.Name)
-				mcpServer.AddTool(tool, c.client.CallTool)
+				// Wrap the tool handler to check for user tokens if required
+				if requiresToken && tokenStore != nil {
+					wrappedHandler := c.wrapToolHandler(
+						c.client.CallTool,
+						requiresToken,
+						tokenStore,
+						userEmail,
+						serverName,
+						setupBaseURL,
+						tokenSetup,
+					)
+					mcpServer.AddTool(tool, wrappedHandler)
+				} else {
+					// No token checking needed
+					mcpServer.AddTool(tool, c.client.CallTool)
+				}
 			}
 		}
 		if tools.NextCursor == "" {
@@ -315,10 +356,105 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 	return nil
 }
 
+// wrapToolHandler wraps a tool handler to check for user tokens when required
+func (c *Client) wrapToolHandler(
+	originalHandler func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error),
+	requiresToken bool,
+	tokenStore interfaces.UserTokenStore,
+	userEmail string,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(toolCtx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// If token is required, check if we have it
+		if requiresToken && tokenStore != nil {
+			if userEmail == "" {
+				// This shouldn't happen with proper config validation
+				// (requiresUserToken requires OAuth to be configured)
+				internal.LogErrorWithFields("client", "User token required but no user email provided", map[string]interface{}{
+					"service": serverName,
+					"tool":    request.Params.Name,
+				})
+
+				errorData := createTokenRequiredError(
+					serverName,
+					setupBaseURL,
+					tokenSetup,
+					"Configuration error: This service requires user tokens but OAuth is not properly configured.",
+				)
+
+				errorJSON, _ := json.Marshal(errorData)
+				return mcp.NewToolResultError(string(errorJSON)), nil
+			}
+
+			_, err := tokenStore.GetUserToken(toolCtx, userEmail, serverName)
+			if err != nil {
+				// Token not found - return structured error
+				tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
+
+				var errorMessage string
+				if tokenSetup != nil {
+					errorMessage = fmt.Sprintf(
+						"Token Required: %s requires a user token to access the API. "+
+							"Please visit %s to set up your %s token. %s",
+						tokenSetup.DisplayName,
+						tokenSetupURL,
+						tokenSetup.DisplayName,
+						tokenSetup.Instructions,
+					)
+				} else {
+					errorMessage = fmt.Sprintf(
+						"Token Required: This service requires a user token. "+
+							"Please visit %s to configure your token.",
+						tokenSetupURL,
+					)
+				}
+
+				errorData := createTokenRequiredError(
+					serverName,
+					setupBaseURL,
+					tokenSetup,
+					errorMessage,
+				)
+
+				errorJSON, _ := json.Marshal(errorData)
+				return mcp.NewToolResultError(string(errorJSON)), nil
+			}
+		}
+
+		// Token check passed or not required, call original handler
+		return originalHandler(toolCtx, request)
+	}
+}
+
 // Close closes the MCP client
 func (c *Client) Close() error {
 	if c.client != nil {
 		return c.client.Close()
 	}
 	return nil
+}
+
+// createTokenRequiredError creates the structured error for missing user tokens
+func createTokenRequiredError(serverName, setupBaseURL string, tokenSetup *config.TokenSetupConfig, message string) map[string]interface{} {
+	tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
+
+	return map[string]interface{}{
+		"jsonrpc": "2.0",
+		"error": map[string]interface{}{
+			"code":    "token_required",
+			"message": message,
+			"data": map[string]interface{}{
+				"service":       serverName,
+				"tokenSetupUrl": tokenSetupURL,
+				"instructions": map[string]interface{}{
+					"ai": "CRITICAL: You MUST pass these error details EXACTLY as provided to the human. " +
+						"You are FORBIDDEN from modifying URLs or instructions. " +
+						"Tell the human they need to visit the tokenSetupUrl to configure their token.",
+					"human": message,
+				},
+			},
+		},
+	}
 }
