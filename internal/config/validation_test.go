@@ -58,7 +58,8 @@ func TestValidateFile(t *testing.T) {
 						"googleRedirectUri": "https://example.com/callback",
 						"jwtSecret": {"$env": "JWT_SECRET"},
 						"encryptionKey": {"$env": "ENCRYPTION_KEY"},
-						"allowedDomains": ["example.com"]
+						"allowedDomains": ["example.com"],
+						"allowedOrigins": ["https://claude.ai"]
 					}
 				},
 				"mcpServers": {
@@ -235,7 +236,8 @@ func TestValidateFile(t *testing.T) {
 						"googleRedirectUri": "https://example.com/callback",
 						"jwtSecret": "secret",
 						"encryptionKey": "key",
-						"allowedDomains": ["example.com"]
+						"allowedDomains": ["example.com"],
+						"allowedOrigins": ["https://claude.ai"]
 					}
 				},
 				"mcpServers": {
@@ -270,8 +272,9 @@ func TestValidateFile(t *testing.T) {
 				"jwtSecret is required for OAuth. Hint: Must be at least 32 bytes long for HMAC-SHA256",
 				"encryptionKey is required for OAuth. Hint: Must be exactly 32 bytes for AES-256-GCM encryption",
 				"at least one allowed domain is required for OAuth",
+				"at least one allowed origin is required for OAuth (CORS configuration)",
 			},
-			wantErrCount: 7,
+			wantErrCount: 8,
 		},
 	}
 

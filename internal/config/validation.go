@@ -143,6 +143,12 @@ func validateAuthStructure(auth map[string]interface{}, result *ValidationResult
 				Message: "at least one allowed domain is required for OAuth",
 			})
 		}
+		if origins, ok := auth["allowedOrigins"].([]interface{}); !ok || len(origins) == 0 {
+			result.Errors = append(result.Errors, ValidationError{
+				Path:    "proxy.auth.allowedOrigins",
+				Message: "at least one allowed origin is required for OAuth (CORS configuration)",
+			})
+		}
 	case "bearerToken":
 		if _, ok := auth["tokens"].(map[string]interface{}); !ok {
 			result.Errors = append(result.Errors, ValidationError{

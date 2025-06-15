@@ -71,7 +71,6 @@ func NewMCPClientWith(name string, conf *config.MCPClientConfig, createTransport
 
 // DefaultTransportCreator creates the appropriate MCP transport based on config
 func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, error) {
-	// Determine transport type
 	if conf.Command != "" || conf.TransportType == config.MCPClientTypeStdio {
 		if conf.Command == "" {
 			return nil, errors.New("command is required for stdio transport")
@@ -105,7 +104,6 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 			}
 			return mcpClient, nil
 		} else {
-			// SSE transport
 			var options []transport.ClientOption
 			if len(conf.Headers) > 0 {
 				options = append(options, client.WithHeaders(conf.Headers))
@@ -260,7 +258,6 @@ func (c *Client) addToolsToServer(
 					)
 					mcpServer.AddTool(tool, wrappedHandler)
 				} else {
-					// No token checking needed
 					mcpServer.AddTool(tool, c.client.CallTool)
 				}
 			}

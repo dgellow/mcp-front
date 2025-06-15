@@ -66,14 +66,12 @@ func generateDefaultConfig(path string) error {
 	return nil
 }
 
-// validateConfig performs validation on a config file and reports issues
 func validateConfig(path string) error {
 	result, err := config.ValidateFile(path)
 	if err != nil {
 		return fmt.Errorf("error during validation: %w", err)
 	}
 
-	// Print validation result
 	fmt.Printf("Validating: %s\n", path)
 
 	if len(result.Errors) > 0 {
@@ -98,7 +96,6 @@ func validateConfig(path string) error {
 		}
 	}
 
-	// Print summary
 	fmt.Println()
 	if len(result.Errors) == 0 && len(result.Warnings) == 0 {
 		fmt.Println("Result: PASS")
@@ -108,7 +105,6 @@ func validateConfig(path string) error {
 		fmt.Println("Result: FAIL")
 	}
 
-	// For -validate command, fail on warnings too
 	if len(result.Errors) > 0 || len(result.Warnings) > 0 {
 		return fmt.Errorf("validation failed: %d error(s), %d warning(s)", len(result.Errors), len(result.Warnings))
 	}
