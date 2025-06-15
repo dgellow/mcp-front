@@ -3,21 +3,20 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-oauth-test",
+    "name": "mcp-front-oauth-usertoken-test",
     "auth": {
       "kind": "oauth",
       "issuer": "http://localhost:8080",
       "gcpProject": "test-project",
-      "allowedDomains": [
-        "test.com"
-      ],
+      "allowedDomains": ["test.com"],
+      "allowedOrigins": ["https://claude.ai"],
       "tokenTtl": "1h",
       "storage": "memory",
-      "googleClientId": "test-client-id",
-      "googleClientSecret": "test-client-secret-for-integration-testing",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
+      "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
       "googleRedirectUri": "http://localhost:8080/oauth/callback",
-      "jwtSecret": "test-jwt-secret-for-integration-testing-32-chars-long",
-      "encryptionKey": "test-encryption-key-32-bytes-aes"
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
     }
   },
   "mcpServers": {
@@ -32,7 +31,16 @@
         "host",
         "mcp/postgres",
         "postgresql://testuser:testpass@localhost:15432/testdb"
-      ]
+      ],
+      "env": {
+        "USER_TOKEN": {"$userToken": "{{token}}"}
+      },
+      "requiresUserToken": true,
+      "tokenSetup": {
+        "displayName": "Test Service",
+        "instructions": "Enter your test token",
+        "helpUrl": "https://example.com/help"
+      }
     }
   }
 }

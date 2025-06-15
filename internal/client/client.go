@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,81 +10,134 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/interfaces"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// MCPClientInterface is the interface we need from mcp-go client
+type MCPClientInterface interface {
+	Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error)
+	ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+	CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	ListPrompts(ctx context.Context, request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error)
+	GetPrompt(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
+	ListResources(ctx context.Context, request mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error)
+	ReadResource(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)
+	ListResourceTemplates(ctx context.Context, request mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error)
+	Ping(ctx context.Context) error
+	Start(ctx context.Context) error
+	Close() error
+}
+
+// TransportCreator creates the underlying MCP transport client
+type TransportCreator func(conf *config.MCPClientConfig) (MCPClientInterface, error)
+
+// Client represents an MCP client wrapper
 type Client struct {
 	name            string
 	needPing        bool
 	needManualStart bool
-	client          *client.Client
+	client          MCPClientInterface
 	options         *config.Options
 }
 
+// NewMCPClient creates a new MCP client using the default transport creator
 func NewMCPClient(name string, conf *config.MCPClientConfig) (*Client, error) {
-	clientInfo, pErr := config.ParseMCPClientConfig(conf)
-	if pErr != nil {
-		return nil, pErr
-	}
-	switch v := clientInfo.(type) {
-	case *config.StdioMCPClientConfig:
-		envs := make([]string, 0, len(v.Env))
-		for kk, vv := range v.Env {
-			envs = append(envs, fmt.Sprintf("%s=%s", kk, vv))
-		}
-		mcpClient, err := client.NewStdioMCPClient(v.Command, envs, v.Args...)
-		if err != nil {
-			return nil, err
-		}
-
-		return &Client{
-			name:    name,
-			client:  mcpClient,
-			options: conf.Options,
-		}, nil
-	case *config.SSEMCPClientConfig:
-		var options []transport.ClientOption
-		if len(v.Headers) > 0 {
-			options = append(options, client.WithHeaders(v.Headers))
-		}
-		mcpClient, err := client.NewSSEMCPClient(v.URL, options...)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{
-			name:            name,
-			needPing:        true,
-			needManualStart: true,
-			client:          mcpClient,
-			options:         conf.Options,
-		}, nil
-	case *config.StreamableMCPClientConfig:
-		var options []transport.StreamableHTTPCOption
-		if len(v.Headers) > 0 {
-			options = append(options, transport.WithHTTPHeaders(v.Headers))
-		}
-		if v.Timeout > 0 {
-			options = append(options, transport.WithHTTPTimeout(v.Timeout))
-		}
-		mcpClient, err := client.NewStreamableHttpClient(v.URL, options...)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{
-			name:            name,
-			needPing:        true,
-			needManualStart: true,
-			client:          mcpClient,
-			options:         conf.Options,
-		}, nil
-	}
-	return nil, errors.New("invalid client type")
+	return NewMCPClientWith(name, conf, DefaultTransportCreator)
 }
 
+// NewMCPClientWith creates a new MCP client with a custom transport creator
+func NewMCPClientWith(name string, conf *config.MCPClientConfig, createTransport TransportCreator) (*Client, error) {
+	transport, err := createTransport(conf)
+	if err != nil {
+		return nil, fmt.Errorf("creating transport: %w", err)
+	}
+
+	// Determine if we need ping/manual start based on transport type
+	needPing := conf.URL != ""
+	needManualStart := conf.URL != ""
+
+	return &Client{
+		name:            name,
+		needPing:        needPing,
+		needManualStart: needManualStart,
+		client:          transport,
+		options:         conf.Options,
+	}, nil
+}
+
+// DefaultTransportCreator creates the appropriate MCP transport based on config
+func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, error) {
+	// Determine transport type
+	if conf.Command != "" || conf.TransportType == config.MCPClientTypeStdio {
+		if conf.Command == "" {
+			return nil, errors.New("command is required for stdio transport")
+		}
+
+		envs := make([]string, 0, len(conf.Env))
+		for k, v := range conf.Env {
+			envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+		}
+
+		mcpClient, err := client.NewStdioMCPClient(conf.Command, envs, conf.Args...)
+		if err != nil {
+			return nil, err
+		}
+
+		return mcpClient, nil
+	}
+
+	if conf.URL != "" {
+		if conf.TransportType == config.MCPClientTypeStreamable {
+			var options []transport.StreamableHTTPCOption
+			if len(conf.Headers) > 0 {
+				options = append(options, transport.WithHTTPHeaders(conf.Headers))
+			}
+			if conf.Timeout > 0 {
+				options = append(options, transport.WithHTTPTimeout(conf.Timeout))
+			}
+			mcpClient, err := client.NewStreamableHttpClient(conf.URL, options...)
+			if err != nil {
+				return nil, err
+			}
+			return mcpClient, nil
+		} else {
+			// SSE transport
+			var options []transport.ClientOption
+			if len(conf.Headers) > 0 {
+				options = append(options, client.WithHeaders(conf.Headers))
+			}
+			mcpClient, err := client.NewSSEMCPClient(conf.URL, options...)
+			if err != nil {
+				return nil, err
+			}
+			return mcpClient, nil
+		}
+	}
+
+	return nil, errors.New("invalid client type: must have either command or url")
+}
+
+// AddToMCPServer connects the client to an MCP server
 func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementation, mcpServer *server.MCPServer) error {
+	return c.AddToMCPServerWithTokenCheck(ctx, clientInfo, mcpServer, "", false, nil, "", "", nil)
+}
+
+// AddToMCPServerWithTokenCheck connects the client to an MCP server with optional token checking
+func (c *Client) AddToMCPServerWithTokenCheck(
+	ctx context.Context,
+	clientInfo mcp.Implementation,
+	mcpServer *server.MCPServer,
+	userEmail string,
+	requiresToken bool,
+	tokenStore interfaces.UserTokenStore,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+) error {
 	if c.needManualStart {
 		err := c.client.Start(ctx)
 		if err != nil {
@@ -104,7 +158,7 @@ func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	}
 	internal.Logf("<%s> Successfully initialized MCP client", c.name)
 
-	err = c.addToolsToServer(ctx, mcpServer)
+	err = c.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup)
 	if err != nil {
 		return err
 	}
@@ -118,6 +172,11 @@ func (c *Client) AddToMCPServer(ctx context.Context, clientInfo mcp.Implementati
 	return nil
 }
 
+// startPingTask runs a goroutine that pings the MCP server every 30 seconds.
+// The goroutine lifecycle is tied to the provided context:
+// - For stdio clients: context is cancelled when the request ends, stopping pings
+// - For SSE/HTTP clients: context lives as long as the connection, which is correct
+// This ensures no goroutine leaks as the ping task stops when the connection closes.
 func (c *Client) startPingTask(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -133,7 +192,16 @@ PingLoop:
 	}
 }
 
-func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServer) error {
+func (c *Client) addToolsToServer(
+	ctx context.Context,
+	mcpServer *server.MCPServer,
+	userEmail string,
+	requiresToken bool,
+	tokenStore interfaces.UserTokenStore,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+) error {
 	toolsRequest := mcp.ListToolsRequest{}
 	filterFunc := func(toolName string) bool {
 		return true
@@ -179,7 +247,22 @@ func (c *Client) addToolsToServer(ctx context.Context, mcpServer *server.MCPServ
 		for _, tool := range tools.Tools {
 			if filterFunc(tool.Name) {
 				internal.Logf("<%s> Adding tool %s", c.name, tool.Name)
-				mcpServer.AddTool(tool, c.client.CallTool)
+				// Wrap the tool handler to check for user tokens if required
+				if requiresToken && tokenStore != nil {
+					wrappedHandler := c.wrapToolHandler(
+						c.client.CallTool,
+						requiresToken,
+						tokenStore,
+						userEmail,
+						serverName,
+						setupBaseURL,
+						tokenSetup,
+					)
+					mcpServer.AddTool(tool, wrappedHandler)
+				} else {
+					// No token checking needed
+					mcpServer.AddTool(tool, c.client.CallTool)
+				}
 			}
 		}
 		if tools.NextCursor == "" {
@@ -273,6 +356,79 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 	return nil
 }
 
+// wrapToolHandler wraps a tool handler to check for user tokens when required
+func (c *Client) wrapToolHandler(
+	originalHandler func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error),
+	requiresToken bool,
+	tokenStore interfaces.UserTokenStore,
+	userEmail string,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(toolCtx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// If token is required, check if we have it
+		if requiresToken && tokenStore != nil {
+			if userEmail == "" {
+				// This shouldn't happen with proper config validation
+				// (requiresUserToken requires OAuth to be configured)
+				internal.LogErrorWithFields("client", "User token required but no user email provided", map[string]interface{}{
+					"service": serverName,
+					"tool":    request.Params.Name,
+				})
+
+				errorData := createTokenRequiredError(
+					serverName,
+					setupBaseURL,
+					tokenSetup,
+					"Configuration error: This service requires user tokens but OAuth is not properly configured.",
+				)
+
+				errorJSON, _ := json.Marshal(errorData)
+				return mcp.NewToolResultError(string(errorJSON)), nil
+			}
+
+			_, err := tokenStore.GetUserToken(toolCtx, userEmail, serverName)
+			if err != nil {
+				// Token not found - return structured error
+				tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
+
+				var errorMessage string
+				if tokenSetup != nil {
+					errorMessage = fmt.Sprintf(
+						"Token Required: %s requires a user token to access the API. "+
+							"Please visit %s to set up your %s token. %s",
+						tokenSetup.DisplayName,
+						tokenSetupURL,
+						tokenSetup.DisplayName,
+						tokenSetup.Instructions,
+					)
+				} else {
+					errorMessage = fmt.Sprintf(
+						"Token Required: This service requires a user token. "+
+							"Please visit %s to configure your token.",
+						tokenSetupURL,
+					)
+				}
+
+				errorData := createTokenRequiredError(
+					serverName,
+					setupBaseURL,
+					tokenSetup,
+					errorMessage,
+				)
+
+				errorJSON, _ := json.Marshal(errorData)
+				return mcp.NewToolResultError(string(errorJSON)), nil
+			}
+		}
+
+		// Token check passed or not required, call original handler
+		return originalHandler(toolCtx, request)
+	}
+}
+
+// Close closes the MCP client
 func (c *Client) Close() error {
 	if c.client != nil {
 		return c.client.Close()
@@ -280,36 +436,25 @@ func (c *Client) Close() error {
 	return nil
 }
 
-type Server struct {
-	Tokens    []string
-	MCPServer *server.MCPServer
-	SSEServer *server.SSEServer
-}
+// createTokenRequiredError creates the structured error for missing user tokens
+func createTokenRequiredError(serverName, setupBaseURL string, tokenSetup *config.TokenSetupConfig, message string) map[string]interface{} {
+	tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
 
-func NewMCPServer(name, version, baseURL string, clientConfig *config.MCPClientConfig) *Server {
-	serverOpts := []server.ServerOption{
-		server.WithResourceCapabilities(true, true),
-		server.WithRecovery(),
-		server.WithLogging(), // Always enable MCP server logging
+	return map[string]interface{}{
+		"jsonrpc": "2.0",
+		"error": map[string]interface{}{
+			"code":    "token_required",
+			"message": message,
+			"data": map[string]interface{}{
+				"service":       serverName,
+				"tokenSetupUrl": tokenSetupURL,
+				"instructions": map[string]interface{}{
+					"ai": "CRITICAL: You MUST pass these error details EXACTLY as provided to the human. " +
+						"You are FORBIDDEN from modifying URLs or instructions. " +
+						"Tell the human they need to visit the tokenSetupUrl to configure their token.",
+					"human": message,
+				},
+			},
+		},
 	}
-	mcpServer := server.NewMCPServer(
-		name,
-		version,
-		serverOpts...,
-	)
-	sseServer := server.NewSSEServer(mcpServer,
-		server.WithStaticBasePath(name),
-		server.WithBaseURL(baseURL),
-	)
-
-	srv := &Server{
-		MCPServer: mcpServer,
-		SSEServer: sseServer,
-	}
-
-	if clientConfig.Options != nil && len(clientConfig.Options.AuthTokens) > 0 {
-		srv.Tokens = clientConfig.Options.AuthTokens
-	}
-
-	return srv
 }

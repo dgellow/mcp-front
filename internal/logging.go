@@ -11,10 +11,8 @@ import (
 var logger *slog.Logger
 
 func init() {
-	// Configure structured logging using Go's standard slog package
 	var level slog.Level
 
-	// Check LOG_LEVEL environment variable
 	switch strings.ToUpper(os.Getenv("LOG_LEVEL")) {
 	case "ERROR":
 		level = slog.LevelError
@@ -28,7 +26,6 @@ func init() {
 		level = slog.LevelInfo
 	}
 
-	// Check LOG_FORMAT environment variable
 	var handler slog.Handler
 	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
 		// Production: structured JSON logs
@@ -98,6 +95,15 @@ func LogInfoWithFields(component, message string, fields map[string]interface{})
 	logger.Info(message, args...)
 }
 
+func LogDebugWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	logger.Debug(message, args...)
+}
+
 func LogErrorWithFields(component, message string, fields map[string]interface{}) {
 	args := make([]any, 0, len(fields)*2+2)
 	args = append(args, "component", component)
@@ -105,6 +111,15 @@ func LogErrorWithFields(component, message string, fields map[string]interface{}
 		args = append(args, k, v)
 	}
 	logger.Error(message, args...)
+}
+
+func LogWarnWithFields(component, message string, fields map[string]interface{}) {
+	args := make([]any, 0, len(fields)*2+2)
+	args = append(args, "component", component)
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	logger.Warn(message, args...)
 }
 
 func LogTraceWithFields(component, message string, fields map[string]interface{}) {

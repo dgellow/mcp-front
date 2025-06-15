@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
+	fosite_storage "github.com/ory/fosite/storage"
 )
 
 // isDevelopmentMode checks if we're running in development mode
@@ -22,23 +24,63 @@ func isDevelopmentMode() bool {
 	return env == "development" || env == "dev"
 }
 
+// contextKey is a type for context keys to avoid collisions
+type contextKey string
+
+// userContextKey is the context key for user email
+const userContextKey contextKey = "user_email"
+
+// GetUserFromContext extracts user email from context
+func GetUserFromContext(ctx context.Context) (string, bool) {
+	email, ok := ctx.Value(userContextKey).(string)
+	return email, ok
+}
+
+// GetUserContextKey returns the context key for user email (for testing)
+func GetUserContextKey() contextKey {
+	return userContextKey
+}
+
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
-	provider    fosite.OAuth2Provider
-	storage     OAuthStorage
-	authService *authService
-	config      Config
+	provider fosite.OAuth2Provider
+	storage  interface {
+		fosite.Storage
+		generateState() string
+		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
+		getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
+		createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
+		GetAllClients() map[string]fosite.Client
+		GetMemoryStore() *fosite_storage.MemoryStore
+		// User token methods
+		GetUserToken(ctx context.Context, userEmail, service string) (string, error)
+		SetUserToken(ctx context.Context, userEmail, service, token string) error
+		DeleteUserToken(ctx context.Context, userEmail, service string) error
+		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
+	}
+	authService      *authService
+	config           Config
+	sessionEncryptor crypto.Encryptor // Created once for browser SSO performance
+}
+
+// GetStorage returns the underlying storage implementation
+// This allows handlers to access user token functionality
+func (s *Server) GetStorage() interface{} {
+	return s.storage
 }
 
 // Config holds OAuth server configuration
 type Config struct {
 	Issuer              string
 	TokenTTL            time.Duration
+	SessionDuration     time.Duration // Duration for browser session cookies (default: 24h)
 	AllowedDomains      []string
+	AllowedOrigins      []string // For CORS validation
 	GoogleClientID      string
 	GoogleClientSecret  string
 	GoogleRedirectURI   string
 	JWTSecret           string // Should be provided via environment variable
+	EncryptionKey       string // Should be provided via environment variable
 	StorageType         string // "memory" or "firestore"
 	GCPProjectID        string // Required for firestore storage
 	FirestoreDatabase   string // Optional: Firestore database name (default: "(default)")
@@ -47,9 +89,53 @@ type Config struct {
 
 // NewServer creates a new OAuth 2.1 server
 func NewServer(config Config) (*Server, error) {
-	// Create storage (data layer)
-	var storage OAuthStorage
+	// Validate storage type first
+	var needsEncryption bool
+	switch config.StorageType {
+	case "memory", "":
+		needsEncryption = false
+	case "firestore":
+		needsEncryption = true
+	default:
+		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
+	}
+
+	// Create encryptors (encryption key is always validated in config loading)
+	key := []byte(config.EncryptionKey)
 	var err error
+
+	// Create storage encryptor if needed
+	var encryptor crypto.Encryptor
+	if needsEncryption {
+		encryptor, err = crypto.NewEncryptor(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create storage encryptor: %w", err)
+		}
+	}
+
+	// Always create session encryptor for browser SSO
+	var sessionEncryptor crypto.Encryptor
+	sessionEncryptor, err = crypto.NewEncryptor(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session encryptor: %w", err)
+	}
+	internal.Logf("Session encryptor initialized for browser SSO")
+
+	// Create storage (data layer)
+	var storage interface {
+		fosite.Storage
+		generateState() string
+		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
+		getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
+		createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
+		GetAllClients() map[string]fosite.Client
+		GetMemoryStore() *fosite_storage.MemoryStore
+		// User token methods
+		GetUserToken(ctx context.Context, userEmail, service string) (string, error)
+		SetUserToken(ctx context.Context, userEmail, service, token string) error
+		DeleteUserToken(ctx context.Context, userEmail, service string) error
+		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
+	}
 
 	switch config.StorageType {
 	case "firestore":
@@ -66,13 +152,14 @@ func NewServer(config Config) (*Server, error) {
 		if collection == "" {
 			collection = "mcp_front_oauth_clients"
 		}
-		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, database, collection)
+		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, database, collection, encryptor)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
 		}
 	case "memory", "":
 		storage = newStorage()
 	default:
+		// This should never happen since we already validated above
 		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
 	}
 
@@ -91,7 +178,6 @@ func NewServer(config Config) (*Server, error) {
 			return nil, fmt.Errorf("JWT secret must be at least 32 bytes long for security, got %d bytes", len(secret))
 		}
 	} else {
-		// Generate a cryptographically secure random secret
 		secret = make([]byte, 32)
 		if _, err := rand.Read(secret); err != nil {
 			return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
@@ -136,11 +222,17 @@ func NewServer(config Config) (*Server, error) {
 		compose.OAuth2TokenIntrospectionFactory,
 	)
 
+	// Set default session duration if not configured
+	if config.SessionDuration == 0 {
+		config.SessionDuration = 24 * time.Hour
+	}
+
 	return &Server{
-		provider:    provider,
-		storage:     storage,
-		authService: authService,
-		config:      config,
+		provider:         provider,
+		storage:          storage,
+		authService:      authService,
+		config:           config,
+		sessionEncryptor: sessionEncryptor,
 	}, nil
 }
 
@@ -173,7 +265,11 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(metadata)
+	if err := json.NewEncoder(w).Encode(metadata); err != nil {
+		internal.LogErrorWithFields("oauth", "Failed to encode metadata response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // AuthorizeHandler handles OAuth 2.0 authorization requests
@@ -235,11 +331,9 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get state and code from query params
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
 
-	// Check for errors from Google
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		errDesc := r.URL.Query().Get("error_description")
 		internal.LogError("Google OAuth error: %s - %s", errMsg, errDesc)
@@ -253,12 +347,42 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Retrieve original authorize request
-	ar, found := s.storage.getAuthorizeRequest(state)
-	if !found {
-		internal.LogError("Invalid or expired state: %s", state)
-		http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
-		return
+	// Check if this is a browser SSO flow
+	var ar fosite.AuthorizeRequester
+	var isBrowserFlow bool
+	var returnURL string
+
+	if strings.HasPrefix(state, "browser:") {
+		// Browser SSO flow - validate signature and extract return URL
+		isBrowserFlow = true
+		// Format: "browser:nonce:signature:returnURL"
+		parts := strings.SplitN(state, ":", 4)
+		if len(parts) != 4 {
+			internal.LogError("Invalid browser state format: %s", state)
+			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			return
+		}
+		// parts[0] = "browser", parts[1] = nonce, parts[2] = signature, parts[3] = return URL
+		nonce := parts[1]
+		signature := parts[2]
+		returnURL = parts[3]
+
+		// Validate HMAC signature
+		data := nonce + ":" + returnURL
+		if !s.validateSignedData(data, signature) {
+			internal.LogError("Invalid CSRF signature in browser flow")
+			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			return
+		}
+	} else {
+		// OAuth client flow - retrieve stored authorize request
+		var found bool
+		ar, found = s.storage.getAuthorizeRequest(state)
+		if !found {
+			internal.LogError("Invalid or expired state: %s", state)
+			http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Exchange code for token with timeout
@@ -281,11 +405,26 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	internal.Logf("User validated successfully: %s", userInfo.Email)
 
+	// Handle browser SSO flow
+	if isBrowserFlow {
+		// Set session cookie
+		if err := s.setBrowserSessionCookie(w, userInfo.Email); err != nil {
+			internal.LogError("Failed to set browser session cookie: %v", err)
+			http.Error(w, "Failed to create session", http.StatusInternalServerError)
+			return
+		}
+
+		// Redirect to the original URL
+		internal.Logf("Browser SSO successful for %s, redirecting to %s", userInfo.Email, returnURL)
+		http.Redirect(w, r, returnURL, http.StatusFound)
+		return
+	}
+
+	// Handle OAuth client flow
 	// Create session with user info
 	session := NewSession(userInfo)
 	internal.Logf("Session created for user: %s", userInfo.Email)
 
-	// Complete the authorization request
 	internal.Logf("Creating authorize response for client: %s", ar.GetClient().GetID())
 	response, err := s.provider.NewAuthorizeResponse(ctx, ar, session)
 	if err != nil {
@@ -299,7 +438,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write the response (redirects back to client)
+	// Continue with normal OAuth flow
 	s.provider.WriteAuthorizeResponse(w, ar, response)
 }
 
@@ -307,16 +446,22 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Create session for the token
-	session := &fosite.DefaultSession{}
+	// Create session for the token exchange
+	// Note: We create our custom Session type here, and fosite will populate it
+	// with the session data from the authorization code during NewAccessRequest
+	session := &Session{DefaultSession: &fosite.DefaultSession{}}
 
-	// Handle token request
+	// Handle token request - this retrieves the session from the authorization code
 	accessRequest, err := s.provider.NewAccessRequest(ctx, r, session)
 	if err != nil {
 		internal.LogError("Access request error: %v", err)
 		s.provider.WriteAccessError(w, accessRequest, err)
 		return
 	}
+
+	// At this point, accessRequest.GetSession() contains the session data from
+	// the authorization phase (including our custom UserInfo). Fosite handles
+	// the session propagation internally when creating the access token.
 
 	// Generate tokens
 	response, err := s.provider.NewAccessResponse(ctx, accessRequest)
@@ -371,7 +516,11 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogErrorWithFields("oauth", "Failed to encode register response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // DebugClientsHandler shows all registered clients (for debugging)
@@ -395,7 +544,11 @@ func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogErrorWithFields("oauth", "Failed to encode debug response", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 }
 
 // ValidateTokenMiddleware creates middleware that validates OAuth tokens
@@ -419,11 +572,34 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 
 			token := parts[1]
 
-			// Validate token
-			_, _, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, &fosite.DefaultSession{})
+			// Validate token and extract session
+			// IMPORTANT: Fosite's IntrospectToken behavior is non-intuitive:
+			// - The session parameter passed to IntrospectToken is NOT populated with data
+			// - This is documented fosite behavior, not a bug
+			// - The actual session data must be retrieved from the returned AccessRequester
+			// See: https://github.com/ory/fosite/issues/256
+			session := &Session{DefaultSession: &fosite.DefaultSession{}}
+			_, accessRequest, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, session)
 			if err != nil {
 				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 				return
+			}
+
+			// Get the actual session from the access request (not the input session parameter)
+			// This is the correct way to retrieve session data after token introspection
+			var userEmail string
+			if accessRequest != nil {
+				if reqSession, ok := accessRequest.GetSession().(*Session); ok {
+					if reqSession.UserInfo != nil && reqSession.UserInfo.Email != "" {
+						userEmail = reqSession.UserInfo.Email
+					}
+				}
+			}
+
+			// Pass user info through context
+			if userEmail != "" {
+				ctx = context.WithValue(ctx, userContextKey, userEmail)
+				r = r.WithContext(ctx)
 			}
 
 			next.ServeHTTP(w, r)

@@ -15,6 +15,7 @@
   },
   "mcpServers": {
     "postgres": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i", "--network", "host",
@@ -23,6 +24,7 @@
       ]
     },
     "notion": {
+      "transportType": "stdio",
       "command": "docker",
       "args": ["run", "--rm", "-i", "mcp/notion"],
       "env": {
@@ -30,6 +32,7 @@
       }
     },
     "git": {
+      "transportType": "stdio",
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
