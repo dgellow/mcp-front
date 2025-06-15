@@ -14,7 +14,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	// First parse to check version and validate raw structure
 	var rawConfig map[string]interface{}
 	if err := json.Unmarshal(data, &rawConfig); err != nil {
 		return nil, fmt.Errorf("parsing config JSON: %w", err)
@@ -45,7 +44,6 @@ func Load(path string) (*Config, error) {
 
 	// Process auth tokens for bearer token mode
 	if auth, ok := config.Proxy.Auth.(*BearerTokenAuthConfig); ok {
-		// Distribute tokens to servers
 		for serverName, tokens := range auth.Tokens {
 			if server, ok := config.MCPServers[serverName]; ok {
 				if server.Options == nil {
@@ -61,11 +59,9 @@ func Load(path string) (*Config, error) {
 
 // validateRawConfig validates the config structure before environment resolution
 func validateRawConfig(rawConfig map[string]interface{}) error {
-	// Check if OAuth auth is configured
 	if proxy, ok := rawConfig["proxy"].(map[string]interface{}); ok {
 		if auth, ok := proxy["auth"].(map[string]interface{}); ok {
 			if kind, ok := auth["kind"].(string); ok && kind == "oauth" {
-				// Validate that secrets use env refs
 				secrets := []struct {
 					name     string
 					required bool

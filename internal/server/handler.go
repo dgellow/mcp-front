@@ -83,16 +83,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Build list of allowed CORS origins
 	var allowedOrigins []string
 	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
-		// Use explicitly configured origins if provided
-		if len(oauthAuth.AllowedOrigins) > 0 {
-			allowedOrigins = oauthAuth.AllowedOrigins
-		} else if len(oauthAuth.AllowedDomains) > 0 {
-			// Fall back to building from allowed domains for backward compatibility
-			internal.LogWarn("Using allowedDomains for CORS is deprecated. Please use allowedOrigins instead.")
-			for _, domain := range oauthAuth.AllowedDomains {
-				allowedOrigins = append(allowedOrigins, "https://"+domain)
-			}
-		}
+		allowedOrigins = oauthAuth.AllowedOrigins
 	}
 
 	info := mcp.Implementation{

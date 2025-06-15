@@ -810,63 +810,63 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 				return http.ErrUseLastResponse // Don't follow redirects
 			},
 		}
-		
+
 		req, err := http.NewRequest("GET", "http://localhost:8080/my/tokens", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+accessToken)
-		
+
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		
+
 		// Check if we got the page or a redirect
 		if resp.StatusCode == 302 || resp.StatusCode == 303 {
 			// Follow the redirect
 			location := resp.Header.Get("Location")
 			t.Logf("Got redirect to: %s", location)
-			
+
 			// Allow redirects for this request
 			client = &http.Client{
 				Jar: jar,
 			}
-			
+
 			req, err = http.NewRequest("GET", "http://localhost:8080/my/tokens", nil)
 			require.NoError(t, err)
 			req.Header.Set("Authorization", "Bearer "+accessToken)
-			
+
 			resp, err = client.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 		}
-		
+
 		require.Equal(t, 200, resp.StatusCode, "Should be able to access token page")
-		
+
 		// Extract CSRF token from HTML
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		
+
 		// Look for the CSRF token in the form
 		csrfRegex := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
 		matches := csrfRegex.FindSubmatch(body)
 		require.Len(t, matches, 2, "Should find CSRF token in form")
 		csrfToken := string(matches[1])
-		
+
 		// Step 2: POST to /my/tokens/set with test token
 		formData := url.Values{
 			"service":    {"postgres"},
 			"token":      {"test-user-token-12345"},
 			"csrf_token": {csrfToken},
 		}
-		
+
 		req, err = http.NewRequest("POST", "http://localhost:8080/my/tokens/set", strings.NewReader(formData.Encode()))
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		
+
 		resp, err = client.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		
+
 		// Check the response - it might be 200 if following redirects
 		if resp.StatusCode == 200 {
 			// That's fine, it means the token was set and we got the page back
@@ -878,15 +878,15 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Unexpected response setting token: status=%d, body=%s", resp.StatusCode, string(body))
 		}
-		
+
 		// Step 3: Now test tool invocation with the token
 		mcpClient := NewMCPClient("http://localhost:8080")
 		mcpClient.SetAuthToken(accessToken)
-		
+
 		err = mcpClient.Connect()
 		require.NoError(t, err, "Should connect to postgres SSE endpoint")
 		defer mcpClient.Close()
-		
+
 		// Call the query tool with a simple query
 		queryParams := map[string]interface{}{
 			"name": "query",
@@ -894,27 +894,27 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 				"sql": "SELECT 1 as test",
 			},
 		}
-		
+
 		result, err := mcpClient.SendMCPRequest("tools/call", queryParams)
 		require.NoError(t, err, "Should successfully call tool with token")
-		
+
 		// Verify we got a successful result, not an error
 		require.NotNil(t, result["result"], "Should have result in response")
-		
+
 		resultMap := result["result"].(map[string]interface{})
 		content := resultMap["content"].([]interface{})
 		require.NotEmpty(t, content, "Should have content in result")
-		
+
 		contentItem := content[0].(map[string]interface{})
 		resultText := contentItem["text"].(string)
-		
+
 		// The result should contain actual query results, not an error
 		assert.NotContains(t, resultText, "token_required", "Should not have token error")
 		assert.NotContains(t, resultText, "Token Required", "Should not have token error message")
-		
+
 		// Postgres query result should contain our test value
 		assert.Contains(t, resultText, "1", "Should contain query result")
-		
+
 		t.Log("Successfully invoked tool with user token")
 	})
 }

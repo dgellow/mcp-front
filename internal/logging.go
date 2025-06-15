@@ -28,11 +28,9 @@ func init() {
 
 	var handler slog.Handler
 	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
-		// Production: structured JSON logs
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 			Level: level,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-				// Customize timestamp format
 				if a.Key == slog.TimeKey {
 					return slog.Attr{
 						Key:   "timestamp",
@@ -43,11 +41,9 @@ func init() {
 			},
 		})
 	} else {
-		// Development: human-readable text logs
 		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			Level: level,
 			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-				// Customize timestamp format for readability
 				if a.Key == slog.TimeKey {
 					return slog.Attr{
 						Key:   slog.TimeKey,
@@ -81,7 +77,6 @@ func LogDebug(format string, args ...interface{}) {
 }
 
 func LogTrace(format string, args ...interface{}) {
-	// Use Debug level for trace since slog doesn't have trace
 	logger.Debug(fmt.Sprintf(format, args...))
 }
 

@@ -11,14 +11,9 @@ import (
 func TestIntegration(t *testing.T) {
 	trace(t, "Starting integration test")
 
-	// Database is already started by TestMain, just wait for readiness
 	trace(t, "Waiting for database readiness")
 	waitForDB(t)
 
-	// Mock GCP server is already started by TestMain on port 9090
-	// No need to start another one
-
-	// Start mcp-front
 	trace(t, "Starting mcp-front")
 	mcpCmd := startMCPFront(t, "config/config.test.json",
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
@@ -27,17 +22,13 @@ func TestIntegration(t *testing.T) {
 	)
 	defer stopMCPFront(mcpCmd)
 
-	// Wait for server to be ready
 	waitForMCPFront(t)
 	trace(t, "mcp-front is ready")
 
-	// Create test client
-	// Testing MCP communication
 	client := NewMCPClient("http://localhost:8080")
 	require.NotNil(t, client, "Failed to create MCP client")
 	defer client.Close() // Ensure SSE connection is closed
 
-	// Authenticate
 	err := client.Authenticate()
 	require.NoError(t, err, "Authentication failed")
 
@@ -50,7 +41,6 @@ func TestIntegration(t *testing.T) {
 
 	t.Log("Connected to MCP server with session")
 
-	// Test database query
 	queryParams := map[string]interface{}{
 		"name": "query",
 		"arguments": map[string]interface{}{
@@ -63,7 +53,6 @@ func TestIntegration(t *testing.T) {
 
 	t.Logf("Query result: %+v", result)
 
-	// Verify we got a successful response
 	require.NotNil(t, result, "Expected some response from MCP server")
 
 	// Check for error in response
