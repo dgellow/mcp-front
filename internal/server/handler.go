@@ -11,6 +11,7 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/interfaces"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -21,6 +22,7 @@ type Server struct {
 	mux            *http.ServeMux
 	config         *config.Config
 	oauthServer    *oauth.Server
+	tokenStore     interfaces.UserTokenStore
 	sessionManager *client.StdioSessionManager
 	sseServers     map[string]*server.SSEServer // serverName -> SSE server for stdio servers
 }
@@ -129,6 +131,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, fmt.Errorf("failed to create OAuth server: %w", err)
 		}
 
+		// Get the token store from OAuth server's storage
+		if storage := s.oauthServer.GetStorage(); storage != nil {
+			s.tokenStore = storage.(interfaces.UserTokenStore)
+		}
+
 		// Register OAuth endpoints
 		oauthMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
@@ -142,7 +149,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		mux.Handle("/register", chainMiddleware(http.HandlerFunc(s.oauthServer.RegisterHandler), oauthMiddlewares...))
 
 		// Protected endpoints - require authentication
-		tokenHandlers := NewTokenHandlers(s.oauthServer, cfg.MCPServers)
+		tokenHandlers := NewTokenHandlers(s.tokenStore, cfg.MCPServers, s.oauthServer != nil)
 		tokenMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
@@ -232,15 +239,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 
 		// Create handler
-		var tokenStore oauth.UserTokenStore
-		if s.oauthServer != nil {
-			tokenStore = s.oauthServer.GetUserTokenStore()
-		}
-
 		handler := NewMCPHandler(
 			serverName,
 			serverConfig,
-			tokenStore,
+			s.tokenStore,
 			baseURL.String(),
 			info,
 			s.sessionManager,
@@ -356,7 +358,17 @@ func handleSessionRegistration(
 	}
 
 	// Connect stdio client directly to the shared MCP server
-	if err := stdioSession.GetClient().AddToMCPServer(sessionCtx, handler.h.info, handler.mcpServer); err != nil {
+	if err := stdioSession.GetClient().AddToMCPServerWithTokenCheck(
+		sessionCtx,
+		handler.h.info,
+		handler.mcpServer,
+		handler.userEmail,
+		handler.config.RequiresUserToken,
+		handler.h.tokenStore,
+		handler.h.serverName,
+		handler.h.setupBaseURL,
+		handler.config.TokenSetup,
+	); err != nil {
 		internal.LogErrorWithFields("server", "Failed to connect client to server", map[string]interface{}{
 			"error":     err.Error(),
 			"sessionID": session.SessionID(),

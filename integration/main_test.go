@@ -52,6 +52,18 @@ func TestMain(m *testing.M) {
 		os.Exit(exitCode)
 	}()
 
+	// Start mock GCP server for OAuth
+	mockGCP := NewMockGCPServer("9090")
+	err := mockGCP.Start()
+	if err != nil {
+		fmt.Printf("Failed to start mock GCP server: %v\n", err)
+		exitCode = 1
+		return
+	}
+	defer func() {
+		_ = mockGCP.Stop()
+	}()
+
 	// Wait for database to be ready
 	fmt.Println("Waiting for database to be ready...")
 	for i := 0; i < 30; i++ { // Wait up to 30 seconds

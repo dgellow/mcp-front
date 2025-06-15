@@ -170,3 +170,28 @@ func (s *Storage) ListUserServices(ctx context.Context, userEmail string) ([]str
 	}
 	return services, nil
 }
+
+// GetAccessTokenSession overrides the MemoryStore implementation to properly handle our custom Session type
+// Note: This method is called by fosite during token introspection, but the session parameter
+// is NOT populated by fosite. Instead, the session data is available in the returned requester.
+// This override ensures compatibility if fosite's behavior changes in the future.
+func (s *Storage) GetAccessTokenSession(ctx context.Context, signature string, session fosite.Session) (fosite.Requester, error) {
+	// Get the requester from the parent implementation
+	requester, err := s.MemoryStore.GetAccessTokenSession(ctx, signature, session)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we have our custom Session type, copy the session data
+	// This is a defensive measure - currently fosite doesn't use this during introspection,
+	// but we implement it in case the behavior changes
+	if targetSession, ok := session.(*Session); ok {
+		if sourceSession, ok := requester.GetSession().(*Session); ok {
+			// Copy UserInfo from the stored session
+			targetSession.UserInfo = sourceSession.UserInfo
+			targetSession.DefaultSession = sourceSession.DefaultSession
+		}
+	}
+
+	return requester, nil
+}

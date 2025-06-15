@@ -3,6 +3,9 @@ package integration
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,42 +20,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// TestOAuthIntegration validates the complete OAuth 2.1 implementation
-// This includes all OAuth flows, JWT validation, client registration,
-// state parameter handling, and environment-specific behavior
-func TestOAuthIntegration(t *testing.T) {
-	// Database is already started by TestMain, just wait for readiness
-	waitForDB(t)
-
-	// Build mcp-front once at the beginning
-	buildCmd := exec.Command("go", "build", "-o", "../mcp-front", "../cmd/mcp-front")
-	err := buildCmd.Run()
-	require.NoError(t, err, "Failed to build mcp-front")
-
-	// Start mock GCP server for OAuth
-	mockGCP := NewMockGCPServer("9090")
-	err = mockGCP.Start()
-	require.NoError(t, err, "Failed to start mock GCP server")
-	t.Cleanup(func() {
-		_ = mockGCP.Stop()
-	})
-
-	// Run all OAuth test scenarios
-	t.Run("BasicOAuthFlow", testBasicOAuthFlow)
-	t.Run("JWTSecretValidation", testJWTSecretValidation)
-	t.Run("ClientRegistration", testClientRegistration)
-	t.Run("StateParameterHandling", testStateParameterHandling)
-	t.Run("DevelopmentVsProduction", testEnvironmentModes)
-	t.Run("OAuthEndpoints", testOAuthEndpoints)
-	t.Run("CORSHeaders", testCORSHeaders)
-	t.Run("UserTokenFlow", testUserTokenFlow)
-}
-
-// testBasicOAuthFlow tests the basic OAuth server functionality
-func testBasicOAuthFlow(t *testing.T) {
+// TestBasicOAuthFlow tests the basic OAuth server functionality
+func TestBasicOAuthFlow(t *testing.T) {
 	// Start mcp-front with OAuth config
 	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
 	mcpCmd.Env = []string{
@@ -107,8 +80,8 @@ func testBasicOAuthFlow(t *testing.T) {
 	}
 }
 
-// testJWTSecretValidation tests JWT secret length requirements
-func testJWTSecretValidation(t *testing.T) {
+// TestJWTSecretValidation tests JWT secret length requirements
+func TestJWTSecretValidation(t *testing.T) {
 	tests := []struct {
 		name       string
 		secret     string
@@ -174,8 +147,8 @@ func testJWTSecretValidation(t *testing.T) {
 	}
 }
 
-// testClientRegistration tests dynamic client registration (RFC 7591)
-func testClientRegistration(t *testing.T) {
+// TestClientRegistration tests dynamic client registration (RFC 7591)
+func TestClientRegistration(t *testing.T) {
 	// Start OAuth server
 	mcpCmd := startOAuthServer(t, map[string]string{
 		"MCP_FRONT_ENV": "development",
@@ -264,10 +237,10 @@ func testClientRegistration(t *testing.T) {
 	})
 }
 
-// testUserTokenFlow tests the user token management functionality with browser-based SSO
+// TestUserTokenFlow tests the user token management functionality with browser-based SSO
 // This test expects the /my/* routes to work with Google SSO (session-based auth),
 // not Bearer token auth.
-func testUserTokenFlow(t *testing.T) {
+func TestUserTokenFlow(t *testing.T) {
 	// Start OAuth server with user token configuration
 	mcpCmd := startOAuthServerWithTokenConfig(t)
 	defer stopServer(mcpCmd)
@@ -423,8 +396,8 @@ func testUserTokenFlow(t *testing.T) {
 	})
 }
 
-// testStateParameterHandling tests OAuth state parameter requirements
-func testStateParameterHandling(t *testing.T) {
+// TestStateParameterHandling tests OAuth state parameter requirements
+func TestStateParameterHandling(t *testing.T) {
 	tests := []struct {
 		name        string
 		environment string
@@ -508,8 +481,8 @@ func testStateParameterHandling(t *testing.T) {
 	}
 }
 
-// testEnvironmentModes tests development vs production mode differences
-func testEnvironmentModes(t *testing.T) {
+// TestEnvironmentModes tests development vs production mode differences
+func TestEnvironmentModes(t *testing.T) {
 	t.Run("DevelopmentMode", func(t *testing.T) {
 		mcpCmd := startOAuthServer(t, map[string]string{
 			"MCP_FRONT_ENV": "development",
@@ -600,8 +573,8 @@ func testEnvironmentModes(t *testing.T) {
 	})
 }
 
-// testOAuthEndpoints tests all OAuth endpoints comprehensively
-func testOAuthEndpoints(t *testing.T) {
+// TestOAuthEndpoints tests all OAuth endpoints comprehensively
+func TestOAuthEndpoints(t *testing.T) {
 	mcpCmd := startOAuthServer(t, map[string]string{
 		"MCP_FRONT_ENV": "development",
 	})
@@ -668,8 +641,8 @@ func testOAuthEndpoints(t *testing.T) {
 	})
 }
 
-// testCORSHeaders tests CORS headers for Claude.ai compatibility
-func testCORSHeaders(t *testing.T) {
+// TestCORSHeaders tests CORS headers for Claude.ai compatibility
+func TestCORSHeaders(t *testing.T) {
 	mcpCmd := startOAuthServer(t, map[string]string{
 		"MCP_FRONT_ENV": "development",
 	})
@@ -709,6 +682,241 @@ func testCORSHeaders(t *testing.T) {
 		}
 	}
 
+}
+
+// TestToolAdvertisementWithUserTokens tests that tools are advertised even without user tokens
+// but fail gracefully when invoked without the required token, and succeed with the token
+func TestToolAdvertisementWithUserTokens(t *testing.T) {
+	// Start OAuth server with user token configuration
+	mcpCmd := startMCPFront(t, "config/config.oauth-usertoken-tools-test.json",
+		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
+		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
+		"GOOGLE_CLIENT_ID=test-client-id-oauth",
+		"GOOGLE_CLIENT_SECRET=test-client-secret-oauth",
+		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
+		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
+		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
+		"MCP_FRONT_ENV=development",
+		"LOG_LEVEL=debug",
+	)
+	defer stopMCPFront(mcpCmd)
+
+	if !waitForHealthCheck(t, 30) {
+		t.Fatal("Server failed to start")
+	}
+
+	// Complete OAuth flow to get a valid access token
+	accessToken := getOAuthAccessToken(t)
+
+	t.Run("ToolsAdvertisedWithoutToken", func(t *testing.T) {
+		// Create MCP client with OAuth token
+		mcpClient := NewMCPClient("http://localhost:8080")
+		mcpClient.SetAuthToken(accessToken)
+
+		// Connect to postgres SSE endpoint
+		err := mcpClient.Connect()
+		require.NoError(t, err, "Should connect to postgres SSE endpoint without user token")
+		defer mcpClient.Close()
+
+		// Request tools list
+		toolsResp, err := mcpClient.SendMCPRequest("tools/list", map[string]interface{}{})
+		require.NoError(t, err, "Should list tools without user token")
+
+		// Verify we got tools
+		resultMap, ok := toolsResp["result"].(map[string]interface{})
+		require.True(t, ok, "Expected result in tools response")
+
+		tools, ok := resultMap["tools"].([]interface{})
+		require.True(t, ok, "Expected tools array in result")
+		assert.NotEmpty(t, tools, "Should have tools advertised")
+
+		// Check for common postgres tools
+		var toolNames []string
+		for _, tool := range tools {
+			if toolMap, ok := tool.(map[string]interface{}); ok {
+				if name, ok := toolMap["name"].(string); ok {
+					toolNames = append(toolNames, name)
+				}
+			}
+		}
+
+		assert.Contains(t, toolNames, "query", "Should have query tool")
+		t.Logf("Successfully advertised tools without user token: %v", toolNames)
+	})
+
+	t.Run("ToolInvocationFailsWithoutToken", func(t *testing.T) {
+		// Create MCP client with OAuth token
+		mcpClient := NewMCPClient("http://localhost:8080")
+		mcpClient.SetAuthToken(accessToken)
+
+		// Connect to postgres SSE endpoint
+		err := mcpClient.Connect()
+		require.NoError(t, err)
+		defer mcpClient.Close()
+
+		// Try to invoke a tool without user token
+		queryParams := map[string]interface{}{
+			"name": "query",
+			"arguments": map[string]interface{}{
+				"sql": "SELECT 1",
+			},
+		}
+
+		result, err := mcpClient.SendMCPRequest("tools/call", queryParams)
+		require.NoError(t, err, "Should get response even without token")
+
+		// MCP protocol returns errors as successful responses with error content
+		require.NotNil(t, result["result"], "Should have result in response")
+
+		resultMap := result["result"].(map[string]interface{})
+		content := resultMap["content"].([]interface{})
+		require.NotEmpty(t, content, "Should have content in result")
+
+		contentItem := content[0].(map[string]interface{})
+		errorJSON := contentItem["text"].(string)
+
+		// Parse the error JSON
+		var errorData map[string]interface{}
+		err = json.Unmarshal([]byte(errorJSON), &errorData)
+		require.NoError(t, err, "Error should be valid JSON")
+
+		// Verify error structure
+		errorInfo := errorData["error"].(map[string]interface{})
+		assert.Equal(t, "token_required", errorInfo["code"], "Error code should be token_required")
+
+		errorMessage := errorInfo["message"].(string)
+		assert.Contains(t, errorMessage, "Token Required", "Error should mention token required")
+		assert.Contains(t, errorMessage, "/my/tokens", "Error should mention token setup URL")
+		assert.Contains(t, errorMessage, "Test Service", "Error should mention service name")
+
+		// Verify error data
+		errData := errorInfo["data"].(map[string]interface{})
+		assert.Equal(t, "postgres", errData["service"], "Should identify the service")
+		assert.Contains(t, errData["tokenSetupUrl"].(string), "/my/tokens", "Should include token setup URL")
+
+		// Verify instructions
+		instructions := errData["instructions"].(map[string]interface{})
+		assert.Contains(t, instructions["ai"].(string), "CRITICAL", "Should have AI instructions")
+		assert.Contains(t, instructions["human"].(string), "Token Required", "Should have human instructions")
+	})
+
+	t.Run("ToolInvocationSucceedsWithUserToken", func(t *testing.T) {
+		// Step 1: GET /my/tokens to extract CSRF token
+		jar, err := cookiejar.New(nil)
+		require.NoError(t, err)
+		client := &http.Client{
+			Jar: jar, // Need cookie jar for CSRF
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse // Don't follow redirects
+			},
+		}
+		
+		req, err := http.NewRequest("GET", "http://localhost:8080/my/tokens", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		
+		// Check if we got the page or a redirect
+		if resp.StatusCode == 302 || resp.StatusCode == 303 {
+			// Follow the redirect
+			location := resp.Header.Get("Location")
+			t.Logf("Got redirect to: %s", location)
+			
+			// Allow redirects for this request
+			client = &http.Client{
+				Jar: jar,
+			}
+			
+			req, err = http.NewRequest("GET", "http://localhost:8080/my/tokens", nil)
+			require.NoError(t, err)
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+			
+			resp, err = client.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+		}
+		
+		require.Equal(t, 200, resp.StatusCode, "Should be able to access token page")
+		
+		// Extract CSRF token from HTML
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		
+		// Look for the CSRF token in the form
+		csrfRegex := regexp.MustCompile(`name="csrf_token" value="([^"]+)"`)
+		matches := csrfRegex.FindSubmatch(body)
+		require.Len(t, matches, 2, "Should find CSRF token in form")
+		csrfToken := string(matches[1])
+		
+		// Step 2: POST to /my/tokens/set with test token
+		formData := url.Values{
+			"service":    {"postgres"},
+			"token":      {"test-user-token-12345"},
+			"csrf_token": {csrfToken},
+		}
+		
+		req, err = http.NewRequest("POST", "http://localhost:8080/my/tokens/set", strings.NewReader(formData.Encode()))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		
+		resp, err = client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		
+		// Check the response - it might be 200 if following redirects
+		if resp.StatusCode == 200 {
+			// That's fine, it means the token was set and we got the page back
+			t.Log("Token set successfully, got page response")
+		} else if resp.StatusCode == 302 || resp.StatusCode == 303 {
+			// Also fine, redirect means success
+			t.Log("Token set successfully, got redirect")
+		} else {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("Unexpected response setting token: status=%d, body=%s", resp.StatusCode, string(body))
+		}
+		
+		// Step 3: Now test tool invocation with the token
+		mcpClient := NewMCPClient("http://localhost:8080")
+		mcpClient.SetAuthToken(accessToken)
+		
+		err = mcpClient.Connect()
+		require.NoError(t, err, "Should connect to postgres SSE endpoint")
+		defer mcpClient.Close()
+		
+		// Call the query tool with a simple query
+		queryParams := map[string]interface{}{
+			"name": "query",
+			"arguments": map[string]interface{}{
+				"sql": "SELECT 1 as test",
+			},
+		}
+		
+		result, err := mcpClient.SendMCPRequest("tools/call", queryParams)
+		require.NoError(t, err, "Should successfully call tool with token")
+		
+		// Verify we got a successful result, not an error
+		require.NotNil(t, result["result"], "Should have result in response")
+		
+		resultMap := result["result"].(map[string]interface{})
+		content := resultMap["content"].([]interface{})
+		require.NotEmpty(t, content, "Should have content in result")
+		
+		contentItem := content[0].(map[string]interface{})
+		resultText := contentItem["text"].(string)
+		
+		// The result should contain actual query results, not an error
+		assert.NotContains(t, resultText, "token_required", "Should not have token error")
+		assert.NotContains(t, resultText, "Token Required", "Should not have token error message")
+		
+		// Postgres query result should contain our test value
+		assert.Contains(t, resultText, "1", "Should contain query result")
+		
+		t.Log("Successfully invoked tool with user token")
+	})
 }
 
 // Helper functions
@@ -824,7 +1032,7 @@ func checkHealth() bool {
 func registerTestClient(t *testing.T) string {
 	clientReq := map[string]interface{}{
 		"redirect_uris": []string{"http://127.0.0.1:6274/oauth/callback"},
-		"scope":         "read write",
+		"scope":         "openid email profile read write",
 	}
 
 	body, _ := json.Marshal(clientReq)
@@ -857,6 +1065,132 @@ func extractCSRFToken(t *testing.T, html string) string {
 	return matches[1]
 }
 
+// contains is a simple helper to check if string contains substring
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && strings.Contains(s, substr))
+	return strings.Contains(s, substr)
+}
+
+// getOAuthAccessToken completes the OAuth flow and returns a valid access token
+func getOAuthAccessToken(t *testing.T) string {
+	// Register a test client
+	clientID := registerTestClient(t)
+
+	// Generate PKCE challenge (must be at least 43 characters)
+	codeVerifier := "test-code-verifier-that-is-at-least-43-characters-long"
+	h := sha256.New()
+	h.Write([]byte(codeVerifier))
+	codeChallenge := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	// Step 1: Authorization request
+	authParams := url.Values{
+		"response_type":         {"code"},
+		"client_id":             {clientID},
+		"redirect_uri":          {"http://127.0.0.1:6274/oauth/callback"},
+		"code_challenge":        {codeChallenge},
+		"code_challenge_method": {"S256"},
+		"scope":                 {"openid email profile"},
+		"state":                 {"test-state"},
+	}
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	authResp, err := client.Get("http://localhost:8080/authorize?" + authParams.Encode())
+	require.NoError(t, err)
+	defer authResp.Body.Close()
+
+	// Should redirect to Google OAuth (our mock)
+	require.Contains(t, []int{302, 303}, authResp.StatusCode, "Should redirect to Google OAuth")
+	location := authResp.Header.Get("Location")
+	require.Contains(t, location, "http://localhost:9090/auth", "Should redirect to mock Google OAuth")
+
+	// Parse the redirect to get the state parameter
+	redirectURL, err := url.Parse(location)
+	require.NoError(t, err)
+	_ = redirectURL.Query().Get("state") // state is included in the redirect but not needed for this test
+
+	// Step 2: Follow redirect to mock Google OAuth (which immediately redirects back)
+	googleResp, err := client.Get(location)
+	require.NoError(t, err)
+	defer googleResp.Body.Close()
+
+	// Mock Google OAuth redirects back to callback
+	require.Contains(t, []int{302, 303}, googleResp.StatusCode, "Mock Google should redirect back")
+	callbackLocation := googleResp.Header.Get("Location")
+	require.Contains(t, callbackLocation, "/oauth/callback", "Should redirect to callback")
+
+	// Step 3: Follow callback redirect
+	callbackResp, err := client.Get(callbackLocation)
+	require.NoError(t, err)
+	defer callbackResp.Body.Close()
+
+	// Should redirect to the original redirect_uri with authorization code
+	require.Contains(t, []int{302, 303}, callbackResp.StatusCode, "Callback should redirect with code")
+	finalLocation := callbackResp.Header.Get("Location")
+
+	// Parse authorization code from final redirect
+	finalURL, err := url.Parse(finalLocation)
+	require.NoError(t, err)
+	authCode := finalURL.Query().Get("code")
+	require.NotEmpty(t, authCode, "Should have authorization code")
+
+	// Step 4: Exchange code for token
+	tokenParams := url.Values{
+		"grant_type":    {"authorization_code"},
+		"code":          {authCode},
+		"redirect_uri":  {"http://127.0.0.1:6274/oauth/callback"},
+		"client_id":     {clientID},
+		"code_verifier": {codeVerifier},
+	}
+
+	tokenResp, err := http.PostForm("http://localhost:8080/token", tokenParams)
+	require.NoError(t, err)
+	defer tokenResp.Body.Close()
+
+	if tokenResp.StatusCode != 200 {
+		body, _ := io.ReadAll(tokenResp.Body)
+		t.Logf("Token exchange failed with status %d: %s", tokenResp.StatusCode, string(body))
+	}
+
+	require.Equal(t, 200, tokenResp.StatusCode, "Token exchange should succeed")
+
+	var tokenData map[string]interface{}
+	err = json.NewDecoder(tokenResp.Body).Decode(&tokenData)
+	require.NoError(t, err)
+
+	accessToken := tokenData["access_token"].(string)
+	require.NotEmpty(t, accessToken, "Should have access token")
+
+	return accessToken
+}
+
+// MockUserTokenStore mocks the UserTokenStore interface for testing
+type MockUserTokenStore struct {
+	mock.Mock
+}
+
+func (m *MockUserTokenStore) GetUserToken(ctx context.Context, email, service string) (string, error) {
+	args := m.Called(ctx, email, service)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockUserTokenStore) SetUserToken(ctx context.Context, email, service, token string) error {
+	args := m.Called(ctx, email, service, token)
+	return args.Error(0)
+}
+
+func (m *MockUserTokenStore) DeleteUserToken(ctx context.Context, email, service string) error {
+	args := m.Called(ctx, email, service)
+	return args.Error(0)
+}
+
+func (m *MockUserTokenStore) ListUserServices(ctx context.Context, email string) ([]string, error) {
+	args := m.Called(ctx, email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
 }

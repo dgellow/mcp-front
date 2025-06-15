@@ -10,21 +10,24 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/interfaces"
 	"github.com/dgellow/mcp-front/internal/oauth"
 )
 
 // TokenHandlers handles the web UI for token management
 type TokenHandlers struct {
-	oauthServer *oauth.Server
-	mcpServers  map[string]*config.MCPClientConfig
-	csrfTokens  sync.Map // Thread-safe CSRF token storage
+	tokenStore   interfaces.UserTokenStore
+	mcpServers   map[string]*config.MCPClientConfig
+	csrfTokens   sync.Map // Thread-safe CSRF token storage
+	oauthEnabled bool
 }
 
 // NewTokenHandlers creates a new token handlers instance
-func NewTokenHandlers(oauthServer *oauth.Server, mcpServers map[string]*config.MCPClientConfig) *TokenHandlers {
+func NewTokenHandlers(tokenStore interfaces.UserTokenStore, mcpServers map[string]*config.MCPClientConfig, oauthEnabled bool) *TokenHandlers {
 	return &TokenHandlers{
-		oauthServer: oauthServer,
-		mcpServers:  mcpServers,
+		tokenStore:   tokenStore,
+		mcpServers:   mcpServers,
+		oauthEnabled: oauthEnabled,
 	}
 }
 
@@ -66,7 +69,6 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 	messageType := r.URL.Query().Get("type")
 
 	// Build service list
-	tokenStore := h.oauthServer.GetUserTokenStore()
 	var services []ServiceTokenData
 
 	for name, config := range h.mcpServers {
@@ -91,11 +93,11 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 				service.TokenFormat = config.TokenSetup.TokenFormat
 			}
 
-			_, err := tokenStore.GetUserToken(r.Context(), userEmail, name)
+			_, err := h.tokenStore.GetUserToken(r.Context(), userEmail, name)
 			service.HasToken = err == nil
 		} else {
 			// Determine if it's OAuth authenticated or uses bearer tokens
-			if h.oauthServer != nil {
+			if h.oauthEnabled {
 				service.AuthType = "oauth"
 			} else if config.Options != nil && len(config.Options.AuthTokens) > 0 {
 				service.AuthType = "bearer"
@@ -220,8 +222,7 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	tokenStore := h.oauthServer.GetUserTokenStore()
-	if err := tokenStore.SetUserToken(r.Context(), userEmail, serviceName, token); err != nil {
+	if err := h.tokenStore.SetUserToken(r.Context(), userEmail, serviceName, token); err != nil {
 		internal.LogErrorWithFields("token", "Failed to store token", map[string]interface{}{
 			"error":   err.Error(),
 			"user":    userEmail,
@@ -283,8 +284,7 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	tokenStore := h.oauthServer.GetUserTokenStore()
-	if err := tokenStore.DeleteUserToken(r.Context(), userEmail, serviceName); err != nil {
+	if err := h.tokenStore.DeleteUserToken(r.Context(), userEmail, serviceName); err != nil {
 		internal.LogErrorWithFields("token", "Failed to delete token", map[string]interface{}{
 			"error":   err.Error(),
 			"user":    userEmail,
