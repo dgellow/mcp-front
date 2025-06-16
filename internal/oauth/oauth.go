@@ -12,17 +12,10 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
-	fosite_storage "github.com/ory/fosite/storage"
 )
-
-// isDevelopmentMode checks if we're running in development mode
-// where security requirements can be relaxed for testing
-func isDevelopmentMode() bool {
-	env := strings.ToLower(os.Getenv("MCP_FRONT_ENV"))
-	return env == "development" || env == "dev"
-}
 
 // contextKey is a type for context keys to avoid collisions
 type contextKey string
@@ -43,30 +36,11 @@ func GetUserContextKey() contextKey {
 
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
-	provider fosite.OAuth2Provider
-	storage  interface {
-		fosite.Storage
-		generateState() string
-		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
-		getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
-		createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
-		GetAllClients() map[string]fosite.Client
-		GetMemoryStore() *fosite_storage.MemoryStore
-		// User token methods
-		GetUserToken(ctx context.Context, userEmail, service string) (string, error)
-		SetUserToken(ctx context.Context, userEmail, service, token string) error
-		DeleteUserToken(ctx context.Context, userEmail, service string) error
-		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
-	}
+	provider         fosite.OAuth2Provider
+	storage          storage.Storage
 	authService      *authService
 	config           Config
 	sessionEncryptor crypto.Encryptor // Created once for browser SSO performance
-}
-
-// GetStorage returns the underlying storage implementation
-// This allows handlers to access user token functionality
-func (s *Server) GetStorage() interface{} {
-	return s.storage
 }
 
 // Config holds OAuth server configuration
@@ -88,80 +62,14 @@ type Config struct {
 }
 
 // NewServer creates a new OAuth 2.1 server
-func NewServer(config Config) (*Server, error) {
-	// Validate storage type first
-	var needsEncryption bool
-	switch config.StorageType {
-	case "memory", "":
-		needsEncryption = false
-	case "firestore":
-		needsEncryption = true
-	default:
-		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
-	}
-
-	// Create encryptors (encryption key is always validated in config loading)
+func NewServer(config Config, store storage.Storage) (*Server, error) {
+	// Create session encryptor for browser SSO
 	key := []byte(config.EncryptionKey)
-	var err error
-
-	// Create storage encryptor if needed
-	var encryptor crypto.Encryptor
-	if needsEncryption {
-		encryptor, err = crypto.NewEncryptor(key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create storage encryptor: %w", err)
-		}
-	}
-
-	// Always create session encryptor for browser SSO
-	var sessionEncryptor crypto.Encryptor
-	sessionEncryptor, err = crypto.NewEncryptor(key)
+	sessionEncryptor, err := crypto.NewEncryptor(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session encryptor: %w", err)
 	}
 	internal.Logf("Session encryptor initialized for browser SSO")
-
-	// Create storage (data layer)
-	var storage interface {
-		fosite.Storage
-		generateState() string
-		storeAuthorizeRequest(state string, req fosite.AuthorizeRequester)
-		getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool)
-		createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
-		GetAllClients() map[string]fosite.Client
-		GetMemoryStore() *fosite_storage.MemoryStore
-		// User token methods
-		GetUserToken(ctx context.Context, userEmail, service string) (string, error)
-		SetUserToken(ctx context.Context, userEmail, service, token string) error
-		DeleteUserToken(ctx context.Context, userEmail, service string) error
-		ListUserServices(ctx context.Context, userEmail string) ([]string, error)
-	}
-
-	switch config.StorageType {
-	case "firestore":
-		if config.GCPProjectID == "" {
-			return nil, fmt.Errorf("GCP project ID is required for Firestore storage")
-		}
-		// Use default database name if not specified
-		database := config.FirestoreDatabase
-		if database == "" {
-			database = "(default)"
-		}
-		// Use default collection name if not specified
-		collection := config.FirestoreCollection
-		if collection == "" {
-			collection = "mcp_front_oauth_clients"
-		}
-		storage, err = newFirestoreStorage(context.Background(), config.GCPProjectID, database, collection, encryptor)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
-		}
-	case "memory", "":
-		storage = newStorage()
-	default:
-		// This should never happen since we already validated above
-		return nil, fmt.Errorf("unsupported storage type: %s", config.StorageType)
-	}
 
 	// Create auth service (business logic)
 	authService, err := newAuthService(config)
@@ -187,8 +95,8 @@ func NewServer(config Config) (*Server, error) {
 
 	// Determine min parameter entropy based on environment
 	minEntropy := 8 // Production default - enforce secure state parameters (8+ chars)
-	internal.Logf("OAuth server initialization - MCP_FRONT_ENV=%s, isDevelopmentMode=%v", os.Getenv("MCP_FRONT_ENV"), isDevelopmentMode())
-	if isDevelopmentMode() {
+	internal.Logf("OAuth server initialization - MCP_FRONT_ENV=%s, isDevelopmentMode=%v", os.Getenv("MCP_FRONT_ENV"), internal.IsDevelopmentMode())
+	if internal.IsDevelopmentMode() {
 		minEntropy = 0 // Development mode - allow weak state parameters for buggy clients
 		internal.LogWarn("MCP_FRONT_ENV=development - weak OAuth state parameters allowed for testing")
 	}
@@ -210,7 +118,7 @@ func NewServer(config Config) (*Server, error) {
 	// Create OAuth 2.1 provider
 	provider := compose.Compose(
 		fositeConfig,
-		storage.GetMemoryStore(),
+		store.GetMemoryStore(),
 		&compose.CommonStrategy{
 			CoreStrategy: compose.NewOAuth2HMACStrategy(fositeConfig, secret, nil),
 		},
@@ -229,7 +137,7 @@ func NewServer(config Config) (*Server, error) {
 
 	return &Server{
 		provider:         provider,
-		storage:          storage,
+		storage:          store,
 		authService:      authService,
 		config:           config,
 		sessionEncryptor: sessionEncryptor,
@@ -288,8 +196,8 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// In development mode, generate a secure state parameter if missing
 	// This works around bugs in OAuth clients like MCP Inspector
-	if isDevelopmentMode() && len(stateParam) == 0 {
-		generatedState := s.storage.generateState()
+	if internal.IsDevelopmentMode() && len(stateParam) == 0 {
+		generatedState := crypto.GenerateSecureToken()
 		internal.LogWarn("Development mode: generating state parameter '%s' for buggy client", generatedState)
 		q := r.URL.Query()
 		q.Set("state", generatedState)
@@ -317,8 +225,8 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate state for Google OAuth flow
-	state := s.storage.generateState()
-	s.storage.storeAuthorizeRequest(state, ar)
+	state := crypto.GenerateSecureToken()
+	s.storage.StoreAuthorizeRequest(state, ar)
 
 	// Redirect to Google OAuth
 	googleURL := s.authService.googleAuthURL(state)
@@ -377,7 +285,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// OAuth client flow - retrieve stored authorize request
 		var found bool
-		ar, found = s.storage.getAuthorizeRequest(state)
+		ar, found = s.storage.GetAuthorizeRequest(state)
 		if !found {
 			internal.LogError("Invalid or expired state: %s", state)
 			http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
@@ -500,8 +408,8 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate client ID and create client
-	clientID := s.storage.generateState() // Reuse secure random generation
-	client := s.storage.createClient(clientID, redirectURIs, scopes, s.config.Issuer)
+	clientID := crypto.GenerateSecureToken()
+	client := s.storage.CreateClient(clientID, redirectURIs, scopes, s.config.Issuer)
 
 	// Return client registration response
 	response := map[string]interface{}{

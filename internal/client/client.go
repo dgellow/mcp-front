@@ -10,7 +10,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
-	"github.com/dgellow/mcp-front/internal/interfaces"
+	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -131,7 +131,7 @@ func (c *Client) AddToMCPServerWithTokenCheck(
 	mcpServer *server.MCPServer,
 	userEmail string,
 	requiresToken bool,
-	tokenStore interfaces.UserTokenStore,
+	tokenStore storage.UserTokenStore,
 	serverName string,
 	setupBaseURL string,
 	tokenSetup *config.TokenSetupConfig,
@@ -195,7 +195,7 @@ func (c *Client) addToolsToServer(
 	mcpServer *server.MCPServer,
 	userEmail string,
 	requiresToken bool,
-	tokenStore interfaces.UserTokenStore,
+	tokenStore storage.UserTokenStore,
 	serverName string,
 	setupBaseURL string,
 	tokenSetup *config.TokenSetupConfig,
@@ -357,7 +357,7 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 func (c *Client) wrapToolHandler(
 	originalHandler func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error),
 	requiresToken bool,
-	tokenStore interfaces.UserTokenStore,
+	tokenStore storage.UserTokenStore,
 	userEmail string,
 	serverName string,
 	setupBaseURL string,
