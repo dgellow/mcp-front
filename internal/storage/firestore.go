@@ -1,9 +1,7 @@
-package oauth
+package storage
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"sync"
 	"time"
@@ -30,7 +28,8 @@ type FirestoreStorage struct {
 	tokenCollection string // Collection for user tokens
 }
 
-// Ensure FirestoreStorage implements fosite.Storage interface
+// Ensure FirestoreStorage implements Storage interface
+var _ Storage = (*FirestoreStorage)(nil)
 var _ fosite.Storage = (*FirestoreStorage)(nil)
 
 // UserTokenDoc represents a user token document in Firestore
@@ -103,8 +102,12 @@ func FromFositeClient(client fosite.Client, encryptor crypto.Encryptor, createdA
 	}, nil
 }
 
-// newFirestoreStorage creates a new Firestore storage instance
-func newFirestoreStorage(ctx context.Context, projectID, database, collection string, encryptor crypto.Encryptor) (*FirestoreStorage, error) {
+// NewFirestoreStorage creates a new Firestore storage instance
+func NewFirestoreStorage(ctx context.Context, projectID, database, collection string, encryptor crypto.Encryptor) (*FirestoreStorage, error) {
+	if encryptor == nil {
+		return nil, fmt.Errorf("encryptor is required")
+	}
+
 	var client *firestore.Client
 	var err error
 
@@ -175,24 +178,13 @@ func (s *FirestoreStorage) loadClientsFromFirestore(ctx context.Context) error {
 	return nil
 }
 
-// generateState creates a cryptographically secure state parameter
-func (s *FirestoreStorage) generateState() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		// Log the error and return empty string which will fail validation
-		internal.LogError("Failed to generate random state: %v", err)
-		return ""
-	}
-	return base64.URLEncoding.EncodeToString(b)
-}
-
-// storeAuthorizeRequest stores an authorize request with state (in memory only - short-lived)
-func (s *FirestoreStorage) storeAuthorizeRequest(state string, req fosite.AuthorizeRequester) {
+// StoreAuthorizeRequest stores an authorize request with state (in memory only - short-lived)
+func (s *FirestoreStorage) StoreAuthorizeRequest(state string, req fosite.AuthorizeRequester) {
 	s.stateCache.Store(state, req)
 }
 
-// getAuthorizeRequest retrieves an authorize request by state (one-time use)
-func (s *FirestoreStorage) getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool) {
+// GetAuthorizeRequest retrieves an authorize request by state (one-time use)
+func (s *FirestoreStorage) GetAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool) {
 	if req, ok := s.stateCache.Load(state); ok {
 		s.stateCache.Delete(state) // One-time use
 		return req.(fosite.AuthorizeRequester), true
@@ -248,8 +240,8 @@ func (s *FirestoreStorage) loadClientFromFirestore(ctx context.Context, clientID
 	return client, nil
 }
 
-// createClient creates a dynamic client and stores it in both memory and Firestore
-func (s *FirestoreStorage) createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
+// CreateClient creates a dynamic client and stores it in both memory and Firestore
+func (s *FirestoreStorage) CreateClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
 	// Create as public client (no secret) since MCP Inspector is a public client
 	client := &fosite.DefaultClient{
 		ID:            clientID,

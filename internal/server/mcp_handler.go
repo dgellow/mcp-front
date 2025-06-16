@@ -10,8 +10,8 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
-	"github.com/dgellow/mcp-front/internal/interfaces"
 	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -20,7 +20,7 @@ import (
 type MCPHandler struct {
 	serverName      string
 	serverConfig    *config.MCPClientConfig
-	tokenStore      interfaces.UserTokenStore
+	tokenStore      storage.UserTokenStore
 	setupBaseURL    string
 	info            mcp.Implementation
 	sessionManager  *client.StdioSessionManager
@@ -31,7 +31,7 @@ type MCPHandler struct {
 func NewMCPHandler(
 	serverName string,
 	serverConfig *config.MCPClientConfig,
-	tokenStore interfaces.UserTokenStore,
+	tokenStore storage.UserTokenStore,
 	setupBaseURL string,
 	info mcp.Implementation,
 	sessionManager *client.StdioSessionManager,

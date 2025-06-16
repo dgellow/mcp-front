@@ -1,8 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,20 +8,21 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
-	"github.com/dgellow/mcp-front/internal/interfaces"
+	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/storage"
 )
 
 // TokenHandlers handles the web UI for token management
 type TokenHandlers struct {
-	tokenStore   interfaces.UserTokenStore
+	tokenStore   storage.UserTokenStore
 	mcpServers   map[string]*config.MCPClientConfig
 	csrfTokens   sync.Map // Thread-safe CSRF token storage
 	oauthEnabled bool
 }
 
 // NewTokenHandlers creates a new token handlers instance
-func NewTokenHandlers(tokenStore interfaces.UserTokenStore, mcpServers map[string]*config.MCPClientConfig, oauthEnabled bool) *TokenHandlers {
+func NewTokenHandlers(tokenStore storage.UserTokenStore, mcpServers map[string]*config.MCPClientConfig, oauthEnabled bool) *TokenHandlers {
 	return &TokenHandlers{
 		tokenStore:   tokenStore,
 		mcpServers:   mcpServers,
@@ -33,11 +32,10 @@ func NewTokenHandlers(tokenStore interfaces.UserTokenStore, mcpServers map[strin
 
 // generateCSRFToken creates a new CSRF token
 func (h *TokenHandlers) generateCSRFToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	token := crypto.GenerateSecureToken()
+	if token == "" {
+		return "", fmt.Errorf("failed to generate CSRF token")
 	}
-	token := base64.URLEncoding.EncodeToString(b)
 	h.csrfTokens.Store(token, true)
 	return token, nil
 }

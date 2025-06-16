@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dgellow/mcp-front/internal/storage"
 )
 
 func TestNewServer(t *testing.T) {
@@ -22,7 +24,8 @@ func TestNewServer(t *testing.T) {
 		EncryptionKey:      "test-encryption-key-32-bytes-ok!",
 	}
 
-	server, err := NewServer(config)
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
 	if err != nil {
 		t.Fatalf("Failed to create OAuth server: %v", err)
 	}
@@ -52,7 +55,8 @@ func TestNewServerWithoutJWTSecret(t *testing.T) {
 		// JWTSecret is empty - should generate random secret
 	}
 
-	server, err := NewServer(config)
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
 	if err != nil {
 		t.Fatalf("Failed to create OAuth server: %v", err)
 	}
@@ -70,7 +74,8 @@ func TestWellKnownHandler(t *testing.T) {
 		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
-	server, err := NewServer(config)
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -125,7 +130,8 @@ func TestRegisterHandler(t *testing.T) {
 		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
-	server, err := NewServer(config)
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -176,7 +182,8 @@ func TestRegisterHandlerInvalidMethod(t *testing.T) {
 		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
-	server, err := NewServer(config)
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -199,7 +206,8 @@ func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 		EncryptionKey: "test-encryption-key-32-bytes-ok!",
 	}
 
-	server, err := NewServer(config)
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -255,19 +263,7 @@ func TestClientRegistrationAndDebugEndpoint(t *testing.T) {
 }
 
 func TestStorageArchitecture(t *testing.T) {
-	storage := newStorage()
-
-	// Test state generation
-	t.Run("state_generation", func(t *testing.T) {
-		state1 := storage.generateState()
-		state2 := storage.generateState()
-		if state1 == state2 {
-			t.Error("Generated states should be unique")
-		}
-		if len(state1) == 0 {
-			t.Error("Generated state should not be empty")
-		}
-	})
+	store := storage.NewMemoryStorage()
 
 	// Test client creation
 	t.Run("client_creation", func(t *testing.T) {
@@ -276,7 +272,7 @@ func TestStorageArchitecture(t *testing.T) {
 		scopes := []string{"read", "write"}
 		issuer := "https://test.example.com"
 
-		client := storage.createClient(clientID, redirectURIs, scopes, issuer)
+		client := store.CreateClient(clientID, redirectURIs, scopes, issuer)
 
 		if client.GetID() != clientID {
 			t.Errorf("Expected client ID %s, got %s", clientID, client.GetID())
@@ -297,10 +293,10 @@ func TestStorageArchitecture(t *testing.T) {
 		issuer := "https://test.example.com"
 
 		// Create client
-		originalClient := storage.createClient(clientID, redirectURIs, scopes, issuer)
+		originalClient := store.CreateClient(clientID, redirectURIs, scopes, issuer)
 
 		// Retrieve client
-		retrievedClient, err := storage.GetClient(context.TODO(), clientID)
+		retrievedClient, err := store.GetClient(context.Background(), clientID)
 		if err != nil {
 			t.Fatalf("Failed to retrieve client: %v", err)
 		}
@@ -314,13 +310,13 @@ func TestStorageArchitecture(t *testing.T) {
 	t.Run("thread_safety", func(t *testing.T) {
 		// This test verifies the GetAllClients method works correctly
 		// and doesn't race with concurrent access
-		clients := storage.GetAllClients()
+		clients := store.GetAllClients()
 		if clients == nil {
 			t.Error("GetAllClients should return a map, not nil")
 		}
 
 		// Should be able to call this multiple times safely
-		clients2 := storage.GetAllClients()
+		clients2 := store.GetAllClients()
 		if len(clients) != len(clients2) {
 			t.Error("GetAllClients should return consistent results")
 		}

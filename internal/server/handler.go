@@ -11,8 +11,9 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
-	"github.com/dgellow/mcp-front/internal/interfaces"
+	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -22,7 +23,7 @@ type Server struct {
 	mux            *http.ServeMux
 	config         *config.Config
 	oauthServer    *oauth.Server
-	tokenStore     interfaces.UserTokenStore
+	tokenStore     storage.UserTokenStore
 	sessionManager *client.StdioSessionManager
 	sseServers     map[string]*server.SSEServer // serverName -> SSE server for stdio servers
 }
@@ -101,6 +102,35 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, fmt.Errorf("parsing OAuth token TTL: %w", err)
 		}
 
+		// Create storage based on configuration
+		var store storage.Storage
+		if oauthAuth.Storage == "firestore" {
+			internal.LogInfoWithFields("oauth", "Using Firestore storage", map[string]interface{}{
+				"project":    oauthAuth.GCPProject,
+				"database":   oauthAuth.FirestoreDatabase,
+				"collection": oauthAuth.FirestoreCollection,
+			})
+			// Create encryptor for Firestore storage
+			encryptor, err := crypto.NewEncryptor([]byte(oauthAuth.EncryptionKey))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create encryptor: %w", err)
+			}
+			firestoreStorage, err := storage.NewFirestoreStorage(
+				ctx,
+				oauthAuth.GCPProject,
+				oauthAuth.FirestoreDatabase,
+				oauthAuth.FirestoreCollection,
+				encryptor,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create Firestore storage: %w", err)
+			}
+			store = firestoreStorage
+		} else {
+			internal.LogInfoWithFields("oauth", "Using in-memory storage", map[string]interface{}{})
+			store = storage.NewMemoryStorage()
+		}
+
 		oauthConfig := oauth.Config{
 			Issuer:              oauthAuth.Issuer,
 			TokenTTL:            ttl,
@@ -117,15 +147,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			FirestoreCollection: oauthAuth.FirestoreCollection,
 		}
 
-		s.oauthServer, err = oauth.NewServer(oauthConfig)
+		s.oauthServer, err = oauth.NewServer(oauthConfig, store)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth server: %w", err)
 		}
 
-		// Get the token store from OAuth server's storage
-		if storage := s.oauthServer.GetStorage(); storage != nil {
-			s.tokenStore = storage.(interfaces.UserTokenStore)
-		}
+		// Use the storage directly as token store
+		s.tokenStore = store
 
 		// Register OAuth endpoints
 		oauthMiddlewares := []MiddlewareFunc{

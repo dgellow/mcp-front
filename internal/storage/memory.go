@@ -1,10 +1,7 @@
-package oauth
+package storage
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
 	"strings"
 	"sync"
 
@@ -13,15 +10,13 @@ import (
 	"github.com/ory/fosite/storage"
 )
 
-// ErrUserTokenNotFound is returned when a user token doesn't exist
-var ErrUserTokenNotFound = errors.New("user token not found")
+// Ensure MemoryStorage implements required interfaces
+var _ Storage = (*MemoryStorage)(nil)
+var _ fosite.Storage = (*MemoryStorage)(nil)
 
-// Ensure Storage implements required interfaces
-var _ fosite.Storage = (*Storage)(nil)
-
-// Storage is a simple storage layer - only stores and retrieves data
+// MemoryStorage is a simple storage layer - only stores and retrieves data
 // It extends the MemoryStore with thread-safe client management
-type Storage struct {
+type MemoryStorage struct {
 	*storage.MemoryStore
 	stateCache      sync.Map          // map[string]fosite.AuthorizeRequester
 	clientsMutex    sync.RWMutex      // For thread-safe client access
@@ -29,31 +24,21 @@ type Storage struct {
 	userTokensMutex sync.RWMutex
 }
 
-// newStorage creates a new storage instance
-func newStorage() *Storage {
-	return &Storage{
+// NewMemoryStorage creates a new storage instance
+func NewMemoryStorage() *MemoryStorage {
+	return &MemoryStorage{
 		MemoryStore: storage.NewMemoryStore(),
 		userTokens:  make(map[string]string),
 	}
 }
 
-// generateState creates a cryptographically secure state parameter
-func (s *Storage) generateState() string {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		internal.LogError("Failed to generate random state: %v", err) // Returns empty string to fail validation
-		return ""
-	}
-	return base64.URLEncoding.EncodeToString(b)
-}
-
-// storeAuthorizeRequest stores an authorize request with state
-func (s *Storage) storeAuthorizeRequest(state string, req fosite.AuthorizeRequester) {
+// StoreAuthorizeRequest stores an authorize request with state
+func (s *MemoryStorage) StoreAuthorizeRequest(state string, req fosite.AuthorizeRequester) {
 	s.stateCache.Store(state, req)
 }
 
-// getAuthorizeRequest retrieves an authorize request by state (one-time use)
-func (s *Storage) getAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool) {
+// GetAuthorizeRequest retrieves an authorize request by state (one-time use)
+func (s *MemoryStorage) GetAuthorizeRequest(state string) (fosite.AuthorizeRequester, bool) {
 	if req, ok := s.stateCache.Load(state); ok {
 		s.stateCache.Delete(state) // One-time use
 		return req.(fosite.AuthorizeRequester), true
@@ -62,7 +47,7 @@ func (s *Storage) getAuthorizeRequest(state string) (fosite.AuthorizeRequester, 
 }
 
 // GetClient overrides the MemoryStore's GetClient to use our mutex
-func (s *Storage) GetClient(_ context.Context, id string) (fosite.Client, error) {
+func (s *MemoryStorage) GetClient(_ context.Context, id string) (fosite.Client, error) {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 
@@ -73,8 +58,8 @@ func (s *Storage) GetClient(_ context.Context, id string) (fosite.Client, error)
 	return cl, nil
 }
 
-// createClient creates a dynamic client and stores it thread-safely
-func (s *Storage) createClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
+// CreateClient creates a dynamic client and stores it thread-safely
+func (s *MemoryStorage) CreateClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
 	// Create as public client (no secret) since MCP Inspector is a public client
 	client := &fosite.DefaultClient{
 		ID:            clientID,
@@ -99,7 +84,7 @@ func (s *Storage) createClient(clientID string, redirectURIs []string, scopes []
 }
 
 // GetAllClients returns all clients thread-safely (for debugging)
-func (s *Storage) GetAllClients() map[string]fosite.Client {
+func (s *MemoryStorage) GetAllClients() map[string]fosite.Client {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
 
@@ -111,19 +96,19 @@ func (s *Storage) GetAllClients() map[string]fosite.Client {
 }
 
 // GetMemoryStore returns the underlying MemoryStore for fosite
-func (s *Storage) GetMemoryStore() *storage.MemoryStore {
+func (s *MemoryStorage) GetMemoryStore() *storage.MemoryStore {
 	return s.MemoryStore
 }
 
 // User token methods
 
 // makeUserTokenKey creates a key for the user token map
-func (s *Storage) makeUserTokenKey(userEmail, service string) string {
+func (s *MemoryStorage) makeUserTokenKey(userEmail, service string) string {
 	return userEmail + ":" + service
 }
 
 // GetUserToken retrieves a user's token for a specific service
-func (s *Storage) GetUserToken(ctx context.Context, userEmail, service string) (string, error) {
+func (s *MemoryStorage) GetUserToken(ctx context.Context, userEmail, service string) (string, error) {
 	s.userTokensMutex.RLock()
 	defer s.userTokensMutex.RUnlock()
 
@@ -136,7 +121,7 @@ func (s *Storage) GetUserToken(ctx context.Context, userEmail, service string) (
 }
 
 // SetUserToken stores or updates a user's token for a specific service
-func (s *Storage) SetUserToken(ctx context.Context, userEmail, service, token string) error {
+func (s *MemoryStorage) SetUserToken(ctx context.Context, userEmail, service, token string) error {
 	s.userTokensMutex.Lock()
 	defer s.userTokensMutex.Unlock()
 
@@ -146,7 +131,7 @@ func (s *Storage) SetUserToken(ctx context.Context, userEmail, service, token st
 }
 
 // DeleteUserToken removes a user's token for a specific service
-func (s *Storage) DeleteUserToken(ctx context.Context, userEmail, service string) error {
+func (s *MemoryStorage) DeleteUserToken(ctx context.Context, userEmail, service string) error {
 	s.userTokensMutex.Lock()
 	defer s.userTokensMutex.Unlock()
 
@@ -156,7 +141,7 @@ func (s *Storage) DeleteUserToken(ctx context.Context, userEmail, service string
 }
 
 // ListUserServices returns all services for which a user has configured tokens
-func (s *Storage) ListUserServices(ctx context.Context, userEmail string) ([]string, error) {
+func (s *MemoryStorage) ListUserServices(ctx context.Context, userEmail string) ([]string, error) {
 	s.userTokensMutex.RLock()
 	defer s.userTokensMutex.RUnlock()
 
@@ -169,29 +154,4 @@ func (s *Storage) ListUserServices(ctx context.Context, userEmail string) ([]str
 		}
 	}
 	return services, nil
-}
-
-// GetAccessTokenSession overrides the MemoryStore implementation to properly handle our custom Session type
-// Note: This method is called by fosite during token introspection, but the session parameter
-// is NOT populated by fosite. Instead, the session data is available in the returned requester.
-// This override ensures compatibility if fosite's behavior changes in the future.
-func (s *Storage) GetAccessTokenSession(ctx context.Context, signature string, session fosite.Session) (fosite.Requester, error) {
-	// Get the requester from the parent implementation
-	requester, err := s.MemoryStore.GetAccessTokenSession(ctx, signature, session)
-	if err != nil {
-		return nil, err
-	}
-
-	// If we have our custom Session type, copy the session data
-	// This is a defensive measure - currently fosite doesn't use this during introspection,
-	// but we implement it in case the behavior changes
-	if targetSession, ok := session.(*Session); ok {
-		if sourceSession, ok := requester.GetSession().(*Session); ok {
-			// Copy UserInfo from the stored session
-			targetSession.UserInfo = sourceSession.UserInfo
-			targetSession.DefaultSession = sourceSession.DefaultSession
-		}
-	}
-
-	return requester, nil
 }

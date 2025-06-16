@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/storage"
 )
 
 func TestHealthEndpoint(t *testing.T) {
@@ -59,7 +60,8 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 		StorageType:        "memory",
 	}
 
-	server, err := oauth.NewServer(oauthConfig)
+	store := storage.NewMemoryStorage()
+	server, err := oauth.NewServer(oauthConfig, store)
 	if err != nil {
 		t.Fatalf("Failed to create OAuth server: %v", err)
 	}

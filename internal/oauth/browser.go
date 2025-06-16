@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/crypto"
 )
 
 // SessionData represents the data stored in the encrypted session cookie
@@ -76,7 +77,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 // generateBrowserState creates a secure state parameter for browser SSO
 func (s *Server) generateBrowserState(returnURL string) string {
 	// Generate random nonce
-	nonce := s.storage.generateState() // Reuse existing secure random generation
+	nonce := crypto.GenerateSecureToken()
 
 	// Create signed CSRF token: nonce + HMAC(nonce + returnURL)
 	// This ensures the token is tied to the specific return URL
@@ -122,7 +123,7 @@ func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string
 		Value:    encrypted,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   !isDevelopmentMode(), // Only require HTTPS in production
+		Secure:   !internal.IsDevelopmentMode(), // Only require HTTPS in production
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   86400, // 24 hours
 	})
