@@ -9,6 +9,7 @@
       "issuer": {"$env": "OAUTH_ISSUER"},
       "gcpProject": {"$env": "GCP_PROJECT"},
       "allowedDomains": ["yourcompany.com"],
+      "allowedOrigins": ["https://claude.ai"],
       "tokenTtl": "24h",
       "storage": "memory",
       "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
