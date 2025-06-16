@@ -9,6 +9,7 @@
       "issuer": "http://localhost:8080",
       "gcpProject": "test-project",
       "allowedDomains": ["test.com"],
+      "allowedOrigins": ["https://claude.ai"],
       "tokenTtl": "1h",
       "storage": "memory",
       "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},

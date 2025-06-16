@@ -11,6 +11,9 @@
       "allowedDomains": [
         "test.com"
       ],
+      "allowedOrigins": [
+        "https://claude.ai"
+      ],
       "tokenTtl": "1h",
       "storage": "memory",
       "googleClientId": "test-client-id",
