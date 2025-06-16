@@ -32,6 +32,7 @@ type Storage interface {
 
 	// OAuth client management
 	CreateClient(clientID string, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
+	CreateConfidentialClient(clientID string, hashedSecret []byte, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient
 	GetAllClients() map[string]fosite.Client
 	GetMemoryStore() *fosite_storage.MemoryStore
 

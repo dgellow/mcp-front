@@ -289,6 +289,47 @@ func (s *FirestoreStorage) CreateClient(clientID string, redirectURIs []string, 
 	return client
 }
 
+// CreateConfidentialClient creates a dynamic confidential client with a secret and stores it in both memory and Firestore
+func (s *FirestoreStorage) CreateConfidentialClient(clientID string, hashedSecret []byte, redirectURIs []string, scopes []string, issuer string) *fosite.DefaultClient {
+	// Create as confidential client (with secret)
+	client := &fosite.DefaultClient{
+		ID:            clientID,
+		Secret:        hashedSecret, // Already hashed
+		RedirectURIs:  redirectURIs,
+		Scopes:        scopes,
+		GrantTypes:    []string{"authorization_code", "refresh_token"},
+		ResponseTypes: []string{"code"},
+		Audience:      []string{issuer},
+		Public:        false, // Mark as confidential client
+	}
+
+	// Store in Firestore
+	ctx := context.Background()
+	entity, err := FromFositeClient(client, s.encryptor, time.Now().Unix())
+	if err != nil {
+		internal.LogError("Failed to encrypt client for Firestore (client_id: %s): %v", clientID, err)
+		// Continue with in-memory storage even if encryption fails
+	} else {
+		_, err := s.client.Collection(s.collection).Doc(clientID).Set(ctx, entity)
+		if err != nil {
+			internal.LogError("Failed to store client in Firestore (client_id: %s): %v", clientID, err)
+			// Continue with in-memory storage even if Firestore fails
+		} else {
+			internal.Logf("Stored confidential client %s in Firestore", clientID)
+		}
+	}
+
+	// Thread-safe client storage in memory
+	s.clientsMutex.Lock()
+	s.MemoryStore.Clients[clientID] = client
+	clientCount := len(s.MemoryStore.Clients)
+	s.clientsMutex.Unlock()
+
+	internal.Logf("Created confidential client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
+	internal.Logf("Total clients in storage: %d", clientCount)
+	return client
+}
+
 // GetAllClients returns all clients thread-safely (for debugging)
 func (s *FirestoreStorage) GetAllClients() map[string]fosite.Client {
 	s.clientsMutex.RLock()
