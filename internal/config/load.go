@@ -146,10 +146,10 @@ func validateOAuthConfig(oauth *OAuthAuthConfig) error {
 		return fmt.Errorf("googleRedirectUri is required")
 	}
 	if len(oauth.JWTSecret) < 32 {
-		return fmt.Errorf("jwtSecret must be at least 32 bytes")
+		return fmt.Errorf("jwtSecret must be at least 32 characters (got %d). Generate with: openssl rand -base64 32", len(oauth.JWTSecret))
 	}
 	if len(oauth.EncryptionKey) != 32 {
-		return fmt.Errorf("encryptionKey must be exactly 32 bytes")
+		return fmt.Errorf("encryptionKey must be exactly 32 characters (got %d). Generate with: openssl rand -base64 32 | head -c 32", len(oauth.EncryptionKey))
 	}
 	if len(oauth.AllowedDomains) == 0 {
 		return fmt.Errorf("at least one allowed domain is required")

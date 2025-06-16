@@ -239,6 +239,15 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 			if err := json.Unmarshal(raw.Auth, &oauth); err != nil {
 				return fmt.Errorf("parsing OAuth config: %w", err)
 			}
+			// Apply defaults for Firestore configuration
+			if oauth.Storage == "firestore" {
+				if oauth.FirestoreDatabase == "" {
+					oauth.FirestoreDatabase = "(default)"
+				}
+				if oauth.FirestoreCollection == "" {
+					oauth.FirestoreCollection = "mcp_front_data"
+				}
+			}
 			p.Auth = &oauth
 		case AuthKindBearerToken:
 			var bearer BearerTokenAuthConfig

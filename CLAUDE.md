@@ -88,7 +88,7 @@ mcp-front is a Go-based OAuth 2.1 proxy server for MCP (Model Context Protocol) 
 1. **Memory** (default): Development only, data lost on restart
 2. **Firestore**: Production, with configurable database and collection names
    - Default database: "(default)"
-   - Default collection: "mcp_front_oauth_clients"
+   - Default collection: "mcp_front_data"
 
 ### Environment Variables
 

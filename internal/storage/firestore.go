@@ -108,6 +108,14 @@ func NewFirestoreStorage(ctx context.Context, projectID, database, collection st
 		return nil, fmt.Errorf("encryptor is required")
 	}
 
+	// Validate required parameters
+	if projectID == "" {
+		return nil, fmt.Errorf("projectID is required")
+	}
+	if collection == "" {
+		return nil, fmt.Errorf("collection is required")
+	}
+
 	var client *firestore.Client
 	var err error
 

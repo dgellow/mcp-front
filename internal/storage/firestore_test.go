@@ -16,7 +16,7 @@ func TestFirestoreStorageConfig(t *testing.T) {
 
 		_, err := NewFirestoreStorage(ctx, "", "(default)", "test_collection", encryptor)
 		assert.Error(t, err, "Expected error when GCP project ID is missing for Firestore storage")
-		assert.Contains(t, err.Error(), "projectID was empty")
+		assert.Contains(t, err.Error(), "projectID is required")
 	})
 
 	t.Run("missing encryption key", func(t *testing.T) {
@@ -33,6 +33,16 @@ func TestFirestoreStorageConfig(t *testing.T) {
 		_, err := NewFirestoreStorage(ctx, "test-project", "(default)", "test_collection", nil)
 		assert.Error(t, err, "Expected error when encryptor is nil")
 		assert.Contains(t, err.Error(), "encryptor is required")
+	})
+
+	t.Run("missing collection", func(t *testing.T) {
+		// Test that collection is required
+		ctx := context.Background()
+		encryptor, _ := crypto.NewEncryptor([]byte("test-encryption-key-32-bytes-ok!"))
+
+		_, err := NewFirestoreStorage(ctx, "test-project", "(default)", "", encryptor)
+		assert.Error(t, err, "Expected error when collection is empty")
+		assert.Contains(t, err.Error(), "collection is required")
 	})
 }
 
