@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/dgellow/mcp-front/internal"
 	"golang.org/x/crypto/bcrypt"
@@ -21,14 +22,14 @@ func GenerateSecureToken() string {
 }
 
 // GenerateClientSecret creates a cryptographically secure client secret
-// Returns a base64 URL-encoded string
-func GenerateClientSecret() string {
+// Returns a base64 URL-encoded string and an error
+func GenerateClientSecret() (string, error) {
 	b := make([]byte, 32) // 32 bytes = 256 bits of entropy
 	if _, err := rand.Read(b); err != nil {
 		internal.LogError("Failed to generate client secret: %v", err)
-		return ""
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(b)
+	return base64.URLEncoding.EncodeToString(b), nil
 }
 
 // HashClientSecret hashes a client secret using bcrypt

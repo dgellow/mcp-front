@@ -9,11 +9,13 @@ import (
 
 func TestGenerateClientSecret(t *testing.T) {
 	// Test that GenerateClientSecret returns a non-empty string
-	secret := GenerateClientSecret()
+	secret, err := GenerateClientSecret()
+	assert.NoError(t, err, "GenerateClientSecret should not return an error")
 	assert.NotEmpty(t, secret, "Client secret should not be empty")
 	
 	// Test that each call generates a unique secret
-	secret2 := GenerateClientSecret()
+	secret2, err := GenerateClientSecret()
+	assert.NoError(t, err)
 	assert.NotEqual(t, secret, secret2, "Each client secret should be unique")
 	
 	// Test that the secret has reasonable length (base64 encoding of 32 bytes)
@@ -49,7 +51,8 @@ func TestHashClientSecret(t *testing.T) {
 
 func TestHashClientSecretIntegration(t *testing.T) {
 	// Test the full flow: generate, hash, verify
-	secret := GenerateClientSecret()
+	secret, err := GenerateClientSecret()
+	assert.NoError(t, err)
 	assert.NotEmpty(t, secret)
 	
 	hashed, err := HashClientSecret(secret)

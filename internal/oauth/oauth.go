@@ -407,6 +407,26 @@ func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	s.provider.WriteAccessResponse(w, accessRequest, response)
 }
 
+// buildClientRegistrationResponse creates the registration response for a client
+func (s *Server) buildClientRegistrationResponse(client *fosite.DefaultClient, tokenEndpointAuthMethod string, clientSecret string) map[string]interface{} {
+	response := map[string]interface{}{
+		"client_id":                  client.GetID(),
+		"client_id_issued_at":        time.Now().Unix(),
+		"redirect_uris":              client.GetRedirectURIs(),
+		"grant_types":                client.GetGrantTypes(),
+		"response_types":             client.GetResponseTypes(),
+		"scope":                      strings.Join(client.GetScopes(), " "), // Space-separated string
+		"token_endpoint_auth_method": tokenEndpointAuthMethod,
+	}
+	
+	// Include client_secret only for confidential clients
+	if clientSecret != "" {
+		response["client_secret"] = clientSecret
+	}
+	
+	return response
+}
+
 // RegisterHandler handles dynamic client registration (RFC 7591)
 func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	internal.Logf("Register handler called: %s %s", r.Method, r.URL.Path)
@@ -434,12 +454,19 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// Check if client requests client_secret_post authentication
 	tokenEndpointAuthMethod := "none"
 	var client *fosite.DefaultClient
+	var plaintextSecret string
 	clientID := crypto.GenerateSecureToken()
 
 	if authMethod, ok := metadata["token_endpoint_auth_method"].(string); ok && authMethod == "client_secret_post" {
 		// Generate and hash secret for confidential client
-		clientSecret := crypto.GenerateClientSecret()
-		hashedSecret, err := crypto.HashClientSecret(clientSecret)
+		generatedSecret, err := crypto.GenerateClientSecret()
+		if err != nil {
+			internal.LogError("Failed to generate client secret: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		
+		hashedSecret, err := crypto.HashClientSecret(generatedSecret)
 		if err != nil {
 			internal.LogError("Failed to hash client secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -448,42 +475,14 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 		client = s.storage.CreateConfidentialClient(clientID, hashedSecret, redirectURIs, scopes, s.config.Issuer)
 		tokenEndpointAuthMethod = "client_secret_post"
-
-		// Include the plaintext secret in the response (only time it's visible)
-		response := map[string]interface{}{
-			"client_id":                  client.GetID(),
-			"client_secret":              clientSecret, // Return plaintext secret
-			"client_id_issued_at":        time.Now().Unix(),
-			"redirect_uris":              client.GetRedirectURIs(),
-			"grant_types":                client.GetGrantTypes(),
-			"response_types":             client.GetResponseTypes(),
-			"scope":                      strings.Join(client.GetScopes(), " "), // Space-separated string
-			"token_endpoint_auth_method": tokenEndpointAuthMethod,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			internal.LogErrorWithFields("oauth", "Failed to encode register response", map[string]interface{}{
-				"error": err.Error(),
-			})
-		}
-		return
+		plaintextSecret = generatedSecret // Save for response
+	} else {
+		// Create public client (default behavior)
+		client = s.storage.CreateClient(clientID, redirectURIs, scopes, s.config.Issuer)
 	}
 
-	// Create public client (default behavior)
-	client = s.storage.CreateClient(clientID, redirectURIs, scopes, s.config.Issuer)
-
-	// Return client registration response
-	response := map[string]interface{}{
-		"client_id":                  client.GetID(),
-		"client_id_issued_at":        time.Now().Unix(),
-		"redirect_uris":              client.GetRedirectURIs(),
-		"grant_types":                client.GetGrantTypes(),
-		"response_types":             client.GetResponseTypes(),
-		"scope":                      strings.Join(client.GetScopes(), " "), // Space-separated string
-		"token_endpoint_auth_method": tokenEndpointAuthMethod,
-	}
+	// Build response using helper function
+	response := s.buildClientRegistrationResponse(client, tokenEndpointAuthMethod, plaintextSecret)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

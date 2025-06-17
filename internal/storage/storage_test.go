@@ -14,7 +14,8 @@ func TestMemoryStorageConfidentialClient(t *testing.T) {
 	
 	// Generate test data
 	clientID := "test-client-123"
-	secret := crypto.GenerateClientSecret()
+	secret, err := crypto.GenerateClientSecret()
+	assert.NoError(t, err)
 	hashedSecret, err := crypto.HashClientSecret(secret)
 	assert.NoError(t, err)
 	

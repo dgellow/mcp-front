@@ -78,6 +78,22 @@ func TestBasicOAuthFlow(t *testing.T) {
 		_, ok := discovery[endpoint]
 		assert.True(t, ok, "Missing required endpoint: %s", endpoint)
 	}
+
+	// Verify client_secret_post is advertised
+	authMethods, ok := discovery["token_endpoint_auth_methods_supported"].([]interface{})
+	assert.True(t, ok, "token_endpoint_auth_methods_supported should be present")
+	
+	var hasNone, hasClientSecretPost bool
+	for _, method := range authMethods {
+		if method == "none" {
+			hasNone = true
+		}
+		if method == "client_secret_post" {
+			hasClientSecretPost = true
+		}
+	}
+	assert.True(t, hasNone, "Should support 'none' auth method for public clients")
+	assert.True(t, hasClientSecretPost, "Should support 'client_secret_post' auth method for confidential clients")
 }
 
 // TestJWTSecretValidation tests JWT secret length requirements
@@ -234,6 +250,117 @@ func TestClientRegistration(t *testing.T) {
 			}
 		}
 
+	})
+
+	t.Run("ConfidentialClientRegistration", func(t *testing.T) {
+		// Register a confidential client with client_secret_post
+		clientReq := map[string]interface{}{
+			"redirect_uris":              []string{"https://example.com/callback"},
+			"scope":                      "read write",
+			"token_endpoint_auth_method": "client_secret_post",
+		}
+
+		body, _ := json.Marshal(clientReq)
+		resp, err := http.Post(
+			"http://localhost:8080/register",
+			"application/json",
+			bytes.NewBuffer(body),
+		)
+		if err != nil {
+			t.Fatalf("Failed to register confidential client: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 201 {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("Confidential client registration failed with status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var clientResp map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&clientResp); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		// Verify response includes client_secret
+		if clientResp["client_id"] == "" {
+			t.Error("Client ID should not be empty")
+		}
+		clientSecret, ok := clientResp["client_secret"].(string)
+		if !ok || clientSecret == "" {
+			t.Error("Confidential client should receive a client_secret")
+		}
+		// Verify secret has reasonable length (base64 of 32 bytes)
+		if len(clientSecret) < 40 {
+			t.Errorf("Client secret seems too short: %d chars", len(clientSecret))
+		}
+		
+		tokenAuthMethod, ok := clientResp["token_endpoint_auth_method"].(string)
+		if !ok || tokenAuthMethod != "client_secret_post" {
+			t.Errorf("Expected token_endpoint_auth_method 'client_secret_post', got: %v", clientResp["token_endpoint_auth_method"])
+		}
+		
+		// Verify scope is returned as string
+		if scope, ok := clientResp["scope"].(string); !ok || scope != "read write" {
+			t.Errorf("Expected scope 'read write' as string, got: %v", clientResp["scope"])
+		}
+	})
+
+	t.Run("PublicVsConfidentialClients", func(t *testing.T) {
+		// Test that public clients don't get secrets and confidential ones do
+		
+		// First, create a public client
+		publicReq := map[string]interface{}{
+			"redirect_uris": []string{"https://public.example.com/callback"},
+			"scope":         "read",
+			// No token_endpoint_auth_method specified - defaults to "none"
+		}
+		
+		body, _ := json.Marshal(publicReq)
+		resp, err := http.Post(
+			"http://localhost:8080/register",
+			"application/json",
+			bytes.NewBuffer(body),
+		)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		
+		var publicResp map[string]interface{}
+		_ = json.NewDecoder(resp.Body).Decode(&publicResp)
+		
+		// Verify public client has no secret
+		if _, hasSecret := publicResp["client_secret"]; hasSecret {
+			t.Error("Public client should not have a secret")
+		}
+		if authMethod := publicResp["token_endpoint_auth_method"]; authMethod != "none" {
+			t.Errorf("Public client should have auth method 'none', got: %v", authMethod)
+		}
+		
+		// Now create a confidential client
+		confidentialReq := map[string]interface{}{
+			"redirect_uris":              []string{"https://confidential.example.com/callback"},
+			"scope":                      "read write",
+			"token_endpoint_auth_method": "client_secret_post",
+		}
+		
+		body, _ = json.Marshal(confidentialReq)
+		resp, err = http.Post(
+			"http://localhost:8080/register",
+			"application/json",
+			bytes.NewBuffer(body),
+		)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		
+		var confResp map[string]interface{}
+		_ = json.NewDecoder(resp.Body).Decode(&confResp)
+		
+		// Verify confidential client has a secret
+		if secret, ok := confResp["client_secret"].(string); !ok || secret == "" {
+			t.Error("Confidential client should have a secret")
+		}
+		if authMethod := confResp["token_endpoint_auth_method"]; authMethod != "client_secret_post" {
+			t.Errorf("Confidential client should have auth method 'client_secret_post', got: %v", authMethod)
+		}
 	})
 }
 
