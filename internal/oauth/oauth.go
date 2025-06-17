@@ -216,6 +216,29 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 		internal.LogError("Client not found: %v", err)
 	}
 
+	// WORKAROUND: Claude.ai generates a single client ID per OAuth provider domain
+	// and reuses it forever. If the client registration is lost (server restart,
+	// storage cleared, etc), Claude.ai has no mechanism to detect this and re-register.
+	// This auto-registers their client to prevent users from being permanently locked out.
+	// TODO: Remove once Claude.ai implements proper client registration retry logic
+	if clientID != "" &&
+		(redirectURI == "https://claude.ai/api/mcp/auth_callback" ||
+			strings.HasPrefix(redirectURI, "https://claude.ai/api/mcp/")) {
+
+		if _, err := s.storage.GetClient(ctx, clientID); err != nil {
+			internal.LogWarn("Auto-registering Claude.ai client %s", clientID)
+
+			// Register Claude.ai's client with their parameters
+			redirectURIs := []string{redirectURI}
+			requestedScopes := strings.Fields(scopes)
+			if len(requestedScopes) == 0 {
+				requestedScopes = []string{"read", "write"}
+			}
+
+			s.storage.CreateClient(clientID, redirectURIs, requestedScopes, s.config.Issuer)
+		}
+	}
+
 	// Parse and validate the authorization request
 	ar, err := s.provider.NewAuthorizeRequest(ctx, r)
 	if err != nil {

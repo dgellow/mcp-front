@@ -390,3 +390,143 @@ func TestAuthServiceArchitecture(t *testing.T) {
 		}
 	})
 }
+
+// TestClaudeAIWorkaround tests the auto-registration workaround for Claude.ai
+func TestClaudeAIWorkaround(t *testing.T) {
+	config := Config{
+		Issuer:             "https://test.example.com",
+		TokenTTL:           time.Hour,
+		AllowedDomains:     []string{"example.com"},
+		GoogleClientID:     "test-client-id",
+		GoogleClientSecret: "test-client-secret",
+		GoogleRedirectURI:  "https://test.example.com/callback",
+		JWTSecret:          "test-secret-32-bytes-long-for-testing",
+		EncryptionKey:      "test-encryption-key-32-bytes-ok!",
+	}
+
+	store := storage.NewMemoryStorage()
+	server, err := NewServer(config, store)
+	if err != nil {
+		t.Fatalf("Failed to create OAuth server: %v", err)
+	}
+
+	// Test cases for Claude.ai workaround
+	tests := []struct {
+		name               string
+		clientID           string
+		redirectURI        string
+		shouldAutoRegister bool
+	}{
+		{
+			name:               "Claude.ai auth callback - should auto-register",
+			clientID:           "claude-test-client-123",
+			redirectURI:        "https://claude.ai/api/mcp/auth_callback",
+			shouldAutoRegister: true,
+		},
+		{
+			name:               "Claude.ai MCP endpoint - should auto-register",
+			clientID:           "claude-test-client-456",
+			redirectURI:        "https://claude.ai/api/mcp/something",
+			shouldAutoRegister: true,
+		},
+		{
+			name:               "Fake Claude domain - should NOT auto-register",
+			clientID:           "fake-claude-client",
+			redirectURI:        "https://myfakeclaude.ai/api/mcp/auth_callback",
+			shouldAutoRegister: false,
+		},
+		{
+			name:               "Non-Claude client - should NOT auto-register",
+			clientID:           "other-client",
+			redirectURI:        "https://example.com/callback",
+			shouldAutoRegister: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Ensure client doesn't exist
+			_, err := store.GetClient(context.Background(), tt.clientID)
+			if err == nil {
+				t.Fatalf("Client %s should not exist initially", tt.clientID)
+			}
+
+			// Create request
+			req := httptest.NewRequest("GET", "/authorize", nil)
+			q := req.URL.Query()
+			q.Set("client_id", tt.clientID)
+			q.Set("redirect_uri", tt.redirectURI)
+			q.Set("response_type", "code")
+			q.Set("scope", "read write")
+			q.Set("state", "test-state-123")
+			q.Set("code_challenge", "test-challenge")
+			q.Set("code_challenge_method", "S256")
+			req.URL.RawQuery = q.Encode()
+
+			w := httptest.NewRecorder()
+
+			// Call the handler
+			server.AuthorizeHandler(w, req)
+
+			// Check if client was auto-registered
+			_, err = store.GetClient(context.Background(), tt.clientID)
+			if tt.shouldAutoRegister {
+				if err != nil {
+					t.Errorf("Claude.ai client should have been auto-registered but wasn't")
+				}
+				// Verify the auto-registered client has correct redirect URI
+				client, _ := store.GetClient(context.Background(), tt.clientID)
+				if len(client.GetRedirectURIs()) != 1 || client.GetRedirectURIs()[0] != tt.redirectURI {
+					t.Errorf("Auto-registered client has wrong redirect URI: %v", client.GetRedirectURIs())
+				}
+			} else {
+				if err == nil {
+					t.Errorf("Non-Claude.ai client should NOT have been auto-registered but was")
+				}
+			}
+
+			// Clean up for next test
+			if tt.shouldAutoRegister {
+				// Remove the auto-registered client
+				delete(store.MemoryStore.Clients, tt.clientID)
+			}
+		})
+	}
+
+	// Test that existing Claude.ai clients are not re-created
+	t.Run("Existing Claude.ai client - should not recreate", func(t *testing.T) {
+		clientID := "existing-claude-client"
+		redirectURI := "https://claude.ai/api/mcp/auth_callback"
+		
+		// Pre-register client with specific scopes
+		originalScopes := []string{"read", "write", "admin"}
+		store.CreateClient(clientID, []string{redirectURI}, originalScopes, config.Issuer)
+
+		// Create request
+		req := httptest.NewRequest("GET", "/authorize", nil)
+		q := req.URL.Query()
+		q.Set("client_id", clientID)
+		q.Set("redirect_uri", redirectURI)
+		q.Set("response_type", "code")
+		q.Set("scope", "read") // Different scope than registered
+		q.Set("state", "test-state-456")
+		q.Set("code_challenge", "test-challenge")
+		q.Set("code_challenge_method", "S256")
+		req.URL.RawQuery = q.Encode()
+
+		w := httptest.NewRecorder()
+
+		// Call the handler
+		server.AuthorizeHandler(w, req)
+
+		// Verify client still has original scopes (not overwritten)
+		client, err := store.GetClient(context.Background(), clientID)
+		if err != nil {
+			t.Fatalf("Client should still exist: %v", err)
+		}
+
+		if len(client.GetScopes()) != len(originalScopes) {
+			t.Errorf("Client scopes were modified. Expected %v, got %v", originalScopes, client.GetScopes())
+		}
+	})
+}
