@@ -515,13 +515,7 @@ func (s *FirestoreStorage) GetAllUsers(ctx context.Context) ([]UserInfo, error) 
 			continue
 		}
 
-		users = append(users, UserInfo{
-			Email:     userDoc.Email,
-			FirstSeen: userDoc.FirstSeen,
-			LastSeen:  userDoc.LastSeen,
-			Enabled:   userDoc.Enabled,
-			IsAdmin:   userDoc.IsAdmin,
-		})
+		users = append(users, UserInfo(userDoc))
 	}
 
 	return users, nil
@@ -631,13 +625,7 @@ func (s *FirestoreStorage) GetActiveSessions(ctx context.Context) ([]ActiveSessi
 			continue
 		}
 
-		sessions = append(sessions, ActiveSession{
-			SessionID:  sessionDoc.SessionID,
-			UserEmail:  sessionDoc.UserEmail,
-			ServerName: sessionDoc.ServerName,
-			Created:    sessionDoc.Created,
-			LastActive: sessionDoc.LastActive,
-		})
+		sessions = append(sessions, ActiveSession(sessionDoc))
 	}
 
 	return sessions, nil
