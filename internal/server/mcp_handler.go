@@ -102,6 +102,18 @@ func (h *MCPHandler) isMessageRequest(r *http.Request) bool {
 
 // handleSSERequest handles SSE connection requests for stdio servers
 func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
+	// Track user access
+	if userEmail != "" {
+		if store, ok := h.tokenStore.(storage.Storage); ok {
+			if err := store.UpsertUser(ctx, userEmail); err != nil {
+				internal.LogWarnWithFields("mcp", "Failed to track user", map[string]interface{}{
+					"error": err.Error(),
+					"user":  userEmail,
+				})
+			}
+		}
+	}
+
 	if !isStdioServer(config) {
 		// For non-stdio servers, handle normally
 		h.handleNonStdioSSERequest(ctx, w, r, userEmail, config)
@@ -142,6 +154,18 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 
 // handleMessageRequest handles message endpoint requests for stdio servers
 func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
+	// Track user access
+	if userEmail != "" {
+		if store, ok := h.tokenStore.(storage.Storage); ok {
+			if err := store.UpsertUser(ctx, userEmail); err != nil {
+				internal.LogWarnWithFields("mcp", "Failed to track user", map[string]interface{}{
+					"error": err.Error(),
+					"user":  userEmail,
+				})
+			}
+		}
+	}
+
 	if !isStdioServer(config) {
 		h.writeJSONRPCError(w, nil, mcp.INVALID_REQUEST, "Message endpoint not supported for this transport")
 		return

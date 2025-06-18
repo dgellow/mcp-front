@@ -108,6 +108,12 @@ type MCPClientConfig struct {
 	TokenSetup        *TokenSetupConfig `json:"tokenSetup,omitempty"`
 }
 
+// AdminConfig represents admin UI configuration
+type AdminConfig struct {
+	Enabled     bool     `json:"enabled"`
+	AdminEmails []string `json:"adminEmails"`
+}
+
 // OAuthAuthConfig represents OAuth 2.1 configuration with resolved values
 type OAuthAuthConfig struct {
 	Kind                AuthKind `json:"kind"`
@@ -128,10 +134,11 @@ type OAuthAuthConfig struct {
 
 // ProxyConfig represents the proxy configuration with resolved values
 type ProxyConfig struct {
-	BaseURL string      `json:"baseURL"`
-	Addr    string      `json:"addr"`
-	Name    string      `json:"name"`
-	Auth    interface{} `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
+	BaseURL string        `json:"baseURL"`
+	Addr    string        `json:"addr"`
+	Name    string        `json:"name"`
+	Auth    interface{}   `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
+	Admin   *AdminConfig  `json:"admin,omitempty"`
 }
 
 // Config represents the config structure with resolved values

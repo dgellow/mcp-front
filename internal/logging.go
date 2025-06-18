@@ -1,14 +1,22 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
-var logger *slog.Logger
+var (
+	logger       *slog.Logger
+	currentLevel atomic.Value // stores slog.Level
+)
+
+// LevelTrace is a custom trace level below debug
+const LevelTrace = slog.Level(-8)
 
 func init() {
 	var level slog.Level
@@ -22,10 +30,23 @@ func init() {
 		level = slog.LevelInfo
 	case "DEBUG":
 		level = slog.LevelDebug
+	case "TRACE":
+		level = LevelTrace
 	default:
 		level = slog.LevelInfo
 	}
 
+	// Store initial level
+	currentLevel.Store(level)
+
+	// Create handler
+	updateHandler()
+}
+
+// updateHandler recreates the handler with the current log level
+func updateHandler() {
+	level := currentLevel.Load().(slog.Level)
+	
 	var handler slog.Handler
 	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
@@ -35,6 +56,12 @@ func init() {
 					return slog.Attr{
 						Key:   "timestamp",
 						Value: slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano)),
+					}
+				}
+				if a.Key == slog.LevelKey && a.Value.Any().(slog.Level) == LevelTrace {
+					return slog.Attr{
+						Key:   slog.LevelKey,
+						Value: slog.StringValue("TRACE"),
 					}
 				}
 				return a
@@ -50,6 +77,12 @@ func init() {
 						Value: slog.StringValue(a.Value.Time().Format("2006-01-02 15:04:05.000-07:00")),
 					}
 				}
+				if a.Key == slog.LevelKey && a.Value.Any().(slog.Level) == LevelTrace {
+					return slog.Attr{
+						Key:   slog.LevelKey,
+						Value: slog.StringValue("TRACE"),
+					}
+				}
 				return a
 			},
 		})
@@ -57,6 +90,55 @@ func init() {
 
 	logger = slog.New(handler)
 	slog.SetDefault(logger)
+}
+
+// SetLogLevel atomically updates the log level at runtime
+func SetLogLevel(level string) error {
+	var newLevel slog.Level
+	
+	switch strings.ToUpper(level) {
+	case "ERROR":
+		newLevel = slog.LevelError
+	case "WARN", "WARNING":
+		newLevel = slog.LevelWarn
+	case "INFO":
+		newLevel = slog.LevelInfo
+	case "DEBUG":
+		newLevel = slog.LevelDebug
+	case "TRACE":
+		newLevel = LevelTrace
+	default:
+		return fmt.Errorf("invalid log level: %s", level)
+	}
+	
+	currentLevel.Store(newLevel)
+	updateHandler()
+	
+	LogInfoWithFields("logging", "Log level changed", map[string]interface{}{
+		"new_level": level,
+	})
+	
+	return nil
+}
+
+// GetLogLevel returns the current log level as a string
+func GetLogLevel() string {
+	level := currentLevel.Load().(slog.Level)
+	
+	switch level {
+	case slog.LevelError:
+		return "error"
+	case slog.LevelWarn:
+		return "warn"
+	case slog.LevelInfo:
+		return "info"
+	case slog.LevelDebug:
+		return "debug"
+	case LevelTrace:
+		return "trace"
+	default:
+		return "unknown"
+	}
 }
 
 // Convenience functions using standard slog with component context
@@ -77,7 +159,9 @@ func LogDebug(format string, args ...interface{}) {
 }
 
 func LogTrace(format string, args ...interface{}) {
-	logger.Debug(fmt.Sprintf(format, args...))
+	if currentLevel.Load().(slog.Level) <= LevelTrace {
+		logger.Log(context.Background(), LevelTrace, fmt.Sprintf(format, args...))
+	}
 }
 
 // Structured logging functions with component and fields
@@ -118,10 +202,12 @@ func LogWarnWithFields(component, message string, fields map[string]interface{})
 }
 
 func LogTraceWithFields(component, message string, fields map[string]interface{}) {
-	args := make([]any, 0, len(fields)*2+2)
-	args = append(args, "component", component)
-	for k, v := range fields {
-		args = append(args, k, v)
+	if currentLevel.Load().(slog.Level) <= LevelTrace {
+		args := make([]any, 0, len(fields)*2+2)
+		args = append(args, "component", component)
+		for k, v := range fields {
+			args = append(args, k, v)
+		}
+		logger.Log(context.Background(), LevelTrace, message, args...)
 	}
-	logger.Debug(message, args...)
 }
