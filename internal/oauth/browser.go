@@ -2,9 +2,6 @@ package oauth
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -82,23 +79,10 @@ func (s *Server) generateBrowserState(returnURL string) string {
 	// Create signed CSRF token: nonce + HMAC(nonce + returnURL)
 	// This ensures the token is tied to the specific return URL
 	data := nonce + ":" + returnURL
-	signature := s.signData(data)
+	signature := crypto.SignData(data, []byte(s.config.EncryptionKey))
 
 	// Format: "browser:nonce:signature:returnURL"
 	return fmt.Sprintf("browser:%s:%s:%s", nonce, signature, returnURL)
-}
-
-// signData creates an HMAC signature of the data
-func (s *Server) signData(data string) string {
-	h := hmac.New(sha256.New, []byte(s.config.EncryptionKey))
-	h.Write([]byte(data))
-	return base64.URLEncoding.EncodeToString(h.Sum(nil))
-}
-
-// validateSignedData verifies the HMAC signature
-func (s *Server) validateSignedData(data, signature string) bool {
-	expectedSig := s.signData(data)
-	return hmac.Equal([]byte(expectedSig), []byte(signature))
 }
 
 // setBrowserSessionCookie sets an encrypted session cookie for browser-based authentication

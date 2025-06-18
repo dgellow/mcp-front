@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/auth"
@@ -20,35 +22,74 @@ type AdminHandlers struct {
 	storage        storage.Storage
 	config         *config.Config
 	sessionManager *client.StdioSessionManager
-	csrfTokens     sync.Map // Thread-safe CSRF token storage
+	encryptionKey  []byte // For HMAC-based CSRF tokens
 }
 
 // NewAdminHandlers creates a new admin handlers instance
-func NewAdminHandlers(storage storage.Storage, config *config.Config, sessionManager *client.StdioSessionManager) *AdminHandlers {
+func NewAdminHandlers(storage storage.Storage, config *config.Config, sessionManager *client.StdioSessionManager, encryptionKey string) *AdminHandlers {
 	return &AdminHandlers{
 		storage:        storage,
 		config:         config,
 		sessionManager: sessionManager,
+		encryptionKey:  []byte(encryptionKey),
 	}
 }
 
-// generateCSRFToken creates a new CSRF token
+// generateCSRFToken creates a new HMAC-based CSRF token
 func (h *AdminHandlers) generateCSRFToken() (string, error) {
-	token := crypto.GenerateSecureToken()
-	if token == "" {
-		return "", fmt.Errorf("failed to generate CSRF token")
+	// Generate random nonce
+	nonce := crypto.GenerateSecureToken()
+	if nonce == "" {
+		return "", fmt.Errorf("failed to generate nonce")
 	}
-	h.csrfTokens.Store(token, true)
-	return token, nil
+	
+	// Add timestamp (Unix seconds)
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	
+	// Create data to sign: nonce:timestamp
+	data := nonce + ":" + timestamp
+	
+	// Sign with HMAC
+	signature := crypto.SignData(data, h.encryptionKey)
+	
+	// Return format: nonce:timestamp:signature
+	return fmt.Sprintf("%s:%s:%s", nonce, timestamp, signature), nil
 }
 
 // validateCSRFToken checks if a CSRF token is valid
 func (h *AdminHandlers) validateCSRFToken(token string) bool {
-	if _, exists := h.csrfTokens.LoadAndDelete(token); exists {
-		// One-time use via LoadAndDelete
-		return true
+	// Parse token format: nonce:timestamp:signature
+	parts := strings.SplitN(token, ":", 3)
+	if len(parts) != 3 {
+		internal.LogDebug("Invalid CSRF token format")
+		return false
 	}
-	return false
+	
+	nonce := parts[0]
+	timestampStr := parts[1]
+	signature := parts[2]
+	
+	// Verify timestamp (15 minute expiry)
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		internal.LogDebug("Invalid CSRF token timestamp: %v", err)
+		return false
+	}
+	
+	now := time.Now().Unix()
+	if now-timestamp > 900 { // 15 minutes
+		internal.LogDebug("CSRF token expired")
+		return false
+	}
+	
+	// Verify HMAC signature
+	data := nonce + ":" + timestampStr
+	if !crypto.ValidateSignedData(data, signature, h.encryptionKey) {
+		internal.LogDebug("Invalid CSRF token signature")
+		return false
+	}
+	
+	return true
 }
 
 // DashboardHandler shows the admin dashboard
@@ -66,7 +107,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(userEmail, h.config.Proxy.Admin) {
+	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -82,12 +123,21 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 	messageType := r.URL.Query().Get("type")
 
 	// Load all data
-	users, err := h.storage.GetAllUsers(r.Context())
+	rawUsers, err := h.storage.GetAllUsers(r.Context())
 	if err != nil {
 		internal.LogErrorWithFields("admin", "Failed to get users", map[string]interface{}{
 			"error": err.Error(),
 		})
-		users = []storage.UserInfo{} // Empty list on error
+		rawUsers = []storage.UserInfo{} // Empty list on error
+	}
+	
+	// Convert to UserInfoWithAdminType
+	users := make([]UserInfoWithAdminType, len(rawUsers))
+	for i, user := range rawUsers {
+		users[i] = UserInfoWithAdminType{
+			UserInfo:      user,
+			IsConfigAdmin: auth.IsConfigAdmin(user.Email, h.config.Proxy.Admin),
+		}
 	}
 
 	sessions, err := h.storage.GetActiveSessions(r.Context())
@@ -146,7 +196,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(userEmail, h.config.Proxy.Admin) {
+	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -196,8 +246,20 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 			} else {
 				if currentEnabled {
 					message = fmt.Sprintf("User %s disabled", targetEmail)
+					// Audit log
+					internal.LogInfoWithFields("admin", "User disabled", map[string]interface{}{
+						"admin_email":  userEmail,
+						"target_email": targetEmail,
+						"action":       "disable",
+					})
 				} else {
 					message = fmt.Sprintf("User %s enabled", targetEmail)
+					// Audit log
+					internal.LogInfoWithFields("admin", "User enabled", map[string]interface{}{
+						"admin_email":  userEmail,
+						"target_email": targetEmail,
+						"action":       "enable",
+					})
 				}
 			}
 		}
@@ -208,14 +270,51 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 			messageType = "error"
 		} else {
 			message = fmt.Sprintf("User %s deleted", targetEmail)
+			// Audit log
+			internal.LogInfoWithFields("admin", "User deleted", map[string]interface{}{
+				"admin_email":  userEmail,
+				"target_email": targetEmail,
+				"action":       "delete",
+			})
 		}
 
 	case "promote":
-		if err := h.storage.SetUserAdmin(r.Context(), targetEmail, true); err != nil {
-			message = fmt.Sprintf("Failed to promote user: %v", err)
+		// Check if user exists
+		users, err := h.storage.GetAllUsers(r.Context())
+		if err != nil {
+			message = "Failed to verify user existence"
 			messageType = "error"
 		} else {
-			message = fmt.Sprintf("User %s promoted to admin", targetEmail)
+			userExists := false
+			alreadyAdmin := false
+			for _, u := range users {
+				if u.Email == targetEmail {
+					userExists = true
+					alreadyAdmin = u.IsAdmin
+					break
+				}
+			}
+			
+			if !userExists {
+				message = fmt.Sprintf("User %s not found", targetEmail)
+				messageType = "error"
+			} else if alreadyAdmin {
+				message = fmt.Sprintf("User %s is already an admin", targetEmail)
+				messageType = "error"
+			} else {
+				if err := h.storage.SetUserAdmin(r.Context(), targetEmail, true); err != nil {
+					message = fmt.Sprintf("Failed to promote user: %v", err)
+					messageType = "error"
+				} else {
+					message = fmt.Sprintf("User %s promoted to admin", targetEmail)
+					// Audit log
+					internal.LogInfoWithFields("admin", "User promoted to admin", map[string]interface{}{
+						"admin_email":  userEmail,
+						"target_email": targetEmail,
+						"action":       "promote",
+					})
+				}
+			}
 		}
 
 	case "demote":
@@ -223,12 +322,22 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 		if targetEmail == userEmail {
 			message = "Cannot demote yourself"
 			messageType = "error"
+		} else if auth.IsConfigAdmin(targetEmail, h.config.Proxy.Admin) {
+			// Prevent demoting config admins
+			message = "Cannot demote config-defined admins"
+			messageType = "error"
 		} else {
 			if err := h.storage.SetUserAdmin(r.Context(), targetEmail, false); err != nil {
 				message = fmt.Sprintf("Failed to demote user: %v", err)
 				messageType = "error"
 			} else {
 				message = fmt.Sprintf("User %s demoted from admin", targetEmail)
+				// Audit log
+				internal.LogInfoWithFields("admin", "User demoted from admin", map[string]interface{}{
+					"admin_email":  userEmail,
+					"target_email": targetEmail,
+					"action":       "demote",
+				})
 			}
 		}
 
@@ -257,7 +366,7 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(userEmail, h.config.Proxy.Admin) {
+	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -310,6 +419,12 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 			messageType = "error"
 		} else {
 			message = "Session revoked"
+			// Audit log
+			internal.LogInfoWithFields("admin", "Session revoked", map[string]interface{}{
+				"admin_email": userEmail,
+				"session_id":  sessionID,
+				"action":      "revoke_session",
+			})
 		}
 
 	default:
@@ -337,7 +452,7 @@ func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(userEmail, h.config.Proxy.Admin) {
+	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
@@ -386,10 +501,16 @@ func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Requ
 type AdminPageData struct {
 	UserEmail   string
 	ActiveTab   string
-	Users       []storage.UserInfo
+	Users       []UserInfoWithAdminType
 	Sessions    []storage.ActiveSession
 	LogLevel    string
 	CSRFToken   string
 	Message     string
 	MessageType string
+}
+
+// UserInfoWithAdminType extends UserInfo with admin type information
+type UserInfoWithAdminType struct {
+	storage.UserInfo
+	IsConfigAdmin bool // True if admin is defined in config
 }

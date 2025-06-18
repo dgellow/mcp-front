@@ -301,7 +301,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Validate HMAC signature
 		data := nonce + ":" + returnURL
-		if !s.validateSignedData(data, signature) {
+		if !crypto.ValidateSignedData(data, signature, []byte(s.config.EncryptionKey)) {
 			internal.LogError("Invalid CSRF signature in browser flow")
 			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 			return

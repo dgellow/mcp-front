@@ -228,7 +228,10 @@ func (s *MemoryStorage) UpdateUserStatus(ctx context.Context, email string, enab
 	if !exists {
 		return ErrUserNotFound
 	}
-	user.Enabled = enabled
+	// Create a copy to avoid modifying the struct directly
+	userCopy := *user
+	userCopy.Enabled = enabled
+	s.users[email] = &userCopy
 	return nil
 }
 
@@ -262,7 +265,10 @@ func (s *MemoryStorage) SetUserAdmin(ctx context.Context, email string, isAdmin 
 	if !exists {
 		return ErrUserNotFound
 	}
-	user.IsAdmin = isAdmin
+	// Create a copy to avoid modifying the struct directly
+	userCopy := *user
+	userCopy.IsAdmin = isAdmin
+	s.users[email] = &userCopy
 	return nil
 }
 

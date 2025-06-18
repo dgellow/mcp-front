@@ -254,7 +254,17 @@
                                 <span class="status disabled">Disabled</span>
                                 {{end}}
                             </td>
-                            <td>{{if .IsAdmin}}Yes{{else}}No{{end}}</td>
+                            <td>
+                                {{if .IsAdmin}}
+                                    {{if .IsConfigAdmin}}
+                                    <span style="font-weight: bold;">Config Admin</span>
+                                    {{else}}
+                                    <span>Promoted Admin</span>
+                                    {{end}}
+                                {{else}}
+                                User
+                                {{end}}
+                            </td>
                             <td class="actions">
                                 <form method="POST" action="/admin/users">
                                     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
@@ -270,13 +280,15 @@
                                     <input type="hidden" name="action" value="promote">
                                     <button type="submit" class="primary">Make Admin</button>
                                 </form>
-                                {{else if ne .Email $.UserEmail}}
+                                {{else if and (ne .Email $.UserEmail) (not .IsConfigAdmin)}}
                                 <form method="POST" action="/admin/users">
                                     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                                     <input type="hidden" name="user_email" value="{{.Email}}">
                                     <input type="hidden" name="action" value="demote">
                                     <button type="submit" class="secondary">Remove Admin</button>
                                 </form>
+                                {{else if .IsConfigAdmin}}
+                                <span style="color: #666; font-size: 12px;">Config Admin</span>
                                 {{end}}
                                 
                                 {{if ne .Email $.UserEmail}}

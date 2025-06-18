@@ -338,12 +338,18 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"admin_emails": cfg.Proxy.Admin.AdminEmails,
 		})
 		
-		adminHandlers := NewAdminHandlers(s.tokenStore.(storage.Storage), cfg, s.sessionManager)
+		// Get encryption key from OAuth config
+		var encryptionKey string
+		if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
+			encryptionKey = oauthAuth.EncryptionKey
+		}
+		
+		adminHandlers := NewAdminHandlers(s.tokenStore.(storage.Storage), cfg, s.sessionManager, encryptionKey)
 		adminMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("admin"),
 			s.oauthServer.SSOMiddleware(), // Browser SSO
-			adminMiddleware(cfg.Proxy.Admin), // Admin check
+			adminMiddleware(cfg.Proxy.Admin, s.tokenStore.(storage.Storage)), // Admin check
 		}
 		
 		// Admin routes - all protected by admin middleware
