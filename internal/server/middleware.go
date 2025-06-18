@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/auth"
+	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/oauth"
 )
 
 // MiddlewareFunc is a function that wraps an http.Handler
@@ -182,6 +185,26 @@ func newAuthMiddleware(tokens []string) MiddlewareFunc {
 					return
 				}
 			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// adminMiddleware creates middleware for admin access control
+func adminMiddleware(adminConfig *config.AdminConfig) MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userEmail, ok := oauth.GetUserFromContext(r.Context())
+			if !ok {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			
+			if !auth.IsAdmin(userEmail, adminConfig) {
+				http.Error(w, "Forbidden - Admin access required", http.StatusForbidden)
+				return
+			}
+			
 			next.ServeHTTP(w, r)
 		})
 	}

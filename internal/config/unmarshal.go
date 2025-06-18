@@ -191,6 +191,7 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 		Addr    json.RawMessage `json:"addr"`
 		Name    string          `json:"name"`
 		Auth    json.RawMessage `json:"auth"`
+		Admin   *AdminConfig    `json:"admin"`
 	}
 
 	var raw rawProxy
@@ -199,6 +200,7 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	p.Name = raw.Name
+	p.Admin = raw.Admin
 
 	// Parse BaseURL
 	if raw.BaseURL != nil {

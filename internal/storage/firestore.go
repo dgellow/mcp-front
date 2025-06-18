@@ -446,3 +446,208 @@ func (s *FirestoreStorage) ListUserServices(ctx context.Context, userEmail strin
 
 	return services, nil
 }
+
+// UserDoc represents a user document in Firestore
+type UserDoc struct {
+	Email     string    `firestore:"email"`
+	FirstSeen time.Time `firestore:"first_seen"`
+	LastSeen  time.Time `firestore:"last_seen"`
+	Enabled   bool      `firestore:"enabled"`
+	IsAdmin   bool      `firestore:"is_admin"`
+}
+
+// SessionDoc represents a session document in Firestore
+type SessionDoc struct {
+	SessionID  string    `firestore:"session_id"`
+	UserEmail  string    `firestore:"user_email"`
+	ServerName string    `firestore:"server_name"`
+	Created    time.Time `firestore:"created"`
+	LastActive time.Time `firestore:"last_active"`
+}
+
+// UpsertUser creates or updates a user's last seen time
+func (s *FirestoreStorage) UpsertUser(ctx context.Context, email string) error {
+	userDoc := UserDoc{
+		Email:    email,
+		LastSeen: time.Now(),
+	}
+
+	// Try to get existing user first
+	doc, err := s.client.Collection("mcp_front_users").Doc(email).Get(ctx)
+	if err == nil {
+		// User exists, update LastSeen
+		_, err = doc.Ref.Update(ctx, []firestore.Update{
+			{Path: "last_seen", Value: time.Now()},
+		})
+		return err
+	}
+
+	// User doesn't exist, create new
+	if status.Code(err) == codes.NotFound {
+		userDoc.FirstSeen = time.Now()
+		userDoc.Enabled = true
+		userDoc.IsAdmin = false
+		_, err = s.client.Collection("mcp_front_users").Doc(email).Set(ctx, userDoc)
+		return err
+	}
+
+	return err
+}
+
+// GetAllUsers returns all users
+func (s *FirestoreStorage) GetAllUsers(ctx context.Context) ([]UserInfo, error) {
+	iter := s.client.Collection("mcp_front_users").Documents(ctx)
+	defer iter.Stop()
+
+	var users []UserInfo
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate users: %w", err)
+		}
+
+		var userDoc UserDoc
+		if err := doc.DataTo(&userDoc); err != nil {
+			internal.LogError("Failed to unmarshal user: %v", err)
+			continue
+		}
+
+		users = append(users, UserInfo{
+			Email:     userDoc.Email,
+			FirstSeen: userDoc.FirstSeen,
+			LastSeen:  userDoc.LastSeen,
+			Enabled:   userDoc.Enabled,
+			IsAdmin:   userDoc.IsAdmin,
+		})
+	}
+
+	return users, nil
+}
+
+// UpdateUserStatus updates a user's enabled status
+func (s *FirestoreStorage) UpdateUserStatus(ctx context.Context, email string, enabled bool) error {
+	_, err := s.client.Collection("mcp_front_users").Doc(email).Update(ctx, []firestore.Update{
+		{Path: "enabled", Value: enabled},
+	})
+	if status.Code(err) == codes.NotFound {
+		return ErrUserNotFound
+	}
+	return err
+}
+
+// DeleteUser removes a user from storage
+func (s *FirestoreStorage) DeleteUser(ctx context.Context, email string) error {
+	// Delete user document
+	_, err := s.client.Collection("mcp_front_users").Doc(email).Delete(ctx)
+	if err != nil && status.Code(err) != codes.NotFound {
+		return err
+	}
+
+	// Also delete all user tokens
+	iter := s.client.Collection(s.tokenCollection).Where("user_email", "==", email).Documents(ctx)
+	defer iter.Stop()
+
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			internal.LogError("Failed to iterate user tokens for deletion: %v", err)
+			continue
+		}
+
+		_, err = doc.Ref.Delete(ctx)
+		if err != nil {
+			internal.LogError("Failed to delete user token: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// SetUserAdmin updates a user's admin status
+func (s *FirestoreStorage) SetUserAdmin(ctx context.Context, email string, isAdmin bool) error {
+	_, err := s.client.Collection("mcp_front_users").Doc(email).Update(ctx, []firestore.Update{
+		{Path: "is_admin", Value: isAdmin},
+	})
+	if status.Code(err) == codes.NotFound {
+		return ErrUserNotFound
+	}
+	return err
+}
+
+// TrackSession creates or updates a session
+func (s *FirestoreStorage) TrackSession(ctx context.Context, session ActiveSession) error {
+	sessionDoc := SessionDoc{
+		SessionID:  session.SessionID,
+		UserEmail:  session.UserEmail,
+		ServerName: session.ServerName,
+		Created:    session.Created,
+		LastActive: time.Now(),
+	}
+
+	// Check if session exists
+	doc, err := s.client.Collection("mcp_front_sessions").Doc(session.SessionID).Get(ctx)
+	if err == nil {
+		// Session exists, update LastActive
+		_, err = doc.Ref.Update(ctx, []firestore.Update{
+			{Path: "last_active", Value: time.Now()},
+		})
+		return err
+	}
+
+	// Session doesn't exist, create new
+	if status.Code(err) == codes.NotFound {
+		sessionDoc.Created = time.Now()
+		_, err = s.client.Collection("mcp_front_sessions").Doc(session.SessionID).Set(ctx, sessionDoc)
+		return err
+	}
+
+	return err
+}
+
+// GetActiveSessions returns all active sessions
+func (s *FirestoreStorage) GetActiveSessions(ctx context.Context) ([]ActiveSession, error) {
+	iter := s.client.Collection("mcp_front_sessions").Documents(ctx)
+	defer iter.Stop()
+
+	var sessions []ActiveSession
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate sessions: %w", err)
+		}
+
+		var sessionDoc SessionDoc
+		if err := doc.DataTo(&sessionDoc); err != nil {
+			internal.LogError("Failed to unmarshal session: %v", err)
+			continue
+		}
+
+		sessions = append(sessions, ActiveSession{
+			SessionID:  sessionDoc.SessionID,
+			UserEmail:  sessionDoc.UserEmail,
+			ServerName: sessionDoc.ServerName,
+			Created:    sessionDoc.Created,
+			LastActive: sessionDoc.LastActive,
+		})
+	}
+
+	return sessions, nil
+}
+
+// RevokeSession removes a session
+func (s *FirestoreStorage) RevokeSession(ctx context.Context, sessionID string) error {
+	_, err := s.client.Collection("mcp_front_sessions").Doc(sessionID).Delete(ctx)
+	if err != nil && status.Code(err) != codes.NotFound {
+		return err
+	}
+	return nil
+}

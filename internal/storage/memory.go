@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/ory/fosite"
@@ -22,6 +23,10 @@ type MemoryStorage struct {
 	clientsMutex    sync.RWMutex      // For thread-safe client access
 	userTokens      map[string]string // map["email:service"] = token
 	userTokensMutex sync.RWMutex
+	users           map[string]*UserInfo      // map[email] = UserInfo
+	usersMutex      sync.RWMutex
+	sessions        map[string]*ActiveSession // map[sessionID] = ActiveSession
+	sessionsMutex   sync.RWMutex
 }
 
 // NewMemoryStorage creates a new storage instance
@@ -29,6 +34,8 @@ func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
 		MemoryStore: storage.NewMemoryStore(),
 		userTokens:  make(map[string]string),
+		users:       make(map[string]*UserInfo),
+		sessions:    make(map[string]*ActiveSession),
 	}
 }
 
@@ -179,4 +186,119 @@ func (s *MemoryStorage) ListUserServices(ctx context.Context, userEmail string) 
 		}
 	}
 	return services, nil
+}
+
+// UpsertUser creates or updates a user's last seen time
+func (s *MemoryStorage) UpsertUser(ctx context.Context, email string) error {
+	s.usersMutex.Lock()
+	defer s.usersMutex.Unlock()
+
+	if user, exists := s.users[email]; exists {
+		user.LastSeen = time.Now()
+	} else {
+		s.users[email] = &UserInfo{
+			Email:     email,
+			FirstSeen: time.Now(),
+			LastSeen:  time.Now(),
+			Enabled:   true,
+			IsAdmin:   false,
+		}
+	}
+	return nil
+}
+
+// GetAllUsers returns all users
+func (s *MemoryStorage) GetAllUsers(ctx context.Context) ([]UserInfo, error) {
+	s.usersMutex.RLock()
+	defer s.usersMutex.RUnlock()
+
+	users := make([]UserInfo, 0, len(s.users))
+	for _, user := range s.users {
+		users = append(users, *user)
+	}
+	return users, nil
+}
+
+// UpdateUserStatus updates a user's enabled status
+func (s *MemoryStorage) UpdateUserStatus(ctx context.Context, email string, enabled bool) error {
+	s.usersMutex.Lock()
+	defer s.usersMutex.Unlock()
+
+	user, exists := s.users[email]
+	if !exists {
+		return ErrUserNotFound
+	}
+	user.Enabled = enabled
+	return nil
+}
+
+// DeleteUser removes a user from storage
+func (s *MemoryStorage) DeleteUser(ctx context.Context, email string) error {
+	s.usersMutex.Lock()
+	defer s.usersMutex.Unlock()
+
+	delete(s.users, email)
+
+	// Also delete all user tokens
+	s.userTokensMutex.Lock()
+	defer s.userTokensMutex.Unlock()
+	
+	prefix := email + ":"
+	for key := range s.userTokens {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.userTokens, key)
+		}
+	}
+
+	return nil
+}
+
+// SetUserAdmin updates a user's admin status
+func (s *MemoryStorage) SetUserAdmin(ctx context.Context, email string, isAdmin bool) error {
+	s.usersMutex.Lock()
+	defer s.usersMutex.Unlock()
+
+	user, exists := s.users[email]
+	if !exists {
+		return ErrUserNotFound
+	}
+	user.IsAdmin = isAdmin
+	return nil
+}
+
+// TrackSession creates or updates a session
+func (s *MemoryStorage) TrackSession(ctx context.Context, session ActiveSession) error {
+	s.sessionsMutex.Lock()
+	defer s.sessionsMutex.Unlock()
+
+	if existing, exists := s.sessions[session.SessionID]; exists {
+		existing.LastActive = time.Now()
+	} else {
+		sessionCopy := session
+		sessionCopy.Created = time.Now()
+		sessionCopy.LastActive = time.Now()
+		s.sessions[session.SessionID] = &sessionCopy
+	}
+	return nil
+}
+
+// GetActiveSessions returns all active sessions
+func (s *MemoryStorage) GetActiveSessions(ctx context.Context) ([]ActiveSession, error) {
+	s.sessionsMutex.RLock()
+	defer s.sessionsMutex.RUnlock()
+
+	sessions := make([]ActiveSession, 0, len(s.sessions))
+	for _, session := range s.sessions {
+		sessions = append(sessions, *session)
+	}
+	return sessions, nil
+}
+
+// RevokeSession removes a session
+func (s *MemoryStorage) RevokeSession(ctx context.Context, sessionID string) error {
+	s.sessionsMutex.Lock()
+	defer s.sessionsMutex.Unlock()
+
+	delete(s.sessions, sessionID)
+	return nil
 }

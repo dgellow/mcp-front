@@ -155,6 +155,27 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Use the storage directly as token store
 		s.tokenStore = store
 
+		// Initialize admin users if admin is enabled
+		if cfg.Proxy.Admin != nil && cfg.Proxy.Admin.Enabled {
+			for _, adminEmail := range cfg.Proxy.Admin.AdminEmails {
+				// Upsert admin user
+				if err := store.UpsertUser(ctx, adminEmail); err != nil {
+					internal.LogWarnWithFields("server", "Failed to initialize admin user", map[string]interface{}{
+						"email": adminEmail,
+						"error": err.Error(),
+					})
+					continue
+				}
+				// Set as admin
+				if err := store.SetUserAdmin(ctx, adminEmail, true); err != nil {
+					internal.LogWarnWithFields("server", "Failed to set user as admin", map[string]interface{}{
+						"email": adminEmail,
+						"error": err.Error(),
+					})
+				}
+			}
+		}
+
 		// Register OAuth endpoints
 		oauthMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
@@ -231,6 +252,18 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 						SessionID:  session.SessionID(),
 					}
 					s.sessionManager.RemoveSession(key)
+					
+					// Remove session from storage
+					if store, ok := handler.h.tokenStore.(storage.Storage); ok {
+						if err := store.RevokeSession(sessionCtx, session.SessionID()); err != nil {
+							internal.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
+								"error":     err.Error(),
+								"sessionID": session.SessionID(),
+								"user":      handler.userEmail,
+							})
+						}
+					}
+					
 					internal.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
 						"sessionID": session.SessionID(),
 						"server":    currentServerName,
@@ -297,6 +330,27 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			ssePath := "/" + serverName
 			mux.Handle(ssePath, chainMiddleware(handler, middlewares...))
 		}
+	}
+
+	// Admin routes - only if admin is enabled
+	if cfg.Proxy.Admin != nil && cfg.Proxy.Admin.Enabled {
+		internal.LogInfoWithFields("server", "Admin UI enabled", map[string]interface{}{
+			"admin_emails": cfg.Proxy.Admin.AdminEmails,
+		})
+		
+		adminHandlers := NewAdminHandlers(s.tokenStore.(storage.Storage), cfg, s.sessionManager)
+		adminMiddlewares := []MiddlewareFunc{
+			corsMiddleware(allowedOrigins),
+			loggerMiddleware("admin"),
+			s.oauthServer.SSOMiddleware(), // Browser SSO
+			adminMiddleware(cfg.Proxy.Admin), // Admin check
+		}
+		
+		// Admin routes - all protected by admin middleware
+		mux.Handle("/admin", chainMiddleware(http.HandlerFunc(adminHandlers.DashboardHandler), adminMiddlewares...))
+		mux.Handle("/admin/users", chainMiddleware(http.HandlerFunc(adminHandlers.UserActionHandler), adminMiddlewares...))
+		mux.Handle("/admin/sessions", chainMiddleware(http.HandlerFunc(adminHandlers.SessionActionHandler), adminMiddlewares...))
+		mux.Handle("/admin/logging", chainMiddleware(http.HandlerFunc(adminHandlers.LoggingActionHandler), adminMiddlewares...))
 	}
 
 	// Health check endpoint
@@ -401,6 +455,26 @@ func handleSessionRegistration(
 	// Note: We don't need to store anything in the session anymore
 	// The stdio client is connected directly to the shared MCP server
 	// Capabilities are automatically registered on the shared MCP server
+	
+	// Track session in storage
+	if handler.userEmail != "" {
+		if store, ok := handler.h.tokenStore.(storage.Storage); ok {
+			activeSession := storage.ActiveSession{
+				SessionID:  session.SessionID(),
+				UserEmail:  handler.userEmail,
+				ServerName: handler.h.serverName,
+				Created:    time.Now(),
+				LastActive: time.Now(),
+			}
+			if err := store.TrackSession(sessionCtx, activeSession); err != nil {
+				internal.LogWarnWithFields("server", "Failed to track session", map[string]interface{}{
+					"error":     err.Error(),
+					"sessionID": session.SessionID(),
+					"user":      handler.userEmail,
+				})
+			}
+		}
+	}
 	
 	internal.LogInfoWithFields("server", "Session successfully created and connected", map[string]interface{}{
 		"sessionID": session.SessionID(),
