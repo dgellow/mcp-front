@@ -70,17 +70,24 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Determine request type and route accordingly
 	if h.isMessageRequest(r) {
 		internal.LogInfoWithFields("mcp", "Handling message request", map[string]interface{}{
-			"path":    r.URL.Path,
-			"server":  h.serverName,
-			"isStdio": isStdioServer(config),
+			"path":          r.URL.Path,
+			"server":        h.serverName,
+			"isStdio":       isStdioServer(config),
+			"user":          userEmail,
+			"remoteAddr":    r.RemoteAddr,
+			"contentLength": r.ContentLength,
+			"query":         r.URL.RawQuery,
 		})
 		h.handleMessageRequest(ctx, w, r, userEmail, config)
 	} else {
 		// Handle as SSE request (including legacy paths)
 		internal.LogInfoWithFields("mcp", "Handling SSE request", map[string]interface{}{
-			"path":    r.URL.Path,
-			"server":  h.serverName,
-			"isStdio": isStdioServer(config),
+			"path":       r.URL.Path,
+			"server":     h.serverName,
+			"isStdio":    isStdioServer(config),
+			"user":       userEmail,
+			"remoteAddr": r.RemoteAddr,
+			"userAgent":  r.UserAgent(),
 		})
 		h.handleSSERequest(ctx, w, r, userEmail, config)
 	}
@@ -171,12 +178,14 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 	})
 
 	if !ok {
-		internal.LogWarnWithFields("mcp", "Session not found", map[string]interface{}{
+		internal.LogWarnWithFields("mcp", "Session not found - returning 404 with JSON-RPC error per MCP spec", map[string]interface{}{
 			"sessionID": sessionID,
 			"server":    h.serverName,
 			"user":      userEmail,
 		})
-		h.writeJSONRPCError(w, nil, mcp.INVALID_PARAMS, "Invalid session ID")
+		// Per MCP spec: return HTTP 404 Not Found when session is terminated or not found
+		// The response body MAY comprise a JSON-RPC error response
+		h.writeJSONRPCErrorWithStatus(w, nil, mcp.INVALID_PARAMS, "Session not found", http.StatusNotFound)
 		return
 	}
 
@@ -282,19 +291,52 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	return token, nil
 }
 
-// writeJSONRPCError writes a JSON-RPC error response
+// writeJSONRPCError writes a JSON-RPC error response with BadRequest status
 func (h *MCPHandler) writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
+	h.writeJSONRPCErrorWithStatus(w, id, code, message, http.StatusBadRequest)
+}
+
+// writeJSONRPCErrorWithStatus writes a JSON-RPC error response with custom HTTP status
+func (h *MCPHandler) writeJSONRPCErrorWithStatus(w http.ResponseWriter, id interface{}, code int, message string, httpStatus int) {
+	// Map JSON-RPC 2.0 standard error codes to human-readable names
+	// These are defined in the JSON-RPC 2.0 specification: https://www.jsonrpc.org/specification
+	// Error codes from -32768 to -32000 are reserved for pre-defined errors
+	var codeName string
+	switch code {
+	case -32700:
+		codeName = "PARSE_ERROR" // Invalid JSON was received by the server
+	case -32600:
+		codeName = "INVALID_REQUEST" // The JSON sent is not a valid Request object
+	case -32601:
+		codeName = "METHOD_NOT_FOUND" // The method does not exist / is not available
+	case -32602:
+		codeName = "INVALID_PARAMS" // Invalid method parameter(s)
+	case -32603:
+		codeName = "INTERNAL_ERROR" // Internal JSON-RPC error
+	default:
+		if code >= -32099 && code <= -32000 {
+			// -32000 to -32099: Reserved for implementation-defined server errors
+			codeName = fmt.Sprintf("SERVER_ERROR_%d", -code-32000)
+		} else {
+			// Application-defined errors
+			codeName = fmt.Sprintf("ERROR_%d", code)
+		}
+	}
+
 	response := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      id,
 		"error": map[string]interface{}{
 			"code":    code,
 			"message": message,
+			"data": map[string]interface{}{
+				"codeName": codeName,
+			},
 		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
+	w.WriteHeader(httpStatus)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		internal.LogErrorWithFields("mcp", "Failed to encode error response", map[string]interface{}{
 			"error": err.Error(),

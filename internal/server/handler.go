@@ -231,7 +231,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 						SessionID:  session.SessionID(),
 					}
 					s.sessionManager.RemoveSession(key)
-					internal.LogDebugWithFields("server", "Session unregistered", map[string]interface{}{
+					internal.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
 						"sessionID": session.SessionID(),
 						"server":    currentServerName,
 						"user":      handler.userEmail,
@@ -401,4 +401,10 @@ func handleSessionRegistration(
 	// Note: We don't need to store anything in the session anymore
 	// The stdio client is connected directly to the shared MCP server
 	// Capabilities are automatically registered on the shared MCP server
+	
+	internal.LogInfoWithFields("server", "Session successfully created and connected", map[string]interface{}{
+		"sessionID": session.SessionID(),
+		"server":    handler.h.serverName,
+		"user":      handler.userEmail,
+	})
 }
