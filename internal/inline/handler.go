@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/server/sse"
 )
 
@@ -56,6 +57,9 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
+	// Generate a cryptographically secure session ID
+	sessionID := crypto.GenerateSecureToken()
+	
 	// Send initial endpoint message
 	endpoint := map[string]interface{}{
 		"type":        "endpoint",
@@ -66,6 +70,15 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	
 	if err := sse.WriteMessage(w, flusher, endpoint); err != nil {
 		internal.LogError("Failed to write endpoint message: %v", err)
+		return
+	}
+	
+	// Send message endpoint path for MCP protocol
+	// MCP clients expect to receive the message endpoint after the endpoint message
+	// Send as relative path - client will construct full URL based on where it connected
+	messageEndpointPath := fmt.Sprintf("/%s/message?sessionId=%s", h.name, sessionID)
+	if err := sse.WriteMessage(w, flusher, messageEndpointPath); err != nil {
+		internal.LogError("Failed to write message endpoint path: %v", err)
 		return
 	}
 	
@@ -111,6 +124,10 @@ type JSONRPCResponse struct {
 
 // handleMessage handles JSON-RPC messages
 func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
+	// For inline servers, we accept any sessionId parameter without validation
+	// since inline servers are stateless and don't track sessions
+	_ = r.URL.Query().Get("sessionId") // Accept but don't validate
+	
 	var request JSONRPCRequest
 	
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {

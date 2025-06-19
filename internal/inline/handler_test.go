@@ -351,11 +351,14 @@ func TestHandler_SSE_Headers(t *testing.T) {
 		assert.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
 		assert.Equal(t, "keep-alive", rec.Header().Get("Connection"))
 		
-		// Check that initial endpoint message was sent
-		assert.Len(t, rec.messages, 1)
+		// Check that initial endpoint message and message endpoint URL were sent
+		assert.Len(t, rec.messages, 2)
 		assert.Contains(t, rec.messages[0], `"type":"endpoint"`)
 		assert.Contains(t, rec.messages[0], `"name":"test"`)
 		assert.Contains(t, rec.messages[0], `"description":"Test server for SSE"`)
+		
+		// Check that message endpoint path was sent (relative path)
+		assert.Contains(t, rec.messages[1], "/test/message?sessionId=")
 	})
 }
 

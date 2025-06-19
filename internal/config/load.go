@@ -165,7 +165,7 @@ func validateOAuthConfig(oauth *OAuthAuthConfig) error {
 func validateMCPServer(name string, server *MCPClientConfig) error {
 	// Transport type is required
 	if server.TransportType == "" {
-		return fmt.Errorf("server %s must specify transportType (stdio, sse, or streamable-http)", name)
+		return fmt.Errorf("server %s must specify transportType (stdio, sse, streamable-http, or inline)", name)
 	}
 
 	// Validate based on transport type
@@ -183,6 +183,13 @@ func validateMCPServer(name string, server *MCPClientConfig) error {
 		}
 		if server.Command != "" {
 			return fmt.Errorf("server %s with %s transport cannot have command", name, server.TransportType)
+		}
+	case MCPClientTypeInline:
+		if len(server.InlineConfig) == 0 {
+			return fmt.Errorf("server %s with inline transport must have inline configuration", name)
+		}
+		if server.Command != "" || server.URL != "" {
+			return fmt.Errorf("server %s with inline transport cannot have command or url", name)
 		}
 	default:
 		return fmt.Errorf("server %s has invalid transportType: %s", name, server.TransportType)

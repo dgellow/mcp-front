@@ -22,6 +22,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		Options           *Options                   `json:"options,omitempty"`
 		RequiresUserToken bool                       `json:"requiresUserToken,omitempty"`
 		TokenSetup        *TokenSetupConfig          `json:"tokenSetup,omitempty"`
+		InlineConfig      json.RawMessage            `json:"inline,omitempty"`
 	}
 
 	var raw rawConfig
@@ -34,6 +35,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	c.Options = raw.Options
 	c.RequiresUserToken = raw.RequiresUserToken
 	c.TokenSetup = raw.TokenSetup
+	c.InlineConfig = raw.InlineConfig
 
 	if c.TransportType == "" {
 		return fmt.Errorf("transportType is required")

@@ -27,9 +27,7 @@ import (
 // TestBasicOAuthFlow tests the basic OAuth server functionality
 func TestBasicOAuthFlow(t *testing.T) {
 	// Start mcp-front with OAuth config
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
-	mcpCmd.Env = []string{
-		"PATH=" + os.Getenv("PATH"),
+	mcpCmd := startMCPFront(t, "config/config.oauth-test.json",
 		"JWT_SECRET=test-jwt-secret-32-bytes-exactly!",
 		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-for-oauth",
@@ -38,22 +36,11 @@ func TestBasicOAuthFlow(t *testing.T) {
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
-	}
-
-	if err := mcpCmd.Start(); err != nil {
-		t.Fatalf("Failed to start mcp-front: %v", err)
-	}
-	defer func() {
-		if mcpCmd.Process != nil {
-			_ = mcpCmd.Process.Kill()
-			_ = mcpCmd.Wait()
-		}
-	}()
+	)
+	defer stopMCPFront(mcpCmd)
 
 	// Wait for startup
-	if !waitForHealthCheck(t, 10) {
-		t.Fatal("mcp-front failed to start")
-	}
+	waitForMCPFront(t)
 
 	// Test OAuth discovery
 	resp, err := http.Get("http://localhost:8080/.well-known/oauth-authorization-server")
@@ -113,7 +100,7 @@ func TestJWTSecretValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			// Start mcp-front with specific JWT secret
-			mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
+			mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.oauth-test.json")
 			mcpCmd.Env = []string{
 				"PATH=" + os.Getenv("PATH"),
 				"JWT_SECRET=" + tt.secret,
@@ -1050,7 +1037,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 
 func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 	// Start with OAuth config
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
+	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.oauth-test.json")
 
 	// Set default environment
 	mcpCmd.Env = []string{
@@ -1091,7 +1078,7 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 // startOAuthServerWithTokenConfig starts the OAuth server with user token configuration
 func startOAuthServerWithTokenConfig(t *testing.T) *exec.Cmd {
 	// Start with user token config
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-token-test.json")
+	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.oauth-token-test.json")
 
 	// Set default environment
 	mcpCmd.Env = []string{

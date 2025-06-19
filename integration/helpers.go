@@ -22,7 +22,6 @@ type TestConfig struct {
 // GetTestConfig returns test configuration from environment variables or defaults
 func GetTestConfig() TestConfig {
 	c := TestConfig{
-		// Default values
 		SessionTimeout:     "10s",
 		CleanupInterval:    "2s",
 		CleanupWaitTime:    "15s",

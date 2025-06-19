@@ -66,6 +66,11 @@ func (c *MCPClient) SetAuthToken(token string) {
 
 // Connect establishes an SSE connection and retrieves the message endpoint
 func (c *MCPClient) Connect() error {
+	return c.ConnectToServer("postgres")
+}
+
+// ConnectToServer establishes an SSE connection to a specific server
+func (c *MCPClient) ConnectToServer(serverName string) error {
 	// Close any existing connection
 	if c.sseConn != nil {
 		c.sseConn.Close()
@@ -73,8 +78,8 @@ func (c *MCPClient) Connect() error {
 		c.messageEndpoint = ""
 	}
 
-	sseURL := c.baseURL + "/postgres/sse"
-	tracef("Connect: requesting %s", sseURL)
+	sseURL := c.baseURL + "/" + serverName + "/sse"
+	tracef("ConnectToServer: requesting %s", sseURL)
 
 	req, err := http.NewRequest("GET", sseURL, nil)
 	if err != nil {
@@ -84,7 +89,7 @@ func (c *MCPClient) Connect() error {
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Cache-Control", "no-cache")
-	tracef("Connect: headers set, making request")
+	tracef("ConnectToServer: headers set, making request")
 
 	// Don't use a timeout on the client for SSE
 	client := &http.Client{}
@@ -93,7 +98,7 @@ func (c *MCPClient) Connect() error {
 		return fmt.Errorf("SSE connection failed: %v", err)
 	}
 
-	tracef("Connect: got response status %d", resp.StatusCode)
+	tracef("ConnectToServer: got response status %d", resp.StatusCode)
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
@@ -105,13 +110,26 @@ func (c *MCPClient) Connect() error {
 	c.sseScanner = bufio.NewScanner(resp.Body)
 
 	// Read initial SSE messages to get the endpoint
+	// For inline servers, we don't get a message endpoint - we use the server path directly
+	gotEndpointMessage := false
 	for c.sseScanner.Scan() {
 		line := c.sseScanner.Text()
-		tracef("Connect: SSE line: %s", line)
+		tracef("ConnectToServer: SSE line: %s", line)
 
-		// Look for data lines containing the endpoint
+		// Look for data lines
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
+			
+			// Check if it's an endpoint message (for inline servers)
+			if strings.Contains(data, `"type":"endpoint"`) {
+				gotEndpointMessage = true
+				// For inline servers, construct the message endpoint
+				c.messageEndpoint = c.baseURL + "/" + serverName + "/message"
+				tracef("ConnectToServer: inline server detected, using endpoint: %s", c.messageEndpoint)
+				break
+			}
+			
+			// Check if it's a message endpoint URL (for stdio servers)
 			if strings.Contains(data, "http://") || strings.Contains(data, "https://") {
 				c.messageEndpoint = data
 
@@ -120,13 +138,13 @@ func (c *MCPClient) Connect() error {
 					c.sessionID = u.Query().Get("sessionId")
 				}
 
-				tracef("Connect: found endpoint: %s", c.messageEndpoint)
+				tracef("ConnectToServer: found endpoint: %s", c.messageEndpoint)
 				break
 			}
 		}
 	}
 
-	if c.messageEndpoint == "" {
+	if c.messageEndpoint == "" && !gotEndpointMessage {
 		c.sseConn.Close()
 		c.sseConn = nil
 		return fmt.Errorf("no message endpoint received")
@@ -342,7 +360,7 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 
 	// Start mcp-front
 	t.Log("🚀 Starting mcp-front...")
-	env.mcpCmd = exec.Command("../mcp-front", "-config", "config/config.test.json")
+	env.mcpCmd = exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.test.json")
 
 	// Capture stderr to log file if MCP_LOG_FILE is set
 	if logFile := os.Getenv("MCP_LOG_FILE"); logFile != "" {

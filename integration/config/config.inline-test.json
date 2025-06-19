@@ -1,0 +1,105 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-inline-test",
+    "auth": {
+      "kind": "bearerToken",
+      "tokens": {
+        "test-inline": [
+          "inline-test-token"
+        ]
+      }
+    }
+  },
+  "mcpServers": {
+    "test-inline": {
+      "transportType": "inline",
+      "inline": {
+        "description": "Test inline MCP server",
+        "tools": [
+          {
+            "name": "echo",
+            "description": "Echo a message",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "message": {
+                  "type": "string",
+                  "description": "Message to echo"
+                }
+              },
+              "required": ["message"]
+            },
+            "command": "echo",
+            "args": ["{{.message}}"]
+          },
+          {
+            "name": "env_test",
+            "description": "Test environment variables",
+            "inputSchema": {
+              "type": "object",
+              "properties": {}
+            },
+            "command": "printenv",
+            "args": [],
+            "env": {
+              "TEST_VAR": "test-value-123",
+              "OTHER_VAR": {"$env": "INLINE_TEST_ENV_VAR"}
+            }
+          },
+          {
+            "name": "template_test",
+            "description": "Test template substitution",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "count": {"type": "number"},
+                "optional": {"type": "string"}
+              },
+              "required": ["name", "count"]
+            },
+            "command": "sh",
+            "args": ["-c", "echo 'Name: {{.name}}, Count: {{.count}}{{if .optional}}, Optional: {{.optional}}{{end}}'"]
+          },
+          {
+            "name": "json_output",
+            "description": "Return JSON output",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "value": {"type": "string"}
+              },
+              "required": ["value"]
+            },
+            "command": "sh",
+            "args": ["-c", "echo '{\"status\": \"ok\", \"input\": \"{{.value}}\", \"timestamp\": 1234567890}'"]
+          },
+          {
+            "name": "failing_tool",
+            "description": "Tool that always fails",
+            "inputSchema": {
+              "type": "object",
+              "properties": {}
+            },
+            "command": "sh",
+            "args": ["-c", "echo 'Error occurred' >&2 && exit 1"]
+          },
+          {
+            "name": "slow_tool",
+            "description": "Tool that times out",
+            "inputSchema": {
+              "type": "object",
+              "properties": {}
+            },
+            "command": "sleep",
+            "args": ["10"],
+            "timeout": 100000000
+          }
+        ]
+      }
+    }
+  }
+}

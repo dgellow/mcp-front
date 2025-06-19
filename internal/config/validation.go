@@ -282,6 +282,13 @@ func validateServersStructure(rawConfig map[string]interface{}, result *Validati
 					Message: fmt.Sprintf("url is required for %s transport", transportType),
 				})
 			}
+		case "inline":
+			if _, ok := srv["inline"]; !ok {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.inline", name),
+					Message: "inline configuration is required for inline transport",
+				})
+			}
 		default:
 			result.Errors = append(result.Errors, ValidationError{
 				Path:    fmt.Sprintf("mcpServers.%s.transportType", name),
