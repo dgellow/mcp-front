@@ -68,6 +68,11 @@ func (s *Server) GetCapabilities() ServerCapabilities {
 	}
 }
 
+// GetDescription returns the server description
+func (s *Server) GetDescription() string {
+	return s.config.Description
+}
+
 // HandleToolCall executes a tool and returns the result
 func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error) {
 	tool, exists := s.tools[toolName]

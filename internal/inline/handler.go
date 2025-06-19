@@ -11,14 +11,21 @@ import (
 	"github.com/dgellow/mcp-front/internal/server/sse"
 )
 
+// MCPServer defines the interface that Handler depends on
+type MCPServer interface {
+	GetCapabilities() ServerCapabilities
+	HandleToolCall(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error)
+	GetDescription() string
+}
+
 // Handler implements the MCP protocol for inline servers
 type Handler struct {
-	server *Server
+	server MCPServer
 	name   string
 }
 
 // NewHandler creates a new inline MCP handler
-func NewHandler(name string, server *Server) *Handler {
+func NewHandler(name string, server MCPServer) *Handler {
 	return &Handler{
 		server: server,
 		name:   name,
@@ -38,7 +45,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // handleSSE handles SSE connections
 func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
-	// Set up SSE
+	// Set up SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -54,7 +61,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		"type":        "endpoint",
 		"name":        h.name,
 		"version":     "1.0",
-		"description": h.server.config.Description,
+		"description": h.server.GetDescription(),
 	}
 	
 	if err := sse.WriteMessage(w, flusher, endpoint); err != nil {
@@ -62,8 +69,12 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Keep connection alive
-	ctx := r.Context()
+	// Start the SSE loop
+	h.runSSELoop(r.Context(), w, flusher)
+}
+
+// runSSELoop runs the SSE keep-alive loop - extracted for testability
+func (h *Handler) runSSELoop(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	
@@ -103,7 +114,17 @@ func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
 	var request JSONRPCRequest
 	
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSONRPCError(w, nil, -32700, "Invalid JSON")
+		// Invalid JSON should return HTTP 400
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      nil,
+			Error: map[string]interface{}{
+				"code":    -32700,
+				"message": "Invalid JSON",
+			},
+		})
 		return
 	}
 	
