@@ -22,11 +22,10 @@ export default defineConfig({
 				{ label: 'Introduction', slug: 'index' },
 				{ label: 'Quickstart', slug: 'quickstart' },
 				{
-					label: 'Examples',
+					label: 'Guides',
 					items: [
-						{ label: 'Bearer Token', slug: 'examples/bearer-token' },
 						{ label: 'OAuth with Google', slug: 'examples/oauth-google' },
-						{ label: 'Deploy to Cloud Run', slug: 'examples/cloud-run' },
+						{ label: 'Bearer Token', slug: 'examples/bearer-token' },
 					],
 				},
 				{ label: 'Configuration', slug: 'configuration' },

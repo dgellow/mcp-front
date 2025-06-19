@@ -1,4 +1,4 @@
-# mcp-front
+# mcp-front <img src="docs-site/src/assets/logo.svg" alt="MCP Front" width="32" height="32" style="vertical-align: middle;">
 
 ![Docker image with tag latest](https://img.shields.io/docker/image-size/dgellow/mcp-front/latest?style=flat&logo=docker&label=latest)
 ![Docker image with tag docker-client-latest](https://img.shields.io/docker/image-size/dgellow/mcp-front/docker-client-latest?style=flat&logo=docker&label=docker-client-latest)

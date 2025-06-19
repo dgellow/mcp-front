@@ -7,28 +7,9 @@ This guide gets you running with bearer token authentication. For production dep
 
 ## How it works
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Claude
-    participant MCP Front
-    participant MCP Server
+![MCP Front Architecture](/mcp-front/architecture.svg)
 
-    User->>Claude: Configure MCP connection
-    Claude->>MCP Front: Connect with bearer token
-    MCP Front->>MCP Front: Validate token
-    MCP Front->>MCP Server: Start MCP server process
-    MCP Server-->>MCP Front: Server ready
-    Claude->>MCP Front: List available tools
-    MCP Front->>MCP Server: Forward request
-    MCP Server-->>MCP Front: Tool list
-    MCP Front-->>Claude: Return tools
-    User->>Claude: Use tool
-    Claude->>MCP Front: Execute tool
-    MCP Front->>MCP Server: Forward execution
-    MCP Server-->>MCP Front: Results
-    MCP Front-->>Claude: Return results
-```
+MCP Front acts as a secure gateway between AI assistants and your internal MCP servers. It handles authentication so your servers don't have to.
 
 ## 1. Create a config file
 
@@ -69,21 +50,14 @@ docker run -p 8080:8080 \
   ghcr.io/dgellow/mcp-front:latest
 ```
 
-### Option B: Download binary
+### Option B: Install with Go
 
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/dgellow/mcp-front/releases/latest/download/mcp-front-darwin-arm64 -o mcp-front
-
-# macOS (Intel)
-curl -L https://github.com/dgellow/mcp-front/releases/latest/download/mcp-front-darwin-amd64 -o mcp-front
-
-# Linux
-curl -L https://github.com/dgellow/mcp-front/releases/latest/download/mcp-front-linux-amd64 -o mcp-front
+# Install directly from GitHub
+go install github.com/dgellow/mcp-front/cmd/mcp-front@main
 
 # Then run
-chmod +x mcp-front
-./mcp-front -config config.json
+mcp-front -config config.json
 ```
 
 ### Option C: Build from source
@@ -107,7 +81,7 @@ You should see the filesystem tools from your MCP server.
 
 ## What's next?
 
-Switch to [OAuth authentication](/examples/oauth-google/) for production. [Deploy to Cloud Run](/examples/cloud-run/) for automatic scaling. [Add more MCP servers](/configuration#mcp-servers) to your config.
+Switch to [OAuth authentication](/examples/oauth-google/) for production. [Add more MCP servers](/configuration#mcp-servers) to your config.
 
 ## Troubleshooting
 

@@ -36,7 +36,7 @@ You have two options: bearer tokens or OAuth. Choose based on your security need
 
 ### Bearer tokens
 
-Map MCP server names to lists of valid tokens. When a user connects to a server, their token must be in that server's list.
+Map MCP server names to lists of valid tokens. The client's token must be in that server's list.
 
 ```json
 {
@@ -54,7 +54,7 @@ Each key matches an MCP server name from your `mcpServers` section. The value is
 
 ### OAuth 2.1
 
-For production, use OAuth with Google. Users log in with their work email and MCP Front validates their domain. All sensitive fields must use environment variables for security.
+For production, use OAuth with Google. Claude redirects users to Google for authentication, and MCP Front validates their domain. All sensitive fields must use environment variables for security.
 
 ```json
 {
@@ -81,6 +81,15 @@ The `issuer` should match your `baseURL`. `allowedDomains` restricts access to s
 Security requirements: `googleClientSecret`, `jwtSecret`, and `encryptionKey` must be environment variables. The JWT secret must be at least 32 bytes. The encryption key must be exactly 32 bytes.
 
 For production, set `storage` to "firestore" and add `gcpProject`, `firestoreDatabase`, and `firestoreCollection` fields.
+
+### Storage architecture
+
+![Storage Architecture](/mcp-front/storage-architecture.svg)
+
+MCP Front supports two storage backends:
+
+- **Memory**: Development only, data lost on restart
+- **Firestore**: Production, with encrypted secrets and persistent sessions
 
 ## MCP server configuration
 

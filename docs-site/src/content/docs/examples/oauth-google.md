@@ -3,31 +3,11 @@ title: OAuth with Google
 description: Google Workspace SSO
 ---
 
-OAuth 2.1 authentication lets you control access based on company email domains. When someone connects from Claude, they'll log in with their Google account, and MCP Front verifies they're from your company.
+OAuth 2.1 authentication lets you control access based on company email domains. Claude redirects users to Google for authentication, and MCP Front verifies they're from your company.
 
 ## How OAuth works with MCP Front
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Claude
-    participant MCP Front
-    participant Google
-    participant MCP Server
-
-    User->>Claude: Add MCP server
-    Claude->>MCP Front: GET /authorize
-    MCP Front->>Claude: Redirect to Google
-    Claude->>User: Open browser
-    User->>Google: Login with company email
-    Google->>MCP Front: Return auth code
-    MCP Front->>Google: Exchange code for user info
-    Google->>MCP Front: Email: user@company.com
-    MCP Front->>MCP Front: Verify @company.com domain
-    MCP Front->>Claude: Return JWT token
-    Claude->>MCP Front: Use JWT for all requests
-    MCP Front->>MCP Server: Forward authenticated requests
-```
+![OAuth 2.1 Authentication Flow](/mcp-front/oauth-flow.svg)
 
 ## Prerequisites
 
@@ -108,7 +88,7 @@ docker run -p 8080:8080 \
 
 ## Understanding domain restrictions
 
-The `allowedDomains` field is your primary security control. Only users with email addresses from these domains can access your MCP servers:
+The `allowedDomains` field is your primary security control. Only email addresses from these domains can access your MCP servers:
 
 ```json
 {
@@ -118,9 +98,9 @@ The `allowedDomains` field is your primary security control. Only users with ema
 
 How it works:
 
-- User logs in: john@company.com ✓ Allowed
-- User logs in: jane@subsidiary.com ✓ Allowed
-- User logs in: hacker@gmail.com ✗ Rejected
+- john@company.com ✓ Allowed
+- jane@subsidiary.com ✓ Allowed  
+- hacker@gmail.com ✗ Rejected
 
 This is perfect for companies using Google Workspace, as it automatically grants access to all employees while blocking external users.
 
@@ -159,9 +139,9 @@ OAuth 2.1 requires HTTPS in production:
 
 Options for HTTPS:
 
-- **Cloud Run**: Automatic HTTPS with Google-managed certificates
-- **Load Balancer**: Terminate SSL at the load balancer
+- **Load Balancer**: Terminate SSL at the load balancer  
 - **Reverse Proxy**: Use nginx/caddy with Let's Encrypt
+- **Managed hosting**: Deploy to any platform with automatic HTTPS
 
 ### Token expiration
 

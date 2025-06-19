@@ -165,6 +165,22 @@ cmd/mcp-front/   # Main application entry point
 7. **Ask questions when uncertain** - Don't assume and proceed
 8. **No hacks or shortcuts** - Only clean, maintainable solutions
 
+### Documentation Standards
+
+**Write precise, technical language:**
+- ❌ "When Claude connects to MCP Front, it includes a bearer token in the Authorization header"
+- ✅ "An MCP client can connect to MCP Front with a bearer token"
+- ❌ "Users log in with their Google account"  
+- ✅ "Claude redirects users to Google for authentication"
+- ❌ "Claude establishes SSE connection"
+- ✅ "Claude connects via SSE"
+
+**Key clarifications:**
+- **Claude.ai only supports OAuth** - Bearer tokens are for development/alternative clients only
+- **Avoid redundant implementation details** - "bearer token" implies Authorization header
+- **Use precise actors** - "MCP client" not "user" in technical contexts
+- **Be specific about auth flow** - Claude handles the OAuth redirect, MCP Front validates domains
+
 ### Refactoring Guidelines
 
 When refactoring for better design:

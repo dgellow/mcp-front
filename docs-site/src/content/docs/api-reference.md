@@ -36,12 +36,16 @@ Accept: text/event-stream
 
 Main endpoint for MCP protocol communication over Server-Sent Events.
 
-**How it works:**
+**Request routing:**
 
-1. Claude establishes SSE connection
-2. MCP Front validates auth token
-3. Starts or connects to MCP server
-4. Streams bidirectional messages
+![Request Routing and Proxying](/mcp-front/request-routing.svg)
+
+The request flow:
+
+1. Claude connects via SSE
+2. MCP Front validates auth token  
+3. MCP Front connects to MCP server
+4. Bidirectional message streaming
 
 **Server selection:**
 

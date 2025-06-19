@@ -1,26 +1,17 @@
 ---
 title: Bearer Token Example
-description: Static token authentication
+description: Static token authentication for development and alternative clients
 ---
 
-Bearer tokens are static authentication tokens configured in your MCP Front config. They're perfect for development environments and internal tools where you don't need user-specific authentication.
+Bearer tokens are static authentication tokens configured in your MCP Front config. They're perfect for development environments and alternative MCP clients (not Claude.ai, which only supports OAuth).
 
 ## How bearer tokens work
 
-When Claude connects to MCP Front, it includes a bearer token in the Authorization header. MCP Front validates this token against its configured tokens, then proxies the request to your MCP servers.
+An MCP client can connect to MCP Front with a bearer token. MCP Front validates this token against its configured tokens, then proxies the request to your MCP servers.
 
-```mermaid
-graph LR
-    A[Claude] -->|Bearer: dev-token-123| B[MCP Front]
-    B -->|Validate token| B
-    B -->|Token valid ✓| C[MCP Server]
-    B -.->|Token invalid ✗| D[401 Unauthorized]
+**Note:** Claude.ai only supports OAuth authentication. Use bearer tokens for development, testing, or alternative MCP clients.
 
-    style A fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style B fill:#0066ff,stroke:#333,stroke-width:2px,color:#fff
-    style C fill:#90EE90,stroke:#333,stroke-width:2px
-    style D fill:#FFB6C1,stroke:#333,stroke-width:2px
-```
+![Bearer Token Authentication Flow](/mcp-front/bearer-token-flow.svg)
 
 ## Basic setup
 
