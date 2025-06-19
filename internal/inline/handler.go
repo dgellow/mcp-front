@@ -86,7 +86,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	h.runSSELoop(r.Context(), w, flusher)
 }
 
-// runSSELoop runs the SSE keep-alive loop - extracted for testability
+// runSSELoop runs the SSE keep-alive loop
 func (h *Handler) runSSELoop(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()

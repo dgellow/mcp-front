@@ -157,7 +157,7 @@ func TestInlineMCPServer(t *testing.T) {
 		require.True(t, ok, "Expected text in content for JSON output")
 
 		// Use testify's JSON assertions
-		expectedJSON := `{"status":"ok","input":"test-input","timestamp":1234567890}`
+		expectedJSON := `{"status":"ok","input":"static-value","timestamp":1234567890}`
 		assert.JSONEq(t, expectedJSON, text)
 	})
 

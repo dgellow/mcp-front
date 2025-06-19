@@ -33,7 +33,7 @@
               "required": ["message"]
             },
             "command": "echo",
-            "args": ["{{.message}}"]
+            "args": ["test message"]
           },
           {
             "name": "env_test",
@@ -50,19 +50,15 @@
             }
           },
           {
-            "name": "template_test",
-            "description": "Test template substitution",
+            "name": "static_test",
+            "description": "Test static output",
             "inputSchema": {
               "type": "object",
-              "properties": {
-                "name": {"type": "string"},
-                "count": {"type": "number"},
-                "optional": {"type": "string"}
-              },
-              "required": ["name", "count"]
+              "properties": {},
+              "required": []
             },
             "command": "sh",
-            "args": ["-c", "echo 'Name: {{.name}}, Count: {{.count}}{{if .optional}}, Optional: {{.optional}}{{end}}'"]
+            "args": ["-c", "echo 'Static output: test'"]
           },
           {
             "name": "json_output",
@@ -75,7 +71,7 @@
               "required": ["value"]
             },
             "command": "sh",
-            "args": ["-c", "echo '{\"status\": \"ok\", \"input\": \"{{.value}}\", \"timestamp\": 1234567890}'"]
+            "args": ["-c", "echo '{\"status\": \"ok\", \"input\": \"static-value\", \"timestamp\": 1234567890}'"]
           },
           {
             "name": "failing_tool",

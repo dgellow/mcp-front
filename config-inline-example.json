@@ -26,20 +26,11 @@
         "tools": [
           {
             "name": "list_instances",
-            "description": "List all GCE instances in a project",
+            "description": "List all GCE instances in the configured project",
             "inputSchema": {
               "type": "object",
-              "properties": {
-                "project": {
-                  "type": "string",
-                  "description": "GCP project ID"
-                },
-                "zone": {
-                  "type": "string",
-                  "description": "GCP zone (optional, lists all zones if not specified)"
-                }
-              },
-              "required": ["project"]
+              "properties": {},
+              "required": []
             },
             "command": "docker",
             "args": [
@@ -65,24 +56,11 @@
           },
           {
             "name": "describe_cluster",
-            "description": "Get details about a GKE cluster",
+            "description": "Get details about the default GKE cluster (hardcoded to my-cluster in us-central1-a)",
             "inputSchema": {
               "type": "object",
-              "properties": {
-                "cluster": {
-                  "type": "string",
-                  "description": "GKE cluster name"
-                },
-                "zone": {
-                  "type": "string", 
-                  "description": "GCP zone where the cluster is located"
-                },
-                "project": {
-                  "type": "string",
-                  "description": "GCP project ID"
-                }
-              },
-              "required": ["cluster", "zone", "project"]
+              "properties": {},
+              "required": []
             },
             "command": "docker",
             "args": [
@@ -110,16 +88,11 @@
           },
           {
             "name": "list_buckets",
-            "description": "List all Cloud Storage buckets in a project",
+            "description": "List all Cloud Storage buckets in the configured project",
             "inputSchema": {
               "type": "object",
-              "properties": {
-                "project": {
-                  "type": "string",
-                  "description": "GCP project ID"
-                }
-              },
-              "required": ["project"]
+              "properties": {},
+              "required": []
             },
             "command": "docker",
             "args": [

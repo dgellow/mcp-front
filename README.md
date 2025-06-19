@@ -156,7 +156,7 @@ Some MCP servers are better to use with each users having their own integration 
       "helpUrl": "https://www.notion.so/my-integrations"
     },
     "command": "docker",
-    "args": ["run", "--rm", "-i", "mcp/notion:latest"],
+    "args": ["run", "--rm", "-i", "-e", "OPENAPI_MCP_HEADERS", "mcp/notion:latest"],
     "env": {
       "OPENAPI_MCP_HEADERS": {
         "$userToken": "{\"Authorization\": \"Bearer {{token}}\"}"

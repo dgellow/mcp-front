@@ -22,7 +22,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Name:        "echo",
 			Description: "Echo a message",
 			Command:     "echo",
-			Args:        []string{"{{.message}}"},
+			Args:        []string{"Hello, Test!"},
 		},
 	}
 
@@ -164,7 +164,7 @@ func TestHandler_Message_ToolCall(t *testing.T) {
 			Name:        "echo",
 			Description: "Echo a message",
 			Command:     "echo",
-			Args:        []string{"{{.message}}"},
+			Args:        []string{"Hello, Test!"},
 		},
 	}
 

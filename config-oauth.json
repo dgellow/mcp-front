@@ -40,6 +40,7 @@
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
+        "-e", "OPENAPI_MCP_HEADERS",
         "mcp/notion:latest"
       ],
       "env": {

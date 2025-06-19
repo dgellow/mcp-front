@@ -17,7 +17,7 @@ type ToolConfig struct {
 	Description string                     `json:"description"`
 	InputSchema json.RawMessage            `json:"inputSchema"`
 	Command     string                     `json:"command"`           // Command to run (e.g., "docker", "gcloud", etc.)
-	Args        []json.RawMessage          `json:"args,omitempty"`    // Arguments with {"$env": "..."} and template support
+	Args        []json.RawMessage          `json:"args,omitempty"`    // Arguments with {"$env": "..."} support
 	Env         map[string]json.RawMessage `json:"env,omitempty"`     // Environment variables with {"$env": "..."} support
 	Timeout     time.Duration              `json:"timeout,omitempty"` // Timeout for command execution
 }

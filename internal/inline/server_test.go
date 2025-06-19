@@ -66,13 +66,13 @@ func TestServer_HandleToolCall(t *testing.T) {
 			Name:        "echo",
 			Description: "Echo a message",
 			Command:     "echo",
-			Args:        []string{"{{.message}}"},
+			Args:        []string{"test-message"},
 		},
 		{
 			Name:        "cat",
 			Description: "Cat a file",
 			Command:     "cat",
-			Args:        []string{"{{.file}}"},
+			Args:        []string{"/nonexistent/file"},
 		},
 		{
 			Name:        "env_test",
@@ -95,31 +95,15 @@ func TestServer_HandleToolCall(t *testing.T) {
 		validate  func(t *testing.T, result interface{}, err error)
 	}{
 		{
-			name:     "echo with message",
-			toolName: "echo",
-			args: map[string]interface{}{
-				"message": "Hello, World!",
-			},
+			name:      "echo tool",
+			toolName:  "echo",
+			args:      map[string]interface{}{},
 			wantError: false,
 			validate: func(t *testing.T, result interface{}, err error) {
 				resultMap, ok := result.(map[string]interface{})
 				require.True(t, ok)
 				output := resultMap["output"].(string)
-				assert.Contains(t, output, "Hello, World!")
-			},
-		},
-		{
-			name:     "echo with empty message",
-			toolName: "echo",
-			args: map[string]interface{}{
-				"message": "",
-			},
-			wantError: false,
-			validate: func(t *testing.T, result interface{}, err error) {
-				resultMap, ok := result.(map[string]interface{})
-				require.True(t, ok)
-				output := resultMap["output"].(string)
-				assert.Equal(t, "\n", output) // echo with no args prints newline
+				assert.Equal(t, "test-message\n", output)
 			},
 		},
 		{
@@ -133,11 +117,9 @@ func TestServer_HandleToolCall(t *testing.T) {
 			},
 		},
 		{
-			name:     "cat nonexistent file",
-			toolName: "cat",
-			args: map[string]interface{}{
-				"file": "/tmp/nonexistent-file-12345",
-			},
+			name:      "cat nonexistent file",
+			toolName:  "cat",
+			args:      map[string]interface{}{},
 			wantError: true,
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.Error(t, err)
@@ -175,77 +157,6 @@ func TestServer_HandleToolCall(t *testing.T) {
 			if tt.validate != nil {
 				tt.validate(t, result, err)
 			}
-		})
-	}
-}
-
-func TestServer_processTemplateArgs(t *testing.T) {
-	server := &Server{}
-
-	tests := []struct {
-		name         string
-		templateArgs []string
-		args         map[string]interface{}
-		want         []string
-		wantError    bool
-	}{
-		{
-			name:         "no templates",
-			templateArgs: []string{"echo", "hello", "world"},
-			args:         map[string]interface{}{},
-			want:         []string{"echo", "hello", "world"},
-		},
-		{
-			name:         "simple template",
-			templateArgs: []string{"echo", "{{.message}}"},
-			args:         map[string]interface{}{"message": "Hello!"},
-			want:         []string{"echo", "Hello!"},
-		},
-		{
-			name:         "multiple templates",
-			templateArgs: []string{"curl", "-X", "{{.method}}", "{{.url}}"},
-			args: map[string]interface{}{
-				"method": "POST",
-				"url":    "https://api.example.com",
-			},
-			want: []string{"curl", "-X", "POST", "https://api.example.com"},
-		},
-		{
-			name:         "conditional template",
-			templateArgs: []string{"gcloud", "compute", "instances", "list", "--project={{.project}}", "{{if .zone}}--zone={{.zone}}{{end}}"},
-			args: map[string]interface{}{
-				"project": "my-project",
-				"zone":    "us-central1-a",
-			},
-			want: []string{"gcloud", "compute", "instances", "list", "--project=my-project", "--zone=us-central1-a"},
-		},
-		{
-			name:         "conditional template with missing value",
-			templateArgs: []string{"gcloud", "compute", "instances", "list", "--project={{.project}}", "{{if .zone}}--zone={{.zone}}{{end}}"},
-			args: map[string]interface{}{
-				"project": "my-project",
-			},
-			want: []string{"gcloud", "compute", "instances", "list", "--project=my-project"},
-		},
-		{
-			name:         "invalid template",
-			templateArgs: []string{"echo", "{{.message"},
-			args:         map[string]interface{}{"message": "test"},
-			wantError:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := server.processTemplateArgs(tt.templateArgs, tt.args)
-
-			if tt.wantError {
-				assert.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
 		})
 	}
 }

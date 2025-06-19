@@ -38,7 +38,7 @@
               "required": ["message"]
             },
             "command": "echo",
-            "args": ["{{.message}}"]
+            "args": [{"$env": "TEST_ENV_VAR"}]
           },
           {
             "name": "date",

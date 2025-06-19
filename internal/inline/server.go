@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"text/template"
 
 	"github.com/dgellow/mcp-front/internal"
 )
@@ -82,14 +81,8 @@ func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[s
 		return nil, fmt.Errorf("tool %s not found", toolName)
 	}
 
-	// Process args with template substitution
-	processedArgs, err := s.processTemplateArgs(tool.Args, args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to process arguments: %w", err)
-	}
-
-	// Set up command
-	cmd := exec.CommandContext(ctx, tool.Command, processedArgs...)
+	// Set up command with args as-is (already resolved by config parser)
+	cmd := exec.CommandContext(ctx, tool.Command, tool.Args...)
 
 	// Set environment variables
 	for k, v := range tool.Env {
@@ -103,7 +96,7 @@ func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[s
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, tool.Timeout)
 		defer cancel()
-		cmd = exec.CommandContext(ctx, tool.Command, processedArgs...)
+		cmd = exec.CommandContext(ctx, tool.Command, tool.Args...)
 	}
 
 	// Capture output
@@ -112,10 +105,10 @@ func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[s
 	cmd.Stderr = &stderr
 
 	// Log execution
-	internal.LogDebug("Executing inline tool: %s %s", tool.Command, strings.Join(processedArgs, " "))
+	internal.LogDebug("Executing inline tool: %s %s", tool.Command, strings.Join(tool.Args, " "))
 
 	// Execute
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		internal.LogErrorWithFields("inline", "Tool execution failed", map[string]interface{}{
 			"tool":   toolName,
@@ -139,34 +132,4 @@ func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[s
 		"output": stdout.String(),
 		"stderr": stderr.String(),
 	}, nil
-}
-
-// processTemplateArgs processes template arguments with the provided args
-func (s *Server) processTemplateArgs(templateArgs []string, args map[string]interface{}) ([]string, error) {
-	processed := make([]string, 0, len(templateArgs))
-
-	for _, arg := range templateArgs {
-		// Check if this arg contains templates
-		if strings.Contains(arg, "{{") {
-			tmpl, err := template.New("arg").Parse(arg)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse template: %w", err)
-			}
-
-			var buf bytes.Buffer
-			if err := tmpl.Execute(&buf, args); err != nil {
-				return nil, fmt.Errorf("failed to execute template: %w", err)
-			}
-
-			// Only add non-empty results
-			result := buf.String()
-			if result != "" {
-				processed = append(processed, result)
-			}
-		} else {
-			processed = append(processed, arg)
-		}
-	}
-
-	return processed, nil
 }
