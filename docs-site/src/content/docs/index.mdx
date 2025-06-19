@@ -106,8 +106,6 @@ Then connect from Claude with URL `http://localhost:8080/sse` and token `test-12
 
 ## Built for production
 
-MCP Front uses <span class="feature-underline">OAuth 2.1 with PKCE</span>, the latest standard. It integrates with Google Workspace for enterprise SSO. Domain restrictions mean only your employees get access.
+MCP Front uses <span class="feature-underline">OAuth 2.1 with PKCE</span>, the latest standard. It currently supports <span class="feature-underline">Google Cloud OAuth</span> clients — integrates directly with <span class="feature-underline">Google Workspace SSO</span>, <span class="feature-underline">Firestore</span> for persistent storage.
 
-Sessions persist in Firestore so they survive restarts. <span class="feature-underline">Structured JSON logging</span> makes debugging straightforward. Health checks work with any monitoring system.
-
-The code is simple Go with minimal dependencies.
+The code is clean, simple <span class="feature-underline">Go</span>.
