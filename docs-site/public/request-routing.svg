@@ -1,0 +1,122 @@
+<svg viewBox="0 0 900 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Arrow marker -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+    <!-- Data flow marker -->
+    <marker id="dataflow" markerWidth="8" markerHeight="6" 
+            refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#666" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="500" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="600">Request Routing and Proxying</text>
+
+  <!-- Claude client -->
+  <g id="claude">
+    <rect x="50" y="80" width="120" height="60" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="110" y="105" text-anchor="middle" font-family="system-ui" font-size="14" font-weight="500">Claude</text>
+    <text x="110" y="125" text-anchor="middle" font-family="system-ui" font-size="11" fill="#666">MCP Client</text>
+  </g>
+
+  <!-- MCP Front container -->
+  <g id="mcp-front">
+    <rect x="250" y="60" width="400" height="380" fill="#f9f9f9" stroke="#333" stroke-width="2" rx="8"/>
+    <text x="450" y="85" text-anchor="middle" font-family="system-ui" font-size="16" font-weight="500">MCP Front</text>
+
+    <!-- SSE Handler -->
+    <rect x="270" y="110" width="360" height="60" fill="#fff" stroke="#666" stroke-width="1" rx="4"/>
+    <text x="450" y="135" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="500">SSE Handler</text>
+    <text x="450" y="155" text-anchor="middle" font-family="system-ui" font-size="11" fill="#666">GET /{server}/sse</text>
+
+    <!-- Auth Middleware -->
+    <rect x="270" y="190" width="170" height="50" fill="#FFE5E5" stroke="#FF6B6B" stroke-width="1" rx="4"/>
+    <text x="355" y="210" text-anchor="middle" font-family="system-ui" font-size="12">Auth Middleware</text>
+    <text x="355" y="225" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">JWT validation</text>
+
+    <!-- Router -->
+    <rect x="460" y="190" width="170" height="50" fill="#E5F5FF" stroke="#4A90E2" stroke-width="1" rx="4"/>
+    <text x="545" y="210" text-anchor="middle" font-family="system-ui" font-size="12">Router</text>
+    <text x="545" y="225" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">Server lookup</text>
+
+    <!-- MCP Client Manager -->
+    <rect x="270" y="260" width="360" height="60" fill="#fff" stroke="#666" stroke-width="1" rx="4"/>
+    <text x="450" y="285" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="500">MCP Client Manager</text>
+    <text x="450" y="305" text-anchor="middle" font-family="system-ui" font-size="11" fill="#666">Connection pooling & lifecycle</text>
+
+    <!-- Transport adapters -->
+    <g id="transports">
+      <text x="450" y="345" text-anchor="middle" font-family="system-ui" font-size="12" fill="#666">Transport Adapters</text>
+      
+      <rect x="270" y="360" width="110" height="50" fill="#E5FFE5" stroke="#5CB85C" stroke-width="1" rx="4"/>
+      <text x="325" y="380" text-anchor="middle" font-family="system-ui" font-size="11">stdio</text>
+      <text x="325" y="395" text-anchor="middle" font-family="system-ui" font-size="9" fill="#666">Process spawn</text>
+
+      <rect x="395" y="360" width="110" height="50" fill="#E5FFE5" stroke="#5CB85C" stroke-width="1" rx="4"/>
+      <text x="450" y="380" text-anchor="middle" font-family="system-ui" font-size="11">docker</text>
+      <text x="450" y="395" text-anchor="middle" font-family="system-ui" font-size="9" fill="#666">Container exec</text>
+
+      <rect x="520" y="360" width="110" height="50" fill="#E5FFE5" stroke="#5CB85C" stroke-width="1" rx="4"/>
+      <text x="575" y="380" text-anchor="middle" font-family="system-ui" font-size="11">http</text>
+      <text x="575" y="395" text-anchor="middle" font-family="system-ui" font-size="9" fill="#666">HTTP proxy</text>
+    </g>
+  </g>
+
+  <!-- MCP Servers -->
+  <g id="servers">
+    <rect x="730" y="110" width="120" height="50" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="790" y="130" text-anchor="middle" font-family="system-ui" font-size="12">filesystem-mcp</text>
+    <text x="790" y="145" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">stdio transport</text>
+
+    <rect x="730" y="180" width="120" height="50" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="790" y="200" text-anchor="middle" font-family="system-ui" font-size="12">postgres-mcp</text>
+    <text x="790" y="215" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">docker transport</text>
+
+    <rect x="730" y="250" width="120" height="50" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="790" y="270" text-anchor="middle" font-family="system-ui" font-size="12">github-mcp</text>
+    <text x="790" y="285" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">http transport</text>
+  </g>
+
+  <!-- Flow arrows -->
+  <g id="flows">
+    <!-- 1. SSE request -->
+    <line x1="170" y1="110" x2="270" y2="140" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <text x="220" y="120" text-anchor="middle" font-family="system-ui" font-size="10" font-weight="500">1</text>
+    
+    <!-- 2. Auth check -->
+    <line x1="450" y1="170" x2="355" y2="190" stroke="#FF6B6B" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="400" y="175" text-anchor="middle" font-family="system-ui" font-size="10" font-weight="500">2</text>
+
+    <!-- 3. Route lookup -->
+    <line x1="450" y1="170" x2="545" y2="190" stroke="#4A90E2" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="500" y="175" text-anchor="middle" font-family="system-ui" font-size="10" font-weight="500">3</text>
+
+    <!-- 4. Get/create client -->
+    <line x1="450" y1="240" x2="450" y2="260" stroke="#333" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="465" y="250" font-family="system-ui" font-size="10" font-weight="500">4</text>
+
+    <!-- 5. Transport selection -->
+    <line x1="325" y1="320" x2="325" y2="360" stroke="#5CB85C" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <line x1="450" y1="320" x2="450" y2="360" stroke="#5CB85C" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <line x1="575" y1="320" x2="575" y2="360" stroke="#5CB85C" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="340" y="340" font-family="system-ui" font-size="10" font-weight="500">5</text>
+
+    <!-- 6. Connect to servers -->
+    <line x1="630" y1="385" x2="730" y2="135" stroke="#666" stroke-width="1" marker-end="url(#dataflow)"/>
+    <line x1="630" y1="385" x2="730" y2="205" stroke="#666" stroke-width="1" marker-end="url(#dataflow)"/>
+    <line x1="630" y1="385" x2="730" y2="275" stroke="#666" stroke-width="1" marker-end="url(#dataflow)"/>
+    <text x="680" y="260" font-family="system-ui" font-size="10" font-weight="500">6</text>
+  </g>
+
+  <!-- Data flow legend -->
+  <g id="data-flow-note" transform="translate(50, 460)">
+    <text x="0" y="0" font-family="system-ui" font-size="12" font-weight="500">Data Flow:</text>
+    <text x="70" y="0" font-family="system-ui" font-size="11" fill="#666">SSE events ←→ JSON-RPC messages</text>
+  </g>
+</svg>

@@ -1,0 +1,122 @@
+<svg viewBox="0 0 900 700" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Arrow marker -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="700" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="600">OAuth Authentication Flow</text>
+  <text x="450" y="50" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#666">MCP Front bridges OAuth 2.1 (Claude) ↔ OAuth 2.0 (Google)</text>
+
+  <!-- Actors -->
+  <g id="actors">
+    <!-- Claude -->
+    <rect x="50" y="70" width="100" height="50" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="100" y="95" text-anchor="middle" font-family="system-ui" font-size="14">Claude</text>
+    <text x="100" y="110" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">OAuth 2.1</text>
+
+    <!-- MCP Front -->
+    <rect x="300" y="70" width="100" height="50" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="350" y="95" text-anchor="middle" font-family="system-ui" font-size="14">MCP Front</text>
+    <text x="350" y="110" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">Bridge</text>
+
+    <!-- Google OAuth -->
+    <rect x="550" y="70" width="100" height="50" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="600" y="95" text-anchor="middle" font-family="system-ui" font-size="14">Google</text>
+    <text x="600" y="110" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">OAuth 2.0</text>
+
+    <!-- MCP Server -->
+    <rect x="700" y="70" width="100" height="50" fill="#e8f5e9" stroke="#4caf50" stroke-width="1" rx="4"/>
+    <text x="750" y="95" text-anchor="middle" font-family="system-ui" font-size="14">MCP Server</text>
+    <text x="750" y="110" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">stdio/sse/http</text>
+  </g>
+
+  <!-- Vertical lifelines -->
+  <line x1="100" y1="120" x2="100" y2="650" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="350" y1="120" x2="350" y2="650" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="600" y1="120" x2="600" y2="350" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="750" y1="120" x2="750" y2="650" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+
+  <!-- Flow steps -->
+  <g id="flow">
+    <!-- 1. Connect request -->
+    <line x1="100" y1="140" x2="340" y2="140" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="220" y="135" text-anchor="middle" font-family="system-ui" font-size="12">1. POST /oauth/connect</text>
+
+    <!-- 2. Generate PKCE -->
+    <rect x="340" y="160" width="20" height="30" fill="#FF6B6B" rx="2"/>
+    <text x="370" y="178" font-family="system-ui" font-size="12">2. Generate PKCE challenge</text>
+    <text x="370" y="193" font-family="system-ui" font-size="10" fill="#666">(for Claude, not Google)</text>
+
+    <!-- 3. Redirect to Google -->
+    <line x1="340" y1="210" x2="100" y2="210" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="220" y="205" text-anchor="middle" font-family="system-ui" font-size="12">3. 302 Redirect to Google</text>
+
+    <!-- 4. User authorizes -->
+    <line x1="100" y1="240" x2="590" y2="240" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="345" y="235" text-anchor="middle" font-family="system-ui" font-size="12">4. User authorizes</text>
+
+    <!-- 5. Callback with code -->
+    <line x1="590" y1="270" x2="360" y2="270" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="475" y="265" text-anchor="middle" font-family="system-ui" font-size="12">5. GET /oauth/callback?code=...</text>
+
+    <!-- 6. Exchange code -->
+    <line x1="360" y1="300" x2="590" y2="300" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="475" y="295" text-anchor="middle" font-family="system-ui" font-size="12">6. Exchange code (OAuth 2.0)</text>
+
+    <!-- 7. Return tokens -->
+    <line x1="590" y1="330" x2="360" y2="330" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="475" y="325" text-anchor="middle" font-family="system-ui" font-size="12">7. Access token + ID token</text>
+
+    <!-- 8. Verify domain -->
+    <rect x="340" y="350" width="20" height="30" fill="#FF6B6B" rx="2"/>
+    <text x="370" y="368" font-family="system-ui" font-size="12">8. Verify email domain</text>
+
+    <!-- 9. Create session -->
+    <rect x="340" y="400" width="20" height="30" fill="#FF6B6B" rx="2"/>
+    <text x="370" y="418" font-family="system-ui" font-size="12">9. Create session, store in Firestore</text>
+
+    <!-- 10. Redirect to Claude -->
+    <line x1="340" y1="450" x2="100" y2="450" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="220" y="445" text-anchor="middle" font-family="system-ui" font-size="12">10. 302 Redirect to claude.ai</text>
+    <text x="220" y="460" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">with client_id + client_secret</text>
+
+    <!-- 11. Connect to SSE -->
+    <line x1="100" y1="490" x2="340" y2="490" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="220" y="485" text-anchor="middle" font-family="system-ui" font-size="12">11. Connect to SSE with JWT</text>
+
+    <!-- 12. Validate JWT -->
+    <rect x="340" y="510" width="20" height="30" fill="#FF6B6B" rx="2"/>
+    <text x="370" y="528" font-family="system-ui" font-size="12">12. Validate JWT, check session</text>
+    
+    <!-- 13. Proxy to MCP Server -->
+    <line x1="360" y1="560" x2="740" y2="560" stroke="#4caf50" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="550" y="555" text-anchor="middle" font-family="system-ui" font-size="11">13. Proxy requests to MCP Server</text>
+    <text x="550" y="575" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">stdio/sse/http transport</text>
+    
+    <!-- 14. MCP Server response -->
+    <line x1="740" y1="600" x2="360" y2="600" stroke="#4caf50" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="550" y="595" text-anchor="middle" font-family="system-ui" font-size="11">14. MCP Server response</text>
+    <text x="550" y="615" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">stdio/sse/http transport</text>
+    
+    <!-- 15. Forward to Claude -->
+    <line x1="340" y1="640" x2="100" y2="640" stroke="#333" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="220" y="635" text-anchor="middle" font-family="system-ui" font-size="11">15. Forward response</text>
+    <text x="220" y="655" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">SSE only</text>
+  </g>
+
+  <!-- Legend -->
+  <g id="legend" transform="translate(810, 350)">
+    <text x="0" y="-10" font-family="system-ui" font-size="12" font-weight="600">Legend</text>
+    <rect x="0" y="0" width="15" height="15" fill="#FF6B6B" rx="2"/>
+    <text x="20" y="12" font-family="system-ui" font-size="11">MCP Front</text>
+    <rect x="0" y="25" width="15" height="15" fill="#e8f5e9" stroke="#4caf50" stroke-width="1" rx="2"/>
+    <text x="20" y="37" font-family="system-ui" font-size="11">MCP Server</text>
+  </g>
+</svg>

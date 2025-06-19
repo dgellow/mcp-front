@@ -9,7 +9,7 @@
         stroke-linecap="round"/>
   
   <!-- Center gateway -->
-  <rect x="16" y="12" width="8" height="16" rx="1" fill="#FF6B6B"/>
+  <rect x="16" y="12" width="8" height="16" rx="1" fill="#FF6B6B" class="header-nose"/>
   
   <!-- Right bracket representing output -->
   <path d="M 28 8 L 36 8 L 36 32 L 28 32" 
@@ -19,6 +19,6 @@
         stroke-linecap="round"/>
   
   <!-- Connection dots -->
-  <circle cx="10" cy="20" r="1.5" fill="#CCCCCC"/>
-  <circle cx="30" cy="20" r="1.5" fill="#CCCCCC"/>
+  <circle cx="10" cy="20" r="1.5" fill="#CCCCCC" class="header-left-eye"/>
+  <circle cx="30" cy="20" r="1.5" fill="#CCCCCC" class="header-right-eye"/>
 </svg>

@@ -30,11 +30,11 @@ MCP Front is an authentication proxy that sits between Claude and your MCP serve
 
 MCP servers only support static bearer tokens stored in configuration files. This works fine for personal use, but creates problems when you want to share MCP servers with your team. You can't tell who's using what. You can't revoke access when someone leaves. And your database credentials are sitting in plaintext.
 
-MCP Front fixes this by adding a proper authentication layer between Claude and your servers. Your MCP servers stay exactly the same. MCP Front validates the user, then proxies authenticated requests to your servers. You get user attribution, access control, and audit logs without changing a line of MCP server code.
+MCP Front fixes this by adding a proper authentication layer between Claude and your servers. Your MCP servers stay exactly the same. MCP Front validates authentication, then proxies authenticated requests to your servers. You get user attribution, access control, and audit logs without changing a line of MCP server code.
 
 ## Authentication
 
-Users log in with their company Google account, and MCP Front checks they're from your domain. You get individual user tracking and instant access revocation.
+Claude redirects users to Google for authentication, and MCP Front validates their domain. You get individual user tracking and instant access revocation.
 
 ```json
 {
@@ -53,7 +53,7 @@ Users log in with their company Google account, and MCP Front checks they're fro
 <details>
 <summary>Or use bearer tokens</summary>
 
-For development or simple setups, you can use static bearer tokens. Map server names to lists of valid tokens. Users provide a token when connecting, and if it's in the list for that server, they get access.
+For development or alternative MCP clients, you can use static bearer tokens. Map server names to lists of valid tokens. Note: Claude.ai only supports OAuth, so bearer tokens are for testing or other clients.
 
 ```json
 {
@@ -72,7 +72,7 @@ For development or simple setups, you can use static bearer tokens. Map server n
 
 ```bash
 # Install and run locally
-go install github.com/dgellow/mcp-front/cmd/mcp-front@latest
+go install github.com/dgellow/mcp-front/cmd/mcp-front@main
 
 # Create a minimal config
 cat > config.json << 'EOF'

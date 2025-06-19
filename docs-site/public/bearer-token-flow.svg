@@ -1,0 +1,85 @@
+<svg viewBox="0 0 700 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Arrow marker -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="700" height="400" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="350" y="30" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="600">Bearer Token Authentication</text>
+
+  <!-- Actors -->
+  <g id="actors">
+    <!-- Claude -->
+    <rect x="50" y="70" width="100" height="40" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="100" y="95" text-anchor="middle" font-family="system-ui" font-size="14">Claude</text>
+
+    <!-- MCP Front -->
+    <rect x="300" y="70" width="100" height="40" fill="#f5f5f5" stroke="#333" stroke-width="1" rx="4"/>
+    <text x="350" y="95" text-anchor="middle" font-family="system-ui" font-size="14">MCP Front</text>
+
+    <!-- MCP Server -->
+    <rect x="550" y="70" width="100" height="40" fill="#e8f5e9" stroke="#4caf50" stroke-width="1" rx="4"/>
+    <text x="600" y="95" text-anchor="middle" font-family="system-ui" font-size="14">MCP Server</text>
+  </g>
+
+  <!-- Vertical lifelines -->
+  <line x1="100" y1="110" x2="100" y2="360" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="350" y1="110" x2="350" y2="360" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="600" y1="110" x2="600" y2="360" stroke="#ccc" stroke-width="1" stroke-dasharray="5,5"/>
+
+  <!-- Flow steps -->
+  <g id="flow">
+    <!-- 1. Connect to SSE -->
+    <line x1="100" y1="140" x2="340" y2="140" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="220" y="135" text-anchor="middle" font-family="system-ui" font-size="12">1. Connect to SSE with Bearer token</text>
+    <text x="220" y="155" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">GET /{server}/sse</text>
+
+    <!-- 2. Validate token -->
+    <rect x="340" y="170" width="20" height="40" fill="#FF6B6B" rx="2"/>
+    <text x="370" y="185" font-family="system-ui" font-size="12">2. Validate bearer token</text>
+    <text x="370" y="200" font-family="system-ui" font-size="12">check config.auth.tokens[server]</text>
+
+    <!-- 3. SSE established -->
+    <line x1="340" y1="230" x2="100" y2="230" stroke="#333" stroke-width="1" marker-end="url(#arrowhead)"/>
+    <text x="220" y="225" text-anchor="middle" font-family="system-ui" font-size="12">3. SSE connection established</text>
+
+    <!-- 4. Proxy to MCP Server -->
+    <line x1="360" y1="260" x2="590" y2="260" stroke="#4caf50" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="475" y="255" text-anchor="middle" font-family="system-ui" font-size="11">4. Proxy requests to MCP Server</text>
+    <text x="475" y="275" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">stdio/sse/http transport</text>
+
+    <!-- 5. MCP Server response -->
+    <line x1="590" y1="300" x2="360" y2="300" stroke="#4caf50" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="475" y="295" text-anchor="middle" font-family="system-ui" font-size="11">5. MCP Server response</text>
+    <text x="475" y="315" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">stdio/sse/http transport</text>
+
+    <!-- 6. Forward to Claude -->
+    <line x1="340" y1="340" x2="110" y2="340" stroke="#333" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    <text x="225" y="335" text-anchor="middle" font-family="system-ui" font-size="11">6. Forward response</text>
+    <text x="225" y="355" text-anchor="middle" font-family="system-ui" font-size="10" fill="#666">SSE only</text>
+  </g>
+
+  <!-- Configuration note -->
+  <g transform="translate(50, 370)">
+    <rect x="0" y="0" width="600" height="20" fill="#f9f9f9" stroke="#ddd" stroke-width="1" rx="4"/>
+    <text x="300" y="14" text-anchor="middle" font-family="system-ui" font-size="11">
+      Tokens are configured per MCP server
+    </text>
+  </g>
+
+  <!-- Legend -->
+  <g id="legend" transform="translate(620, 200)">
+    <text x="0" y="-10" font-family="system-ui" font-size="12" font-weight="600">Legend</text>
+    <rect x="0" y="0" width="15" height="15" fill="#FF6B6B" rx="2"/>
+    <text x="20" y="12" font-family="system-ui" font-size="11">MCP Front</text>
+    <rect x="0" y="25" width="15" height="15" fill="#e8f5e9" stroke="#4caf50" stroke-width="1" rx="2"/>
+    <text x="20" y="37" font-family="system-ui" font-size="11">MCP Server</text>
+  </g>
+
+</svg>
