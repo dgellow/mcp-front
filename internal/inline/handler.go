@@ -9,13 +9,14 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	"github.com/dgellow/mcp-front/internal/jsonrpc"
 	"github.com/dgellow/mcp-front/internal/server/sse"
 )
 
 // MCPServer defines the interface that Handler depends on
 type MCPServer interface {
 	GetCapabilities() ServerCapabilities
-	HandleToolCall(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error)
+	HandleToolCall(ctx context.Context, toolName string, args map[string]any) (any, error)
 	GetDescription() string
 }
 
@@ -61,7 +62,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	sessionID := crypto.GenerateSecureToken()
 
 	// Send initial endpoint message
-	endpoint := map[string]interface{}{
+	endpoint := map[string]any{
 		"type":        "endpoint",
 		"name":        h.name,
 		"version":     "1.0",
@@ -97,7 +98,7 @@ func (h *Handler) runSSELoop(ctx context.Context, w http.ResponseWriter, flusher
 			return
 		case <-ticker.C:
 			// Send ping to keep connection alive
-			if err := sse.WriteMessage(w, flusher, map[string]interface{}{
+			if err := sse.WriteMessage(w, flusher, map[string]any{
 				"type": "ping",
 			}); err != nil {
 				return
@@ -106,44 +107,17 @@ func (h *Handler) runSSELoop(ctx context.Context, w http.ResponseWriter, flusher
 	}
 }
 
-// JSONRPCRequest represents a JSON-RPC 2.0 request
-type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      interface{}     `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-// JSONRPCResponse represents a JSON-RPC 2.0 response
-type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id"`
-	Result  interface{} `json:"result,omitempty"`
-	Error   interface{} `json:"error,omitempty"`
-}
-
 // handleMessage handles JSON-RPC messages
 func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// For inline servers, we accept any sessionId parameter without validation
 	// since inline servers are stateless and don't track sessions
 	_ = r.URL.Query().Get("sessionId") // Accept but don't validate
 
-	var request JSONRPCRequest
+	var request jsonrpc.Request
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		// Invalid JSON should return HTTP 400
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      nil,
-			Error: map[string]interface{}{
-				"code":    -32700,
-				"message": "Invalid JSON",
-			},
-		}); err != nil {
-			internal.LogError("Failed to encode JSON-RPC error response: %v", err)
-		}
+		jsonrpc.WriteInvalidJSON(w)
 		return
 	}
 
@@ -155,106 +129,91 @@ func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
 	case "tools/call":
 		h.handleToolCall(w, &request)
 	default:
-		writeJSONRPCError(w, request.ID, -32601, "Method not found")
+		jsonrpc.WriteError(w, request.ID, jsonrpc.MethodNotFound, "Method not found")
 	}
 }
 
 // handleInitialize handles the initialize request
-func (h *Handler) handleInitialize(w http.ResponseWriter, req *JSONRPCRequest) {
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      req.ID,
-		Result: map[string]interface{}{
-			"protocolVersion": "2024-11-05",
-			"capabilities":    h.server.GetCapabilities(),
-			"serverInfo": map[string]interface{}{
-				"name":    h.name,
-				"version": "1.0",
-			},
+func (h *Handler) handleInitialize(w http.ResponseWriter, req *jsonrpc.Request) {
+	result := map[string]any{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    h.server.GetCapabilities(),
+		"serverInfo": map[string]any{
+			"name":    h.name,
+			"version": "1.0",
 		},
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	if err := jsonrpc.WriteResult(w, req.ID, result); err != nil {
+		internal.LogError("Failed to write initialize response: %v", err)
 	}
 }
 
 // handleToolsList handles the tools/list request
-func (h *Handler) handleToolsList(w http.ResponseWriter, req *JSONRPCRequest) {
+func (h *Handler) handleToolsList(w http.ResponseWriter, req *jsonrpc.Request) {
 	capabilities := h.server.GetCapabilities()
 
-	tools := make([]map[string]interface{}, 0, len(capabilities.Tools))
+	tools := make([]map[string]any, 0, len(capabilities.Tools))
 	for _, tool := range capabilities.Tools {
-		tools = append(tools, map[string]interface{}{
+		tools = append(tools, map[string]any{
 			"name":        tool.Name,
 			"description": tool.Description,
 			"inputSchema": tool.InputSchema,
 		})
 	}
 
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      req.ID,
-		Result: map[string]interface{}{
-			"tools": tools,
-		},
+	result := map[string]any{
+		"tools": tools,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	if err := jsonrpc.WriteResult(w, req.ID, result); err != nil {
+		internal.LogError("Failed to write tools/list response: %v", err)
 	}
 }
 
 // handleToolCall handles tool execution requests
-func (h *Handler) handleToolCall(w http.ResponseWriter, req *JSONRPCRequest) {
+func (h *Handler) handleToolCall(w http.ResponseWriter, req *jsonrpc.Request) {
 	var params struct {
-		Name      string                 `json:"name"`
-		Arguments map[string]interface{} `json:"arguments"`
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
 	}
 
 	if err := json.Unmarshal(req.Params, &params); err != nil {
-		writeJSONRPCError(w, req.ID, -32602, "Invalid parameters")
+		jsonrpc.WriteError(w, req.ID, jsonrpc.InvalidParams, "Invalid parameters")
 		return
 	}
 
 	// Execute the tool
 	result, err := h.server.HandleToolCall(context.Background(), params.Name, params.Arguments)
 	if err != nil {
-		writeJSONRPCError(w, req.ID, -32603, err.Error())
+		jsonrpc.WriteError(w, req.ID, jsonrpc.InternalError, err.Error())
 		return
 	}
 
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      req.ID,
-		Result: map[string]interface{}{
-			"content": []map[string]interface{}{
-				{
-					"type": "text",
-					"text": formatToolResult(result),
-				},
+	response := map[string]any{
+		"content": []map[string]any{
+			{
+				"type": "text",
+				"text": formatToolResult(result),
 			},
-			"isError": err != nil,
 		},
+		"isError": err != nil,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	if err := jsonrpc.WriteResult(w, req.ID, response); err != nil {
+		internal.LogError("Failed to write tools/call response: %v", err)
 	}
 }
 
 // formatToolResult formats the tool result for display
-func formatToolResult(result interface{}) string {
+func formatToolResult(result any) string {
 	// If it's already a string, return it
 	if str, ok := result.(string); ok {
 		return str
 	}
 
 	// If it's a map with output field, return that
-	if m, ok := result.(map[string]interface{}); ok {
+	if m, ok := result.(map[string]any); ok {
 		if output, exists := m["output"]; exists {
 			if str, ok := output.(string); ok {
 				return str
@@ -268,21 +227,4 @@ func formatToolResult(result interface{}) string {
 		return fmt.Sprintf("%v", result)
 	}
 	return string(bytes)
-}
-
-// writeJSONRPCError writes a JSON-RPC error response
-func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
-	response := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error: map[string]interface{}{
-			"code":    code,
-			"message": message,
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		internal.LogError("Failed to encode JSON-RPC response: %v", err)
-	}
 }

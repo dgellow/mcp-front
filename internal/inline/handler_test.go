@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dgellow/mcp-front/internal/jsonrpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,7 +79,7 @@ func TestHandler_Message_Initialize(t *testing.T) {
 	handler := NewHandler("test", server)
 
 	// Create initialize request
-	request := JSONRPCRequest{
+	request := jsonrpc.Request{
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "initialize",
@@ -95,7 +96,7 @@ func TestHandler_Message_Initialize(t *testing.T) {
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
 	// Parse response
-	var response JSONRPCResponse
+	var response jsonrpc.Response
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
 
@@ -103,7 +104,7 @@ func TestHandler_Message_Initialize(t *testing.T) {
 	assert.Equal(t, float64(1), response.ID) // JSON numbers are float64
 	assert.Nil(t, response.Error)
 
-	result, ok := response.Result.(map[string]interface{})
+	result, ok := response.Result.(map[string]any)
 	require.True(t, ok)
 
 	assert.Equal(t, "2024-11-05", result["protocolVersion"])
@@ -131,7 +132,7 @@ func TestHandler_Message_ToolsList(t *testing.T) {
 	handler := NewHandler("test", server)
 
 	// Create tools/list request
-	request := JSONRPCRequest{
+	request := jsonrpc.Request{
 		JSONRPC: "2.0",
 		ID:      2,
 		Method:  "tools/list",
@@ -146,14 +147,14 @@ func TestHandler_Message_ToolsList(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// Parse response
-	var response JSONRPCResponse
+	var response jsonrpc.Response
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	result, ok := response.Result.(map[string]interface{})
+	result, ok := response.Result.(map[string]any)
 	require.True(t, ok)
 
-	tools, ok := result["tools"].([]interface{})
+	tools, ok := result["tools"].([]any)
 	require.True(t, ok)
 	assert.Len(t, tools, 2)
 }
@@ -172,15 +173,15 @@ func TestHandler_Message_ToolCall(t *testing.T) {
 	handler := NewHandler("test", server)
 
 	// Create tools/call request
-	params := map[string]interface{}{
+	params := map[string]any{
 		"name": "echo",
-		"arguments": map[string]interface{}{
+		"arguments": map[string]any{
 			"message": "Hello, Test!",
 		},
 	}
 	paramsJSON, _ := json.Marshal(params)
 
-	request := JSONRPCRequest{
+	request := jsonrpc.Request{
 		JSONRPC: "2.0",
 		ID:      3,
 		Method:  "tools/call",
@@ -196,20 +197,20 @@ func TestHandler_Message_ToolCall(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// Parse response
-	var response JSONRPCResponse
+	var response jsonrpc.Response
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
 
 	assert.Nil(t, response.Error)
 
-	result, ok := response.Result.(map[string]interface{})
+	result, ok := response.Result.(map[string]any)
 	require.True(t, ok)
 
-	content, ok := result["content"].([]interface{})
+	content, ok := result["content"].([]any)
 	require.True(t, ok)
 	assert.Len(t, content, 1)
 
-	contentItem, ok := content[0].(map[string]interface{})
+	contentItem, ok := content[0].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "text", contentItem["type"])
 	assert.Contains(t, contentItem["text"], "Hello, Test!")
@@ -266,18 +267,15 @@ func TestHandler_Message_Errors(t *testing.T) {
 			assert.Equal(t, tt.expectedStatus, rec.Code)
 
 			// Parse response
-			var response JSONRPCResponse
+			var response jsonrpc.Response
 			err := json.Unmarshal(rec.Body.Bytes(), &response)
 			require.NoError(t, err)
 
 			assert.Nil(t, response.Result)
 			require.NotNil(t, response.Error)
 
-			errorObj, ok := response.Error.(map[string]interface{})
-			require.True(t, ok)
-
-			assert.Equal(t, float64(tt.expectedError), errorObj["code"])
-			assert.Equal(t, tt.expectedMsg, errorObj["message"])
+			assert.Equal(t, tt.expectedError, response.Error.Code)
+			assert.Equal(t, tt.expectedMsg, response.Error.Message)
 		})
 	}
 }
@@ -286,18 +284,18 @@ func TestHandler_Message_Errors(t *testing.T) {
 type MockServer struct {
 	tools       map[string]Tool
 	description string
-	callHandler func(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error)
+	callHandler func(ctx context.Context, toolName string, args map[string]any) (any, error)
 }
 
 func (m *MockServer) GetCapabilities() ServerCapabilities {
 	return ServerCapabilities{Tools: m.tools}
 }
 
-func (m *MockServer) HandleToolCall(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error) {
+func (m *MockServer) HandleToolCall(ctx context.Context, toolName string, args map[string]any) (any, error) {
 	if m.callHandler != nil {
 		return m.callHandler(ctx, toolName, args)
 	}
-	return map[string]interface{}{"result": "mock"}, nil
+	return map[string]any{"result": "mock"}, nil
 }
 
 func (m *MockServer) GetDescription() string {
