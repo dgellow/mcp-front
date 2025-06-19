@@ -196,9 +196,110 @@ staticcheck ./...
 
 # Run locally
 ./mcp-front -config config.json
+
+# Documentation site (from root)
+make doc         # Start dev server
+make format      # Format docs with Prettier
+make build       # Build static site
 ```
 
-## Communication & Design Philosophy
+## Documentation Site Guidelines
+
+### Design Philosophy
+
+The documentation site follows terse, to-the-point prose style (like early Stripe or Stainless docs):
+- No bullet lists or tables in content
+- Conversational yet technical tone
+- Developer-to-developer communication
+- OAuth-first approach with bearer tokens as collapsible fallback
+
+### Visual Design
+
+- **Theme**: Clean red (#FF6B6B) matching logo, with softer red (#FF9999) for dark mode
+- **Logo**: Animated mascot that looks left/right/center with nose rotation and natural blinking
+- **Navigation**: Simplified from 23 pages to 7 essential pages
+- **Components**: Custom hero, theme switcher, and animated logo components
+
+### Technical Implementation
+
+**Structure** (docs-site/):
+```
+src/
+├── components/
+│   ├── AnimatedLogo.astro       # Mascot with eye movement and blinking
+│   ├── CustomHero.astro         # Hero layout with logo positioning
+│   └── CustomThemeSelect.astro  # Sun/moon toggle vs dropdown
+├── assets/
+│   ├── logo.svg                 # Dark mode version (lighter strokes)
+│   └── logo-light.svg           # Light mode version (darker strokes)
+└── styles/custom.css            # Theme variables and animations
+```
+
+**Key Features**:
+- Starlight theme with custom components and CSS overrides
+- Proper light/dark mode with automatic logo switching
+- 12-second animation cycle for subtle mascot behavior
+- Mobile-responsive design (needs work)
+
+### Animation Details
+
+The animated logo creates a face-like character:
+- **Eyes**: Left/right translation (1px) with synchronized movement
+- **Nose**: Subtle rotation (-1deg/+1deg) following eye direction  
+- **Blinking**: Vertical scale (scaleY 0.1) with step-like timing for natural effect
+- **Timing**: 12-second cycle for easter egg discovery, not attention-grabbing
+
+### Color Management
+
+**CSS Custom Properties**:
+```css
+:root {
+  --sl-color-accent: #FF6B6B;  /* Light mode */
+}
+
+[data-theme='dark'] {
+  --sl-color-accent: #FF6B6B;  /* Buttons */
+  --sl-color-text-accent: #333333;  /* Text on red backgrounds */
+}
+```
+
+**Specific Overrides**:
+- GitHub icon: White in dark mode
+- Sidebar selection: Readable contrast
+- Anchor links: Light gray in dark mode
+- Content links: Red in dark mode
+- TOC current section: Red highlight
+
+### Content Guidelines
+
+**Configuration Examples**:
+- Always use `{"$env": "VAR"}` syntax, never bash `$VAR`
+- Match actual Go implementation exactly
+- Use realistic service names (e.g., "linear" not "database")
+- Include all required fields (version, transportType, etc.)
+
+**Writing Style**:
+- Flowing prose, not lists
+- Explain the "why" not just "how"  
+- Assume developer audience
+- Keep it concise but complete
+
+### Common Issues
+
+1. **Theme switching breaks**: Check CSS variable inheritance
+2. **Logo not animating**: Ensure component is properly imported and classes match
+3. **Colors wrong in dark mode**: Verify `[data-theme='dark']` selectors
+4. **Build failures**: Usually missing imports or malformed frontmatter
+5. **Content not updating**: Astro dev server cache, restart required
+
+### Deployment
+
+- Uses GitHub Pages with workflow in `.github/workflows/`
+- Build artifacts in `docs-site/dist/`
+- Base path: `/mcp-front` for GitHub Pages
+- Prettier formatting enforced
+
+Remember: The mascot is an easter egg, not a distraction. Subtle movements create personality without being annoying.
 
 ### Understanding Sam's Standards
 
