@@ -139,8 +139,7 @@ docker run -d -p 8080:8080 \
 
 ### Environment variable formats
 
-- **Environment variables**: Use `{"$env": "VAR_NAME"}` everywhere
-- **User tokens**: Use `{"$userToken": "{{token}}"}` for per-user authentication
+mcp-front uses explicit JSON syntax `{"$env": "VAR_NAME"}` for environment variables throughout its configuration. This deliberate choice eliminates the ambiguity and risks inherent in shell-style variable substitution. When configs pass through multiple layers of tooling and scripts, traditional `$VAR` syntax can expand unexpectedly, causing security issues and debugging nightmares. The JSON format ensures your configuration remains exactly as written until mcp-front processes it, providing predictable behavior across all deployment environments. For per-user authentication, `{"$userToken": "{{token}}"}` follows the same principle, keeping user credentials cleanly separated from system configuration.
 
 ### Per-user tokens
 
@@ -157,7 +156,7 @@ Some MCP servers are better to use with each users having their own integration 
       "helpUrl": "https://www.notion.so/my-integrations"
     },
     "command": "docker",
-    "args": ["run", "--rm", "-i", "mcp/notion:latest"],
+    "args": ["run", "--rm", "-i", "-e", "OPENAPI_MCP_HEADERS", "mcp/notion:latest"],
     "env": {
       "OPENAPI_MCP_HEADERS": {
         "$userToken": "{\"Authorization\": \"Bearer {{token}}\"}"

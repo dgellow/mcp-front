@@ -12,6 +12,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	"github.com/dgellow/mcp-front/internal/inline"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -214,6 +215,42 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"requires_user_token": serverConfig.RequiresUserToken,
 		})
 
+		// For inline servers, create a custom handler
+		if serverConfig.TransportType == config.MCPClientTypeInline {
+			// Resolve inline config
+			inlineConfig, resolvedTools, err := inline.ResolveConfig(serverConfig.InlineConfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve inline config for %s: %w", serverName, err)
+			}
+
+			// Create inline server
+			inlineServer := inline.NewServer(serverName, inlineConfig, resolvedTools)
+
+			// Create inline handler
+			inlineHandler := inline.NewHandler(serverName, inlineServer)
+
+			// Register with standard middlewares
+			var middlewares []MiddlewareFunc
+			middlewares = append(middlewares, corsMiddleware(allowedOrigins))
+			middlewares = append(middlewares, loggerMiddleware("mcp"))
+			middlewares = append(middlewares, recoverMiddleware("mcp"))
+
+			// Add auth middleware if configured
+			if s.oauthServer != nil {
+				middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
+			}
+
+			// Register handler for both /name/sse and /name/message
+			mux.Handle("/"+serverName+"/", chainMiddleware(inlineHandler, middlewares...))
+
+			internal.LogInfoWithFields("server", "Registered inline MCP server", map[string]interface{}{
+				"name":  serverName,
+				"tools": len(resolvedTools),
+			})
+
+			continue // Skip the rest of the loop
+		}
+
 		// For stdio servers, create a single shared MCP server
 		if isStdioServer(serverConfig) {
 			// Create the shared MCP server for this stdio server
@@ -252,7 +289,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 						SessionID:  session.SessionID(),
 					}
 					s.sessionManager.RemoveSession(key)
-					
+
 					// Remove session from storage
 					if store, ok := handler.h.tokenStore.(storage.Storage); ok {
 						if err := store.RevokeSession(sessionCtx, session.SessionID()); err != nil {
@@ -263,7 +300,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 							})
 						}
 					}
-					
+
 					internal.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
 						"sessionID": session.SessionID(),
 						"server":    currentServerName,
@@ -337,21 +374,21 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		internal.LogInfoWithFields("server", "Admin UI enabled", map[string]interface{}{
 			"admin_emails": cfg.Proxy.Admin.AdminEmails,
 		})
-		
+
 		// Get encryption key from OAuth config
 		var encryptionKey string
 		if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
 			encryptionKey = oauthAuth.EncryptionKey
 		}
-		
+
 		adminHandlers := NewAdminHandlers(s.tokenStore.(storage.Storage), cfg, s.sessionManager, encryptionKey)
 		adminMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("admin"),
-			s.oauthServer.SSOMiddleware(), // Browser SSO
+			s.oauthServer.SSOMiddleware(),                                    // Browser SSO
 			adminMiddleware(cfg.Proxy.Admin, s.tokenStore.(storage.Storage)), // Admin check
 		}
-		
+
 		// Admin routes - all protected by admin middleware
 		mux.Handle("/admin", chainMiddleware(http.HandlerFunc(adminHandlers.DashboardHandler), adminMiddlewares...))
 		mux.Handle("/admin/users", chainMiddleware(http.HandlerFunc(adminHandlers.UserActionHandler), adminMiddlewares...))
@@ -461,7 +498,7 @@ func handleSessionRegistration(
 	// Note: We don't need to store anything in the session anymore
 	// The stdio client is connected directly to the shared MCP server
 	// Capabilities are automatically registered on the shared MCP server
-	
+
 	// Track session in storage
 	if handler.userEmail != "" {
 		if store, ok := handler.h.tokenStore.(storage.Storage); ok {
@@ -481,7 +518,7 @@ func handleSessionRegistration(
 			}
 		}
 	}
-	
+
 	internal.LogInfoWithFields("server", "Session successfully created and connected", map[string]interface{}{
 		"sessionID": session.SessionID(),
 		"server":    handler.h.serverName,

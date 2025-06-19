@@ -23,7 +23,7 @@ type MemoryStorage struct {
 	clientsMutex    sync.RWMutex      // For thread-safe client access
 	userTokens      map[string]string // map["email:service"] = token
 	userTokensMutex sync.RWMutex
-	users           map[string]*UserInfo      // map[email] = UserInfo
+	users           map[string]*UserInfo // map[email] = UserInfo
 	usersMutex      sync.RWMutex
 	sessions        map[string]*ActiveSession // map[sessionID] = ActiveSession
 	sessionsMutex   sync.RWMutex
@@ -245,7 +245,7 @@ func (s *MemoryStorage) DeleteUser(ctx context.Context, email string) error {
 	// Also delete all user tokens
 	s.userTokensMutex.Lock()
 	defer s.userTokensMutex.Unlock()
-	
+
 	prefix := email + ":"
 	for key := range s.userTokens {
 		if strings.HasPrefix(key, prefix) {

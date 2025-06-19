@@ -98,11 +98,11 @@ func validateProxyStructure(rawConfig map[string]interface{}, result *Validation
 	if auth, ok := proxy["auth"].(map[string]interface{}); ok {
 		validateAuthStructure(auth, result)
 	}
-	
+
 	// Check admin if present
 	if admin, ok := proxy["admin"].(map[string]interface{}); ok {
 		validateAdminStructure(admin, result)
-		
+
 		// If admin is enabled, ensure OAuth is configured
 		if enabled, ok := admin["enabled"].(bool); ok && enabled {
 			hasOAuth := false
@@ -195,7 +195,7 @@ func validateAdminStructure(admin map[string]interface{}, result *ValidationResu
 		})
 		return
 	}
-	
+
 	if enabled {
 		// Check adminEmails when enabled
 		emails, ok := admin["adminEmails"].([]interface{})
@@ -220,7 +220,7 @@ func validateAdminStructure(admin map[string]interface{}, result *ValidationResu
 				}
 			}
 		}
-		
+
 		// Check that OAuth is configured (required for admin functionality)
 		// Note: We check this at the parent level since auth is a sibling of admin
 	}
@@ -280,6 +280,13 @@ func validateServersStructure(rawConfig map[string]interface{}, result *Validati
 				result.Errors = append(result.Errors, ValidationError{
 					Path:    fmt.Sprintf("mcpServers.%s.url", name),
 					Message: fmt.Sprintf("url is required for %s transport", transportType),
+				})
+			}
+		case "inline":
+			if _, ok := srv["inline"]; !ok {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.inline", name),
+					Message: "inline configuration is required for inline transport",
 				})
 			}
 		default:

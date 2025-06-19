@@ -497,7 +497,7 @@ func TestClaudeAIWorkaround(t *testing.T) {
 	t.Run("Existing Claude.ai client - should not recreate", func(t *testing.T) {
 		clientID := "existing-claude-client"
 		redirectURI := "https://claude.ai/api/mcp/auth_callback"
-		
+
 		// Pre-register client with specific scopes
 		originalScopes := []string{"read", "write", "admin"}
 		store.CreateClient(clientID, []string{redirectURI}, originalScopes, config.Issuer)

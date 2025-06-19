@@ -15,25 +15,25 @@ var ErrUserTokenNotFound = errors.New("user token not found")
 // ErrUserNotFound is returned when a user doesn't exist
 var ErrUserNotFound = errors.New("user not found")
 
-// ErrSessionNotFound is returned when a session doesn't exist  
+// ErrSessionNotFound is returned when a session doesn't exist
 var ErrSessionNotFound = errors.New("session not found")
 
 // UserInfo represents a user who has authenticated via OAuth
 type UserInfo struct {
-	Email       string    `json:"email"`
-	FirstSeen   time.Time `json:"first_seen"`
-	LastSeen    time.Time `json:"last_seen"`
-	Enabled     bool      `json:"enabled"`
-	IsAdmin     bool      `json:"is_admin"`
+	Email     string    `json:"email"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
+	Enabled   bool      `json:"enabled"`
+	IsAdmin   bool      `json:"is_admin"`
 }
 
 // ActiveSession represents an active MCP session
 type ActiveSession struct {
-	SessionID   string    `json:"session_id"`
-	UserEmail   string    `json:"user_email"`
-	ServerName  string    `json:"server_name"`
-	Created     time.Time `json:"created"`
-	LastActive  time.Time `json:"last_active"`
+	SessionID  string    `json:"session_id"`
+	UserEmail  string    `json:"user_email"`
+	ServerName string    `json:"server_name"`
+	Created    time.Time `json:"created"`
+	LastActive time.Time `json:"last_active"`
 }
 
 // UserTokenStore defines methods for managing user tokens.

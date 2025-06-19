@@ -22,6 +22,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		Options           *Options                   `json:"options,omitempty"`
 		RequiresUserToken bool                       `json:"requiresUserToken,omitempty"`
 		TokenSetup        *TokenSetupConfig          `json:"tokenSetup,omitempty"`
+		InlineConfig      json.RawMessage            `json:"inline,omitempty"`
 	}
 
 	var raw rawConfig
@@ -34,6 +35,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	c.Options = raw.Options
 	c.RequiresUserToken = raw.RequiresUserToken
 	c.TokenSetup = raw.TokenSetup
+	c.InlineConfig = raw.InlineConfig
 
 	if c.TransportType == "" {
 		return fmt.Errorf("transportType is required")
@@ -41,7 +43,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse command if present
 	if raw.Command != nil {
-		parsed, err := parseConfigValue(raw.Command)
+		parsed, err := ParseConfigValue(raw.Command)
 		if err != nil {
 			return fmt.Errorf("parsing command: %w", err)
 		}
@@ -53,7 +55,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse args if present
 	if len(raw.Args) > 0 {
-		values, needsToken, err := parseConfigValueSlice(raw.Args)
+		values, needsToken, err := ParseConfigValueSlice(raw.Args)
 		if err != nil {
 			return fmt.Errorf("parsing args: %w", err)
 		}
@@ -63,7 +65,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse env if present
 	if len(raw.Env) > 0 {
-		values, needsToken, err := parseConfigValueMap(raw.Env)
+		values, needsToken, err := ParseConfigValueMap(raw.Env)
 		if err != nil {
 			return fmt.Errorf("parsing env: %w", err)
 		}
@@ -73,7 +75,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse URL if present
 	if raw.URL != nil {
-		parsed, err := parseConfigValue(raw.URL)
+		parsed, err := ParseConfigValue(raw.URL)
 		if err != nil {
 			return fmt.Errorf("parsing url: %w", err)
 		}
@@ -83,7 +85,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse headers if present
 	if len(raw.Headers) > 0 {
-		values, needsToken, err := parseConfigValueMap(raw.Headers)
+		values, needsToken, err := ParseConfigValueMap(raw.Headers)
 		if err != nil {
 			return fmt.Errorf("parsing headers: %w", err)
 		}
@@ -157,7 +159,7 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 		if field.raw == nil {
 			continue
 		}
-		parsed, err := parseConfigValue(field.raw)
+		parsed, err := ParseConfigValue(field.raw)
 		if err != nil {
 			return fmt.Errorf("parsing %s: %w", field.name, err)
 		}
@@ -204,7 +206,7 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse BaseURL
 	if raw.BaseURL != nil {
-		parsed, err := parseConfigValue(raw.BaseURL)
+		parsed, err := ParseConfigValue(raw.BaseURL)
 		if err != nil {
 			return fmt.Errorf("parsing baseURL: %w", err)
 		}
@@ -216,7 +218,7 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 
 	// Parse Addr
 	if raw.Addr != nil {
-		parsed, err := parseConfigValue(raw.Addr)
+		parsed, err := ParseConfigValue(raw.Addr)
 		if err != nil {
 			return fmt.Errorf("parsing addr: %w", err)
 		}

@@ -15,8 +15,7 @@ func TestSecurityScenarios(t *testing.T) {
 	waitForDB(t)
 
 	// Start mcp-front
-	mcpCmd := startMCPFront(t, "config/config.test.json")
-	defer stopMCPFront(mcpCmd)
+	startMCPFront(t, "config/config.test.json")
 
 	// Wait for server to be ready
 	waitForMCPFront(t)
@@ -297,8 +296,7 @@ func TestFailureScenarios(t *testing.T) {
 		// Database is already started by TestMain, just wait for readiness
 		waitForDB(t)
 
-		mcpCmd := startMCPFront(t, "config/config.test.json")
-		defer stopMCPFront(mcpCmd)
+		startMCPFront(t, "config/config.test.json")
 
 		// Wait for server to be ready
 		waitForMCPFront(t)

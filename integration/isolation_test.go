@@ -17,8 +17,7 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 
 	// Start mcp-front with bearer token auth
 	trace(t, "Starting mcp-front")
-	mcpCmd := startMCPFront(t, "config/config.test.json")
-	defer stopMCPFront(mcpCmd)
+	startMCPFront(t, "config/config.test.json")
 	waitForMCPFront(t)
 
 	// Get initial container count
@@ -214,8 +213,7 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 
 	// Start mcp-front with test timeout configuration
 	trace(t, "Starting mcp-front with test session timeout")
-	mcpCmd := startMCPFront(t, "config/config.test.json")
-	defer stopMCPFront(mcpCmd)
+	startMCPFront(t, "config/config.test.json")
 	waitForMCPFront(t)
 
 	// Get initial container count
@@ -284,8 +282,7 @@ func TestSessionTimerReset(t *testing.T) {
 
 	// Start mcp-front with test timeout configuration
 	trace(t, "Starting mcp-front with test session timeout")
-	mcpCmd := startMCPFront(t, "config/config.test.json")
-	defer stopMCPFront(mcpCmd)
+	startMCPFront(t, "config/config.test.json")
 	waitForMCPFront(t)
 
 	// Get initial container count
@@ -365,8 +362,7 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 
 	// Start mcp-front with test timeout configuration
 	trace(t, "Starting mcp-front with test session timeout")
-	mcpCmd := startMCPFront(t, "config/config.test.json")
-	defer stopMCPFront(mcpCmd)
+	startMCPFront(t, "config/config.test.json")
 	waitForMCPFront(t)
 
 	// Get initial container count

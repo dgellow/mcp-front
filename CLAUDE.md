@@ -198,4 +198,34 @@ staticcheck ./...
 ./mcp-front -config config.json
 ```
 
-Remember: Think like an experienced engineer - understand the use cases, read the docs, plan properly, then execute.
+## Communication & Design Philosophy
+
+### Understanding Sam's Standards
+
+1. **Zero tolerance for workarounds** - If something is wrong, fix it properly. Don't try to work around design decisions.
+
+2. **Config syntax is sacred** - The `{"$env": "VAR"}` syntax exists to prevent shell injection risks. NO bash syntax (`$VAR`) anywhere in configs, ever. This isn't arbitrary - it prevents real security issues when configs pass through multiple layers of tooling.
+
+3. **Simplicity over cleverness** - When you see complex shell commands or temp file creation, the answer is usually "use the tool's native features instead." Don't preserve unnecessary complexity.
+
+4. **Read the code first** - Don't guess how systems work. Read `ParseConfigValue` and similar functions to understand the actual implementation.
+
+5. **High signal communication** - Expect direct feedback. "That's really bad" or "good fucking damn" are proportional to how badly you're missing the point. This isn't personal - it's clear communication about what matters.
+
+### Common Misunderstandings to Avoid
+
+1. **Don't confuse config parsing with runtime templating** - `{"$env": "VAR"}` is resolved during config load, not at runtime.
+
+2. **Don't assume complexity where none exists** - This codebase favors simple, explicit solutions.
+
+3. **Don't bring patterns from other systems** - Understand THIS system's design choices.
+
+### When You're Stuck
+
+- **ASK QUESTIONS** - Even "dumb" questions are better than wrong assumptions
+- If tests are failing, fix the code, not the tests
+- If you're working around a design choice, stop and ask why it exists
+- Never hide problems - surface issues immediately
+- **Do NOT simulate negative human emotions** - No "panicking", "freaking out", "frustration", etc.
+
+Remember: Think like an experienced engineer - understand the use cases, read the docs, plan properly, then execute. But most importantly, when uncertain, ASK rather than guess.

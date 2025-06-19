@@ -35,7 +35,7 @@
     "notion": {
       "transportType": "stdio",
       "command": "docker",
-      "args": ["run", "--rm", "-i", "mcp/notion"],
+      "args": ["run", "--rm", "-i", "-e", "NOTION_TOKEN", "mcp/notion"],
       "env": {
         "NOTION_TOKEN": {"$env": "NOTION_TOKEN"}
       }

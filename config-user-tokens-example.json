@@ -23,7 +23,7 @@
     "notion-user": {
       "transportType": "stdio",
       "command": "docker",
-      "args": ["run", "--rm", "-i", "mcp/notion"],
+      "args": ["run", "--rm", "-i", "-e", "OPENAPI_MCP_HEADERS", "mcp/notion"],
       "env": {
         "OPENAPI_MCP_HEADERS": {"$userToken": "{\"Authorization\": \"Bearer {{token}}\"}"}
       },

@@ -98,7 +98,7 @@ func TestParseConfigValue(t *testing.T) {
 			}
 
 			var raw json.RawMessage = []byte(tt.input)
-			result, err := parseConfigValue(raw)
+			result, err := ParseConfigValue(raw)
 
 			if tt.expectedError {
 				assert.Error(t, err)

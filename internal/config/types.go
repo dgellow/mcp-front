@@ -15,6 +15,7 @@ const (
 	MCPClientTypeStdio      MCPClientType = "stdio"
 	MCPClientTypeSSE        MCPClientType = "sse"
 	MCPClientTypeStreamable MCPClientType = "streamable-http"
+	MCPClientTypeInline     MCPClientType = "inline"
 )
 
 // AuthKind represents the type of authentication
@@ -106,6 +107,9 @@ type MCPClientConfig struct {
 	// User token requirements
 	RequiresUserToken bool              `json:"requiresUserToken,omitempty"`
 	TokenSetup        *TokenSetupConfig `json:"tokenSetup,omitempty"`
+
+	// Inline MCP server configuration
+	InlineConfig json.RawMessage `json:"inline,omitempty"`
 }
 
 // AdminConfig represents admin UI configuration
@@ -134,11 +138,11 @@ type OAuthAuthConfig struct {
 
 // ProxyConfig represents the proxy configuration with resolved values
 type ProxyConfig struct {
-	BaseURL string        `json:"baseURL"`
-	Addr    string        `json:"addr"`
-	Name    string        `json:"name"`
-	Auth    interface{}   `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
-	Admin   *AdminConfig  `json:"admin,omitempty"`
+	BaseURL string       `json:"baseURL"`
+	Addr    string       `json:"addr"`
+	Name    string       `json:"name"`
+	Auth    interface{}  `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
+	Admin   *AdminConfig `json:"admin,omitempty"`
 }
 
 // Config represents the config structure with resolved values
@@ -154,8 +158,8 @@ type RawConfigValue struct {
 	needsUserToken bool
 }
 
-// parseConfigValue parses a JSON value that could be a string or reference object
-func parseConfigValue(raw json.RawMessage) (*RawConfigValue, error) {
+// ParseConfigValue parses a JSON value that could be a string or reference object
+func ParseConfigValue(raw json.RawMessage) (*RawConfigValue, error) {
 	// Try plain string first
 	var str string
 	if err := json.Unmarshal(raw, &str); err == nil {
@@ -192,13 +196,13 @@ func parseConfigValue(raw json.RawMessage) (*RawConfigValue, error) {
 	return nil, fmt.Errorf("unknown reference type in config value")
 }
 
-// parseConfigValueSlice parses a slice that may contain references
-func parseConfigValueSlice(raw []json.RawMessage) ([]string, []bool, error) {
+// ParseConfigValueSlice parses a slice that may contain references
+func ParseConfigValueSlice(raw []json.RawMessage) ([]string, []bool, error) {
 	values := make([]string, len(raw))
 	needsToken := make([]bool, len(raw))
 
 	for i, item := range raw {
-		parsed, err := parseConfigValue(item)
+		parsed, err := ParseConfigValue(item)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parsing item %d: %w", i, err)
 		}
@@ -209,13 +213,13 @@ func parseConfigValueSlice(raw []json.RawMessage) ([]string, []bool, error) {
 	return values, needsToken, nil
 }
 
-// parseConfigValueMap parses a map that may contain references
-func parseConfigValueMap(raw map[string]json.RawMessage) (map[string]string, map[string]bool, error) {
+// ParseConfigValueMap parses a map that may contain references
+func ParseConfigValueMap(raw map[string]json.RawMessage) (map[string]string, map[string]bool, error) {
 	values := make(map[string]string)
 	needsToken := make(map[string]bool)
 
 	for key, item := range raw {
-		parsed, err := parseConfigValue(item)
+		parsed, err := ParseConfigValue(item)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parsing key %s: %w", key, err)
 		}

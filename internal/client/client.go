@@ -175,7 +175,7 @@ func (c *Client) AddToMCPServerWithTokenCheck(
 	internal.LogInfoWithFields("client", "Starting MCP capability discovery", map[string]interface{}{
 		"server": c.name,
 	})
-	
+
 	err = c.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup)
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func (c *Client) AddToMCPServerWithTokenCheck(
 	_ = c.addResourceTemplatesToServer(ctx, mcpServer)
 
 	internal.LogInfoWithFields("client", "MCP capability discovery completed", map[string]interface{}{
-		"server": c.name,
+		"server":            c.name,
 		"userTokenRequired": requiresToken,
 	})
 
@@ -261,7 +261,7 @@ func (c *Client) addToolsToServer(
 	internal.LogInfoWithFields("client", "Starting tool discovery", map[string]interface{}{
 		"server": c.name,
 	})
-	
+
 	totalTools := 0
 	for {
 		tools, err := c.client.ListTools(ctx, toolsRequest)
@@ -277,7 +277,7 @@ func (c *Client) addToolsToServer(
 		}
 		internal.Logf("<%s> Successfully listed %d tools", c.name, len(tools.Tools))
 		totalTools += len(tools.Tools)
-		
+
 		for _, tool := range tools.Tools {
 			if filterFunc(tool.Name) {
 				internal.LogDebugWithFields("client", "Adding tool", map[string]interface{}{
@@ -307,7 +307,7 @@ func (c *Client) addToolsToServer(
 		}
 		toolsRequest.Params.Cursor = tools.NextCursor
 	}
-	
+
 	internal.LogInfoWithFields("client", "Tool discovery completed", map[string]interface{}{
 		"server":     c.name,
 		"totalTools": totalTools,
@@ -320,7 +320,7 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 	internal.LogInfoWithFields("client", "Starting prompt discovery", map[string]interface{}{
 		"server": c.name,
 	})
-	
+
 	totalPrompts := 0
 	promptsRequest := mcp.ListPromptsRequest{}
 	for {
@@ -346,12 +346,12 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 		}
 		promptsRequest.Params.Cursor = prompts.NextCursor
 	}
-	
+
 	internal.LogInfoWithFields("client", "Prompt discovery completed", map[string]interface{}{
 		"server":       c.name,
 		"totalPrompts": totalPrompts,
 	})
-	
+
 	return nil
 }
 
@@ -359,7 +359,7 @@ func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCP
 	internal.LogInfoWithFields("client", "Starting resource discovery", map[string]interface{}{
 		"server": c.name,
 	})
-	
+
 	totalResources := 0
 	resourcesRequest := mcp.ListResourcesRequest{}
 	for {
@@ -392,12 +392,12 @@ func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCP
 		resourcesRequest.Params.Cursor = resources.NextCursor
 
 	}
-	
+
 	internal.LogInfoWithFields("client", "Resource discovery completed", map[string]interface{}{
 		"server":         c.name,
 		"totalResources": totalResources,
 	})
-	
+
 	return nil
 }
 
@@ -447,7 +447,7 @@ func (c *Client) wrapToolHandler(
 			"tool":   request.Params.Name,
 			"user":   userEmail,
 		})
-		
+
 		// If token is required, check if we have it
 		if requiresToken && tokenStore != nil {
 			if userEmail == "" {
@@ -506,7 +506,7 @@ func (c *Client) wrapToolHandler(
 
 		// Token check passed or not required, call original handler
 		result, err := originalHandler(toolCtx, request)
-		
+
 		if err != nil {
 			internal.LogErrorWithFields("client", "Tool invocation failed", map[string]interface{}{
 				"server": serverName,
@@ -521,7 +521,7 @@ func (c *Client) wrapToolHandler(
 				"user":   userEmail,
 			})
 		}
-		
+
 		return result, err
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
@@ -173,8 +174,7 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 		"introspection_endpoint": s.config.Issuer + "/introspect",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(metadata); err != nil {
+	if err := jsonwriter.Write(w, metadata); err != nil {
 		internal.LogErrorWithFields("oauth", "Failed to encode metadata response", map[string]interface{}{
 			"error": err.Error(),
 		})
@@ -269,13 +269,13 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		errDesc := r.URL.Query().Get("error_description")
 		internal.LogError("Google OAuth error: %s - %s", errMsg, errDesc)
-		http.Error(w, fmt.Sprintf("Authentication failed: %s", errMsg), http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, fmt.Sprintf("Authentication failed: %s", errMsg))
 		return
 	}
 
 	if state == "" || code == "" {
 		internal.LogError("Missing state or code in callback")
-		http.Error(w, "Invalid callback parameters", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Invalid callback parameters")
 		return
 	}
 
@@ -291,7 +291,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		parts := strings.SplitN(state, ":", 4)
 		if len(parts) != 4 {
 			internal.LogError("Invalid browser state format: %s", state)
-			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
 			return
 		}
 		// parts[0] = "browser", parts[1] = nonce, parts[2] = signature, parts[3] = return URL
@@ -303,7 +303,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		data := nonce + ":" + returnURL
 		if !crypto.ValidateSignedData(data, signature, []byte(s.config.EncryptionKey)) {
 			internal.LogError("Invalid CSRF signature in browser flow")
-			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
+			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
 			return
 		}
 	} else {
@@ -312,7 +312,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		ar, found = s.storage.GetAuthorizeRequest(state)
 		if !found {
 			internal.LogError("Invalid or expired state: %s", state)
-			http.Error(w, "Invalid or expired authorization request", http.StatusBadRequest)
+			jsonwriter.WriteBadRequest(w, "Invalid or expired authorization request")
 			return
 		}
 	}
@@ -324,7 +324,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	token, err := s.authService.exchangeCodeForToken(ctx, code)
 	if err != nil {
 		internal.LogError("Google token exchange error: %v", err)
-		http.Error(w, "Failed to exchange authorization code", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Failed to exchange authorization code")
 		return
 	}
 
@@ -332,7 +332,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	userInfo, err := s.authService.validateUser(ctx, token)
 	if err != nil {
 		internal.LogError("User validation error: %v", err)
-		http.Error(w, "Access denied: user validation failed", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Access denied: user validation failed")
 		return
 	}
 	internal.Logf("User validated successfully: %s", userInfo.Email)
@@ -342,7 +342,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		// Set session cookie
 		if err := s.setBrowserSessionCookie(w, userInfo.Email); err != nil {
 			internal.LogError("Failed to set browser session cookie: %v", err)
-			http.Error(w, "Failed to create session", http.StatusInternalServerError)
+			jsonwriter.WriteInternalServerError(w, "Failed to create session")
 			return
 		}
 
@@ -418,12 +418,12 @@ func (s *Server) buildClientRegistrationResponse(client *fosite.DefaultClient, t
 		"scope":                      strings.Join(client.GetScopes(), " "), // Space-separated string
 		"token_endpoint_auth_method": tokenEndpointAuthMethod,
 	}
-	
+
 	// Include client_secret only for confidential clients
 	if clientSecret != "" {
 		response["client_secret"] = clientSecret
 	}
-	
+
 	return response
 }
 
@@ -432,14 +432,14 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	internal.Logf("Register handler called: %s %s", r.Method, r.URL.Path)
 
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	// Parse client metadata
 	var metadata map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Invalid request body")
 		return
 	}
 
@@ -447,7 +447,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	redirectURIs, scopes, err := s.authService.parseClientRequest(metadata)
 	if err != nil {
 		internal.LogError("Client request parsing error: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, err.Error())
 		return
 	}
 
@@ -462,14 +462,14 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		generatedSecret, err := crypto.GenerateClientSecret()
 		if err != nil {
 			internal.LogError("Failed to generate client secret: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			jsonwriter.WriteInternalServerError(w, "Internal server error")
 			return
 		}
-		
+
 		hashedSecret, err := crypto.HashClientSecret(generatedSecret)
 		if err != nil {
 			internal.LogError("Failed to hash client secret: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			jsonwriter.WriteInternalServerError(w, "Internal server error")
 			return
 		}
 
@@ -484,9 +484,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// Build response using helper function
 	response := s.buildClientRegistrationResponse(client, tokenEndpointAuthMethod, plaintextSecret)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := jsonwriter.WriteResponse(w, http.StatusCreated, response); err != nil {
 		internal.LogErrorWithFields("oauth", "Failed to encode register response", map[string]interface{}{
 			"error": err.Error(),
 		})
@@ -513,8 +511,7 @@ func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 		"clients":       clients,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
+	if err := jsonwriter.Write(w, response); err != nil {
 		internal.LogErrorWithFields("oauth", "Failed to encode debug response", map[string]interface{}{
 			"error": err.Error(),
 		})
@@ -530,13 +527,13 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 			// Extract token from Authorization header
 			auth := r.Header.Get("Authorization")
 			if auth == "" {
-				http.Error(w, "Missing authorization header", http.StatusUnauthorized)
+				jsonwriter.WriteUnauthorized(w, "Missing authorization header")
 				return
 			}
 
 			parts := strings.Split(auth, " ")
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
+				jsonwriter.WriteUnauthorized(w, "Invalid authorization header format")
 				return
 			}
 
@@ -551,7 +548,7 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 			session := &Session{DefaultSession: &fosite.DefaultSession{}}
 			_, accessRequest, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, session)
 			if err != nil {
-				http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
+				jsonwriter.WriteUnauthorized(w, "Invalid or expired token")
 				return
 			}
 

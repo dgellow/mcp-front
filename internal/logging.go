@@ -46,7 +46,7 @@ func init() {
 // updateHandler recreates the handler with the current log level
 func updateHandler() {
 	level := currentLevel.Load().(slog.Level)
-	
+
 	var handler slog.Handler
 	if strings.ToUpper(os.Getenv("LOG_FORMAT")) == "JSON" {
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
@@ -95,7 +95,7 @@ func updateHandler() {
 // SetLogLevel atomically updates the log level at runtime
 func SetLogLevel(level string) error {
 	var newLevel slog.Level
-	
+
 	switch strings.ToUpper(level) {
 	case "ERROR":
 		newLevel = slog.LevelError
@@ -110,21 +110,21 @@ func SetLogLevel(level string) error {
 	default:
 		return fmt.Errorf("invalid log level: %s", level)
 	}
-	
+
 	currentLevel.Store(newLevel)
 	updateHandler()
-	
+
 	LogInfoWithFields("logging", "Log level changed", map[string]interface{}{
 		"new_level": level,
 	})
-	
+
 	return nil
 }
 
 // GetLogLevel returns the current log level as a string
 func GetLogLevel() string {
 	level := currentLevel.Load().(slog.Level)
-	
+
 	switch level {
 	case slog.LevelError:
 		return "error"

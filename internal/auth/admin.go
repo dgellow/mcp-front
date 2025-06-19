@@ -2,7 +2,7 @@ package auth
 
 import (
 	"context"
-	
+
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
@@ -12,12 +12,12 @@ func IsAdmin(ctx context.Context, email string, adminConfig *config.AdminConfig,
 	if adminConfig == nil || !adminConfig.Enabled {
 		return false
 	}
-	
+
 	// Check if user is a config admin (super admin)
 	if IsConfigAdmin(email, adminConfig) {
 		return true
 	}
-	
+
 	// Check if user is a promoted admin in storage
 	if store != nil {
 		users, err := store.GetAllUsers(ctx)
@@ -29,7 +29,7 @@ func IsAdmin(ctx context.Context, email string, adminConfig *config.AdminConfig,
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -38,7 +38,7 @@ func IsConfigAdmin(email string, adminConfig *config.AdminConfig) bool {
 	if adminConfig == nil || !adminConfig.Enabled {
 		return false
 	}
-	
+
 	for _, adminEmail := range adminConfig.AdminEmails {
 		if email == adminEmail {
 			return true

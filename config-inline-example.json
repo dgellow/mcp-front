@@ -1,0 +1,120 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": "https://mcp.example.com",
+    "addr": ":8080",
+    "name": "MCP Front with Inline Servers",
+    "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.example.com",
+      "allowedDomains": ["example.com"],
+      "allowedOrigins": ["https://claude.ai"],
+      "tokenTtl": "1h",
+      "storage": "memory",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
+      "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
+      "googleRedirectUri": "https://mcp.example.com/oauth/callback",
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
+    }
+  },
+  "mcpServers": {
+    "gcloud": {
+      "transportType": "inline",
+      "inline": {
+        "description": "Google Cloud Platform debugging tools",
+        "tools": [
+          {
+            "name": "list_instances",
+            "description": "List all GCE instances in the configured project",
+            "inputSchema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "command": "docker",
+            "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "-e",
+              "CLOUDSDK_CORE_PROJECT",
+              "google/cloud-sdk:alpine",
+              "gcloud",
+              "compute",
+              "instances",
+              "list",
+              "--format=json"
+            ],
+            "env": {
+              "GOOGLE_APPLICATION_CREDENTIALS": {"$env": "GCP_SERVICE_ACCOUNT_JSON"},
+              "CLOUDSDK_CORE_PROJECT": {"$env": "GCP_PROJECT_ID"}
+            },
+            "timeout": "30s"
+          },
+          {
+            "name": "describe_cluster",
+            "description": "Get details about the default GKE cluster (hardcoded to my-cluster in us-central1-a)",
+            "inputSchema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "command": "docker",
+            "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "-e",
+              "CLOUDSDK_CORE_PROJECT",
+              "google/cloud-sdk:alpine",
+              "gcloud",
+              "container",
+              "clusters",
+              "describe",
+              "my-cluster",
+              "--zone=us-central1-a",
+              "--format=json"
+            ],
+            "env": {
+              "GOOGLE_APPLICATION_CREDENTIALS": {"$env": "GCP_SERVICE_ACCOUNT_JSON"},
+              "CLOUDSDK_CORE_PROJECT": {"$env": "GCP_PROJECT_ID"}
+            },
+            "timeout": "30s"
+          },
+          {
+            "name": "list_buckets",
+            "description": "List all Cloud Storage buckets in the configured project",
+            "inputSchema": {
+              "type": "object",
+              "properties": {},
+              "required": []
+            },
+            "command": "docker",
+            "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "-e",
+              "CLOUDSDK_CORE_PROJECT",
+              "google/cloud-sdk:alpine",
+              "gsutil",
+              "ls"
+            ],
+            "env": {
+              "GOOGLE_APPLICATION_CREDENTIALS": {"$env": "GCP_SERVICE_ACCOUNT_JSON"},
+              "CLOUDSDK_CORE_PROJECT": {"$env": "GCP_PROJECT_ID"}
+            },
+            "timeout": "30s"
+          }
+        ]
+      }
+    }
+  }
+}

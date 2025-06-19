@@ -31,23 +31,23 @@ func TestSignData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			signature := SignData(tt.data, tt.key)
-			
+
 			// Signature should not be empty
 			if signature == "" {
 				t.Error("SignData returned empty signature")
 			}
-			
+
 			// Signature should be base64 URL encoded
 			if _, err := base64.URLEncoding.DecodeString(signature); err != nil {
 				t.Errorf("SignData returned invalid base64 URL encoding: %v", err)
 			}
-			
+
 			// Same data and key should produce same signature
 			signature2 := SignData(tt.data, tt.key)
 			if signature != signature2 {
 				t.Error("SignData not deterministic")
 			}
-			
+
 			// Different data should produce different signature
 			if tt.data != "" {
 				diffSig := SignData(tt.data+"x", tt.key)
@@ -61,7 +61,7 @@ func TestSignData(t *testing.T) {
 
 func TestValidateSignedData(t *testing.T) {
 	key := []byte("test-key-32-bytes-long-for-hmac!")
-	
+
 	tests := []struct {
 		name      string
 		data      string
@@ -105,7 +105,7 @@ func TestValidateSignedData(t *testing.T) {
 			want:      false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ValidateSignedData(tt.data, tt.signature, tt.key)
@@ -119,22 +119,22 @@ func TestValidateSignedData(t *testing.T) {
 func TestHMACSecurityProperties(t *testing.T) {
 	key1 := []byte("key-1-32-bytes-long-for-hmac-use")
 	key2 := []byte("key-2-32-bytes-long-for-hmac-use")
-	
+
 	data := "sensitive data"
-	
+
 	sig1 := SignData(data, key1)
 	sig2 := SignData(data, key2)
-	
+
 	// Different keys should produce different signatures
 	if sig1 == sig2 {
 		t.Error("Different keys produced same signature")
 	}
-	
+
 	// Signature from key1 should not validate with key2
 	if ValidateSignedData(data, sig1, key2) {
 		t.Error("Signature validated with wrong key")
 	}
-	
+
 	// Signature from key2 should not validate with key1
 	if ValidateSignedData(data, sig2, key1) {
 		t.Error("Signature validated with wrong key")

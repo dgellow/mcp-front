@@ -27,9 +27,7 @@ import (
 // TestBasicOAuthFlow tests the basic OAuth server functionality
 func TestBasicOAuthFlow(t *testing.T) {
 	// Start mcp-front with OAuth config
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
-	mcpCmd.Env = []string{
-		"PATH=" + os.Getenv("PATH"),
+	startMCPFront(t, "config/config.oauth-test.json",
 		"JWT_SECRET=test-jwt-secret-32-bytes-exactly!",
 		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-for-oauth",
@@ -38,22 +36,10 @@ func TestBasicOAuthFlow(t *testing.T) {
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
-	}
-
-	if err := mcpCmd.Start(); err != nil {
-		t.Fatalf("Failed to start mcp-front: %v", err)
-	}
-	defer func() {
-		if mcpCmd.Process != nil {
-			_ = mcpCmd.Process.Kill()
-			_ = mcpCmd.Wait()
-		}
-	}()
+	)
 
 	// Wait for startup
-	if !waitForHealthCheck(t, 10) {
-		t.Fatal("mcp-front failed to start")
-	}
+	waitForMCPFront(t)
 
 	// Test OAuth discovery
 	resp, err := http.Get("http://localhost:8080/.well-known/oauth-authorization-server")
@@ -82,7 +68,7 @@ func TestBasicOAuthFlow(t *testing.T) {
 	// Verify client_secret_post is advertised
 	authMethods, ok := discovery["token_endpoint_auth_methods_supported"].([]interface{})
 	assert.True(t, ok, "token_endpoint_auth_methods_supported should be present")
-	
+
 	var hasNone, hasClientSecretPost bool
 	for _, method := range authMethods {
 		if method == "none" {
@@ -113,7 +99,7 @@ func TestJWTSecretValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			// Start mcp-front with specific JWT secret
-			mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
+			mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.oauth-test.json")
 			mcpCmd.Env = []string{
 				"PATH=" + os.Getenv("PATH"),
 				"JWT_SECRET=" + tt.secret,
@@ -293,12 +279,12 @@ func TestClientRegistration(t *testing.T) {
 		if len(clientSecret) < 40 {
 			t.Errorf("Client secret seems too short: %d chars", len(clientSecret))
 		}
-		
+
 		tokenAuthMethod, ok := clientResp["token_endpoint_auth_method"].(string)
 		if !ok || tokenAuthMethod != "client_secret_post" {
 			t.Errorf("Expected token_endpoint_auth_method 'client_secret_post', got: %v", clientResp["token_endpoint_auth_method"])
 		}
-		
+
 		// Verify scope is returned as string
 		if scope, ok := clientResp["scope"].(string); !ok || scope != "read write" {
 			t.Errorf("Expected scope 'read write' as string, got: %v", clientResp["scope"])
@@ -307,14 +293,14 @@ func TestClientRegistration(t *testing.T) {
 
 	t.Run("PublicVsConfidentialClients", func(t *testing.T) {
 		// Test that public clients don't get secrets and confidential ones do
-		
+
 		// First, create a public client
 		publicReq := map[string]interface{}{
 			"redirect_uris": []string{"https://public.example.com/callback"},
 			"scope":         "read",
 			// No token_endpoint_auth_method specified - defaults to "none"
 		}
-		
+
 		body, _ := json.Marshal(publicReq)
 		resp, err := http.Post(
 			"http://localhost:8080/register",
@@ -323,10 +309,10 @@ func TestClientRegistration(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		
+
 		var publicResp map[string]interface{}
 		_ = json.NewDecoder(resp.Body).Decode(&publicResp)
-		
+
 		// Verify public client has no secret
 		if _, hasSecret := publicResp["client_secret"]; hasSecret {
 			t.Error("Public client should not have a secret")
@@ -334,14 +320,14 @@ func TestClientRegistration(t *testing.T) {
 		if authMethod := publicResp["token_endpoint_auth_method"]; authMethod != "none" {
 			t.Errorf("Public client should have auth method 'none', got: %v", authMethod)
 		}
-		
+
 		// Now create a confidential client
 		confidentialReq := map[string]interface{}{
 			"redirect_uris":              []string{"https://confidential.example.com/callback"},
 			"scope":                      "read write",
 			"token_endpoint_auth_method": "client_secret_post",
 		}
-		
+
 		body, _ = json.Marshal(confidentialReq)
 		resp, err = http.Post(
 			"http://localhost:8080/register",
@@ -350,10 +336,10 @@ func TestClientRegistration(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		
+
 		var confResp map[string]interface{}
 		_ = json.NewDecoder(resp.Body).Decode(&confResp)
-		
+
 		// Verify confidential client has a secret
 		if secret, ok := confResp["client_secret"].(string); !ok || secret == "" {
 			t.Error("Confidential client should have a secret")
@@ -815,7 +801,7 @@ func TestCORSHeaders(t *testing.T) {
 // but fail gracefully when invoked without the required token, and succeed with the token
 func TestToolAdvertisementWithUserTokens(t *testing.T) {
 	// Start OAuth server with user token configuration
-	mcpCmd := startMCPFront(t, "config/config.oauth-usertoken-tools-test.json",
+	startMCPFront(t, "config/config.oauth-usertoken-tools-test.json",
 		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
 		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-oauth",
@@ -826,7 +812,6 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		"MCP_FRONT_ENV=development",
 		"LOG_LEVEL=debug",
 	)
-	defer stopMCPFront(mcpCmd)
 
 	if !waitForHealthCheck(t, 30) {
 		t.Fatal("Server failed to start")
@@ -1050,7 +1035,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 
 func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 	// Start with OAuth config
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-test.json")
+	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.oauth-test.json")
 
 	// Set default environment
 	mcpCmd.Env = []string{
@@ -1091,7 +1076,7 @@ func startOAuthServer(t *testing.T, env map[string]string) *exec.Cmd {
 // startOAuthServerWithTokenConfig starts the OAuth server with user token configuration
 func startOAuthServerWithTokenConfig(t *testing.T) *exec.Cmd {
 	// Start with user token config
-	mcpCmd := exec.Command("../mcp-front", "-config", "config/config.oauth-token-test.json")
+	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", "config/config.oauth-token-test.json")
 
 	// Set default environment
 	mcpCmd.Env = []string{
