@@ -53,7 +53,9 @@ func (s *Server) GetCapabilities() ServerCapabilities {
 	for name, tool := range s.tools {
 		var inputSchema map[string]interface{}
 		if len(tool.InputSchema) > 0 {
-			json.Unmarshal(tool.InputSchema, &inputSchema)
+			if err := json.Unmarshal(tool.InputSchema, &inputSchema); err != nil {
+				internal.LogError("Failed to unmarshal input schema for tool %s: %v", name, err)
+			}
 		}
 		
 		tools[name] = Tool{

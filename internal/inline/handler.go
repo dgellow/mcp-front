@@ -134,14 +134,16 @@ func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
 		// Invalid JSON should return HTTP 400
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(JSONRPCResponse{
+		if err := json.NewEncoder(w).Encode(JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      nil,
 			Error: map[string]interface{}{
 				"code":    -32700,
 				"message": "Invalid JSON",
 			},
-		})
+		}); err != nil {
+			internal.LogError("Failed to encode JSON-RPC error response: %v", err)
+		}
 		return
 	}
 	
@@ -173,7 +175,9 @@ func (h *Handler) handleInitialize(w http.ResponseWriter, req *JSONRPCRequest) {
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	}
 }
 
 // handleToolsList handles the tools/list request
@@ -198,7 +202,9 @@ func (h *Handler) handleToolsList(w http.ResponseWriter, req *JSONRPCRequest) {
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	}
 }
 
 // handleToolCall handles tool execution requests
@@ -235,7 +241,9 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *JSONRPCRequest) {
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	}
 }
 
 // formatToolResult formats the tool result for display
@@ -274,5 +282,7 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+	}
 }
