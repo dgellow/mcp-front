@@ -12,6 +12,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	"github.com/dgellow/mcp-front/internal/inline"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -214,6 +215,42 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"requires_user_token": serverConfig.RequiresUserToken,
 		})
 
+		// For inline servers, create a custom handler
+		if serverConfig.TransportType == config.MCPClientTypeInline {
+			// Resolve inline config
+			inlineConfig, resolvedTools, err := inline.ResolveConfig(serverConfig.InlineConfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve inline config for %s: %w", serverName, err)
+			}
+			
+			// Create inline server
+			inlineServer := inline.NewServer(serverName, inlineConfig, resolvedTools)
+			
+			// Create inline handler
+			inlineHandler := inline.NewHandler(serverName, inlineServer)
+			
+			// Register with standard middlewares
+			var middlewares []MiddlewareFunc
+			middlewares = append(middlewares, corsMiddleware(allowedOrigins))
+			middlewares = append(middlewares, loggerMiddleware("mcp"))
+			middlewares = append(middlewares, recoverMiddleware("mcp"))
+			
+			// Add auth middleware if configured
+			if s.oauthServer != nil {
+				middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
+			}
+			
+			// Register handler for both /name/sse and /name/message
+			mux.Handle("/"+serverName+"/", chainMiddleware(inlineHandler, middlewares...))
+			
+			internal.LogInfoWithFields("server", "Registered inline MCP server", map[string]interface{}{
+				"name":  serverName,
+				"tools": len(resolvedTools),
+			})
+			
+			continue // Skip the rest of the loop
+		}
+		
 		// For stdio servers, create a single shared MCP server
 		if isStdioServer(serverConfig) {
 			// Create the shared MCP server for this stdio server

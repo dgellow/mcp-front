@@ -1,0 +1,133 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": "https://mcp.example.com",
+    "addr": ":8080",
+    "name": "MCP Front with Inline Servers",
+    "auth": {
+      "kind": "oauth",
+      "issuer": "https://mcp.example.com",
+      "allowedDomains": ["example.com"],
+      "allowedOrigins": ["https://claude.ai"],
+      "tokenTtl": "1h",
+      "storage": "memory",
+      "googleClientId": {"$env": "GOOGLE_CLIENT_ID"},
+      "googleClientSecret": {"$env": "GOOGLE_CLIENT_SECRET"},
+      "googleRedirectUri": "https://mcp.example.com/oauth/callback",
+      "jwtSecret": {"$env": "JWT_SECRET"},
+      "encryptionKey": {"$env": "ENCRYPTION_KEY"}
+    }
+  },
+  "mcpServers": {
+    "gcloud": {
+      "transportType": "inline",
+      "inline": {
+        "description": "Google Cloud Platform debugging tools",
+        "tools": [
+          {
+            "name": "list_instances",
+            "description": "List all GCE instances in a project",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "type": "string",
+                  "description": "GCP project ID"
+                },
+                "zone": {
+                  "type": "string",
+                  "description": "GCP zone (optional, lists all zones if not specified)"
+                }
+              },
+              "required": ["project"]
+            },
+            "command": "docker",
+            "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+              "google/cloud-sdk:alpine",
+              "sh",
+              "-c",
+              "echo \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/creds.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json && gcloud compute instances list --project={{.project}} {{if .zone}}--zone={{.zone}}{{end}} --format=json"
+            ],
+            "env": {
+              "GOOGLE_APPLICATION_CREDENTIALS_JSON": {"$env": "GCP_SERVICE_ACCOUNT_JSON"}
+            },
+            "timeout": "30s"
+          },
+          {
+            "name": "describe_cluster",
+            "description": "Get details about a GKE cluster",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cluster": {
+                  "type": "string",
+                  "description": "GKE cluster name"
+                },
+                "zone": {
+                  "type": "string", 
+                  "description": "GCP zone where the cluster is located"
+                },
+                "project": {
+                  "type": "string",
+                  "description": "GCP project ID"
+                }
+              },
+              "required": ["cluster", "zone", "project"]
+            },
+            "command": "docker",
+            "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+              "google/cloud-sdk:alpine",
+              "sh",
+              "-c",
+              "echo \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/creds.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json && gcloud container clusters describe {{.cluster}} --zone={{.zone}} --project={{.project}} --format=json"
+            ],
+            "env": {
+              "GOOGLE_APPLICATION_CREDENTIALS_JSON": {"$env": "GCP_SERVICE_ACCOUNT_JSON"}
+            },
+            "timeout": "30s"
+          },
+          {
+            "name": "list_buckets",
+            "description": "List all Cloud Storage buckets in a project",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "type": "string",
+                  "description": "GCP project ID"
+                }
+              },
+              "required": ["project"]
+            },
+            "command": "docker",
+            "args": [
+              "run",
+              "--rm",
+              "-i",
+              "-e",
+              "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+              "google/cloud-sdk:alpine",
+              "sh",
+              "-c",
+              "echo \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/creds.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json && gsutil ls -p {{.project}}"
+            ],
+            "env": {
+              "GOOGLE_APPLICATION_CREDENTIALS_JSON": {"$env": "GCP_SERVICE_ACCOUNT_JSON"}
+            },
+            "timeout": "30s"
+          }
+        ]
+      }
+    }
+  }
+}
