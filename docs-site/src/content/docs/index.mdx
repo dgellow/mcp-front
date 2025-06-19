@@ -71,6 +71,9 @@ For development or simple setups, you can use static bearer tokens. Map server n
 ## Try it in 30 seconds
 
 ```bash
+# Install and run locally
+go install github.com/dgellow/mcp-front/cmd/mcp-front@latest
+
 # Create a minimal config
 cat > config.json << 'EOF'
 {
@@ -81,30 +84,28 @@ cat > config.json << 'EOF'
     "auth": {
       "kind": "bearerToken",
       "tokens": {
-        "filesystem": ["test-123"]
+        "echo": ["test-123"]
       }
     }
   },
   "mcpServers": {
-    "filesystem": {
+    "echo": {
       "transportType": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+      "command": "sh",
+      "args": ["-c", "echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{}}}' && cat"]
     }
   }
 }
 EOF
 
 # Run it
-docker run -p 8080:8080 -v ./config.json:/config.json ghcr.io/dgellow/mcp-front:latest
+mcp-front -config config.json
 ```
 
-Then connect from Claude with URL `http://localhost:8080/sse` and token `test-123`. That's it.
+Then connect from Claude with URL `http://localhost:8080/sse` and token `test-123`. The echo server will mirror your requests back.
 
 ## Built for production
 
-MCP Front uses <span class="feature-underline">OAuth 2.1 with PKCE</span>, the latest standard. It integrates with Google Workspace for enterprise SSO. Domain restrictions mean only your employees get access.
+MCP Front uses <span class="feature-underline">OAuth 2.1 with PKCE</span>, the latest standard. It currently supports <span class="feature-underline">Google Cloud OAuth</span> clients — integrates directly with <span class="feature-underline">Google Workspace SSO</span>, <span class="feature-underline">Firestore</span> for persistent storage.
 
-Sessions persist in Firestore so they survive restarts. <span class="feature-underline">Structured JSON logging</span> makes debugging straightforward. Health checks work with any monitoring system.
-
-The code is simple Go with minimal dependencies.
+The code is clean, simple <span class="feature-underline">Go</span>.
