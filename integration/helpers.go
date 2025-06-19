@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -84,8 +85,8 @@ func tracef(format string, args ...interface{}) {
 	}
 }
 
-// startMCPFront starts the mcp-front server with the given config and returns the command
-func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cmd {
+// startMCPFront starts the mcp-front server with the given config
+func startMCPFront(t *testing.T, configPath string, extraEnv ...string) {
 	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", configPath)
 
 	// Get test config for session timeouts
@@ -128,12 +129,38 @@ func startMCPFront(t *testing.T, configPath string, extraEnv ...string) *exec.Cm
 		t.Fatalf("Failed to start mcp-front: %v", err)
 	}
 
-	return mcpCmd
+	// Register cleanup that runs even if test is killed
+	t.Cleanup(func() {
+		stopMCPFront(mcpCmd)
+	})
 }
 
-// stopMCPFront stops the mcp-front server
+// stopMCPFront stops the mcp-front server gracefully
 func stopMCPFront(cmd *exec.Cmd) {
-	if cmd != nil && cmd.Process != nil {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+
+	// Try graceful shutdown first (SIGINT)
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+		// If SIGINT fails, force kill immediately
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return
+	}
+
+	// Wait up to 5 seconds for graceful shutdown
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-done:
+		// Graceful shutdown completed
+		return
+	case <-time.After(5 * time.Second):
+		// Timeout, force kill
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	}

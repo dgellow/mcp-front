@@ -13,6 +13,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
@@ -96,19 +97,19 @@ func (h *AdminHandlers) validateCSRFToken(token string) bool {
 func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept GET
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
 	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
 
@@ -156,7 +157,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 		internal.LogErrorWithFields("admin", "Failed to generate CSRF token", map[string]interface{}{
 			"error": err.Error(),
 		})
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Internal server error")
 		return
 	}
 
@@ -177,7 +178,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 		internal.LogErrorWithFields("admin", "Failed to render admin page", map[string]interface{}{
 			"error": err.Error(),
 		})
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Internal server error")
 	}
 }
 
@@ -185,31 +186,31 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
 	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
 
 	// Parse form
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Bad request")
 		return
 	}
 
 	// Validate CSRF
 	if !h.validateCSRFToken(r.FormValue("csrf_token")) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Invalid CSRF token")
 		return
 	}
 
@@ -217,7 +218,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 	targetEmail := r.FormValue("user_email")
 
 	if targetEmail == "" {
-		http.Error(w, "Missing user_email", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Missing user_email")
 		return
 	}
 
@@ -355,31 +356,31 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
 	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
 
 	// Parse form
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Bad request")
 		return
 	}
 
 	// Validate CSRF
 	if !h.validateCSRFToken(r.FormValue("csrf_token")) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Invalid CSRF token")
 		return
 	}
 
@@ -387,7 +388,7 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 	sessionID := r.FormValue("session_id")
 
 	if sessionID == "" {
-		http.Error(w, "Missing session_id", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Missing session_id")
 		return
 	}
 
@@ -441,37 +442,37 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
 	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
 
 	// Parse form
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Bad request")
 		return
 	}
 
 	// Validate CSRF
 	if !h.validateCSRFToken(r.FormValue("csrf_token")) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Invalid CSRF token")
 		return
 	}
 
 	logLevel := r.FormValue("log_level")
 	if logLevel == "" {
-		http.Error(w, "Missing log_level", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Missing log_level")
 		return
 	}
 

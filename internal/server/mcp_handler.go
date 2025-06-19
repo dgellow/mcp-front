@@ -9,6 +9,7 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
@@ -100,9 +101,8 @@ func (h *MCPHandler) isMessageRequest(r *http.Request) bool {
 	return strings.HasSuffix(path, "/message") || strings.Contains(path, "/message?")
 }
 
-// handleSSERequest handles SSE connection requests for stdio servers
-func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
-	// Track user access
+// trackUserAccess tracks user access if user email is provided
+func (h *MCPHandler) trackUserAccess(ctx context.Context, userEmail string) {
 	if userEmail != "" {
 		if store, ok := h.tokenStore.(storage.Storage); ok {
 			if err := store.UpsertUser(ctx, userEmail); err != nil {
@@ -113,6 +113,12 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 			}
 		}
 	}
+}
+
+// handleSSERequest handles SSE connection requests for stdio servers
+func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
+	// Track user access
+	h.trackUserAccess(ctx, userEmail)
 
 	if !isStdioServer(config) {
 		// For non-stdio servers, handle normally
@@ -125,7 +131,7 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 		internal.LogErrorWithFields("mcp", "No shared SSE server configured for stdio server", map[string]any{
 			"server": h.serverName,
 		})
-		http.Error(w, "Server misconfiguration", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Server misconfiguration")
 		return
 	}
 
@@ -155,16 +161,7 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 // handleMessageRequest handles message endpoint requests for stdio servers
 func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
 	// Track user access
-	if userEmail != "" {
-		if store, ok := h.tokenStore.(storage.Storage); ok {
-			if err := store.UpsertUser(ctx, userEmail); err != nil {
-				internal.LogWarnWithFields("mcp", "Failed to track user", map[string]any{
-					"error": err.Error(),
-					"user":  userEmail,
-				})
-			}
-		}
-	}
+	h.trackUserAccess(ctx, userEmail)
 
 	if !isStdioServer(config) {
 		jsonrpc.WriteError(w, nil, jsonrpc.InvalidRequest, "Message endpoint not supported for this transport")
@@ -242,7 +239,7 @@ func (h *MCPHandler) handleNonStdioSSERequest(ctx context.Context, w http.Respon
 			"user":    userEmail,
 			"service": h.serverName,
 		})
-		http.Error(w, "Failed to connect to service", http.StatusServiceUnavailable)
+		jsonwriter.WriteServiceUnavailable(w, "Failed to connect to service")
 		return
 	}
 	defer mcpClient.Close()
@@ -272,7 +269,7 @@ func (h *MCPHandler) handleNonStdioSSERequest(ctx context.Context, w http.Respon
 			"user":    userEmail,
 			"service": h.serverName,
 		})
-		http.Error(w, "Failed to initialize service", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Failed to initialize service")
 		return
 	}
 

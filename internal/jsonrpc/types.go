@@ -44,4 +44,3 @@ func NewErrorResponse(id any, err *Error) *Response {
 		Error:   err,
 	}
 }
-

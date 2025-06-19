@@ -226,5 +226,6 @@ staticcheck ./...
 - If tests are failing, fix the code, not the tests
 - If you're working around a design choice, stop and ask why it exists
 - Never hide problems - surface issues immediately
+- **Do NOT simulate negative human emotions** - No "panicking", "freaking out", "frustration", etc.
 
 Remember: Think like an experienced engineer - understand the use cases, read the docs, plan properly, then execute. But most importantly, when uncertain, ASK rather than guess.

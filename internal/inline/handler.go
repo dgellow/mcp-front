@@ -9,6 +9,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
 	"github.com/dgellow/mcp-front/internal/server/sse"
 )
@@ -41,7 +42,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if r.URL.Path == "/message" || r.URL.Path == "/"+h.name+"/message" {
 		h.handleMessage(w, r)
 	} else {
-		http.NotFound(w, r)
+		jsonwriter.WriteNotFound(w, "Endpoint not found")
 	}
 }
 
@@ -54,7 +55,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Streaming unsupported")
 		return
 	}
 

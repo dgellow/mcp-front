@@ -49,4 +49,3 @@ func WriteInvalidJSON(w http.ResponseWriter) {
 	// Invalid JSON means we can't determine the ID, so it's null
 	WriteErrorWithStatus(w, nil, ParseError, "Invalid JSON", http.StatusBadRequest)
 }
-

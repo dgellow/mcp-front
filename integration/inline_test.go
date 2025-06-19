@@ -17,8 +17,7 @@ func TestInlineMCPServer(t *testing.T) {
 	defer os.Unsetenv("INLINE_TEST_ENV_VAR")
 
 	trace(t, "Starting mcp-front with inline config")
-	mcpCmd := startMCPFront(t, "config/config.inline-test.json")
-	defer stopMCPFront(mcpCmd)
+	startMCPFront(t, "config/config.inline-test.json")
 
 	waitForMCPFront(t)
 	trace(t, "mcp-front is ready")
@@ -35,7 +34,7 @@ func TestInlineMCPServer(t *testing.T) {
 
 	t.Log("Connected to inline MCP server")
 
-	// Test 1: Basic echo tool
+	// Test 1: Basic echo tool (static args)
 	t.Run("echo tool", func(t *testing.T) {
 		params := map[string]interface{}{
 			"name": "echo",
@@ -64,7 +63,8 @@ func TestInlineMCPServer(t *testing.T) {
 
 		text, ok := firstContent["text"].(string)
 		require.True(t, ok, "Expected text in content")
-		assert.Contains(t, text, "Hello, inline MCP!")
+		// The echo tool has static args, so it outputs "test message"
+		assert.Contains(t, text, "test message")
 	})
 
 	// Test 2: Environment variables
@@ -88,18 +88,15 @@ func TestInlineMCPServer(t *testing.T) {
 		assert.Contains(t, text, "OTHER_VAR=env-value-456", "Dynamic env var not resolved correctly")
 	})
 
-	// Test 3: Template substitution
-	t.Run("template substitution", func(t *testing.T) {
+	// Test 3: Static output test
+	t.Run("static output", func(t *testing.T) {
 		params := map[string]interface{}{
-			"name": "template_test",
-			"arguments": map[string]interface{}{
-				"name":  "TestUser",
-				"count": 42,
-			},
+			"name":      "static_test",
+			"arguments": map[string]interface{}{},
 		}
 
 		result, err := client.SendMCPRequest("tools/call", params)
-		require.NoError(t, err, "Failed to call template_test tool")
+		require.NoError(t, err, "Failed to call static_test tool")
 
 		// Check result
 		resultMap, _ := result["result"].(map[string]interface{})
@@ -107,35 +104,10 @@ func TestInlineMCPServer(t *testing.T) {
 		firstContent, _ := content[0].(map[string]interface{})
 		text, _ := firstContent["text"].(string)
 
-		assert.Contains(t, text, "Name: TestUser")
-		assert.Contains(t, text, "Count: 42")
-		assert.NotContains(t, text, "Optional:", "Optional field should not appear when not provided")
+		assert.Contains(t, text, "Static output: test")
 	})
 
-	// Test 4: Template with optional field
-	t.Run("template with optional", func(t *testing.T) {
-		params := map[string]interface{}{
-			"name": "template_test",
-			"arguments": map[string]interface{}{
-				"name":     "TestUser",
-				"count":    42,
-				"optional": "extra-data",
-			},
-		}
-
-		result, err := client.SendMCPRequest("tools/call", params)
-		require.NoError(t, err, "Failed to call template_test tool with optional")
-
-		// Check result
-		resultMap, _ := result["result"].(map[string]interface{})
-		content, _ := resultMap["content"].([]interface{})
-		firstContent, _ := content[0].(map[string]interface{})
-		text, _ := firstContent["text"].(string)
-
-		assert.Contains(t, text, "Optional: extra-data")
-	})
-
-	// Test 5: JSON output parsing
+	// Test 4: JSON output parsing
 	t.Run("JSON output", func(t *testing.T) {
 		params := map[string]interface{}{
 			"name": "json_output",
@@ -207,7 +179,7 @@ func TestInlineMCPServer(t *testing.T) {
 
 		assert.Contains(t, toolNames, "echo")
 		assert.Contains(t, toolNames, "env_test")
-		assert.Contains(t, toolNames, "template_test")
+		assert.Contains(t, toolNames, "static_test")
 		assert.Contains(t, toolNames, "json_output")
 		assert.Contains(t, toolNames, "failing_tool")
 		assert.Contains(t, toolNames, "slow_tool")

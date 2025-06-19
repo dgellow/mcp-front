@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/cookie"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 )
 
 // SessionData represents the data stored in the encrypted session cookie
@@ -22,7 +24,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check for session cookie
-			cookie, err := r.Cookie("mcp_session")
+			sessionValue, err := cookie.GetSession(r)
 			if err != nil {
 				// No cookie, redirect directly to Google OAuth
 				state := s.generateBrowserState(r.URL.String())
@@ -32,11 +34,11 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			}
 
 			// Decrypt cookie
-			decrypted, err := s.sessionEncryptor.Decrypt(cookie.Value)
+			decrypted, err := s.sessionEncryptor.Decrypt(sessionValue)
 			if err != nil {
 				// Invalid cookie, redirect to OAuth
 				internal.LogDebug("Invalid session cookie: %v", err)
-				http.SetCookie(w, &http.Cookie{Name: "mcp_session", MaxAge: -1}) // Clear bad cookie
+				cookie.ClearSession(w) // Clear bad cookie
 				state := s.generateBrowserState(r.URL.String())
 				googleURL := s.authService.googleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
@@ -47,8 +49,8 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			var sessionData SessionData
 			if err := json.Unmarshal([]byte(decrypted), &sessionData); err != nil {
 				// Invalid format
-				http.SetCookie(w, &http.Cookie{Name: "mcp_session", MaxAge: -1})
-				http.Error(w, "Invalid session", http.StatusUnauthorized)
+				cookie.ClearSession(w)
+				jsonwriter.WriteUnauthorized(w, "Invalid session")
 				return
 			}
 
@@ -56,7 +58,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			if time.Now().After(sessionData.Expires) {
 				// Expired session
 				internal.LogDebug("Session expired for user %s", sessionData.Email)
-				http.SetCookie(w, &http.Cookie{Name: "mcp_session", MaxAge: -1})
+				cookie.ClearSession(w)
 				// Redirect directly to Google OAuth
 				state := s.generateBrowserState(r.URL.String())
 				googleURL := s.authService.googleAuthURL(state)
@@ -102,15 +104,7 @@ func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string
 		return fmt.Errorf("failed to encrypt session: %w", err)
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "mcp_session",
-		Value:    encrypted,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   !internal.IsDevelopmentMode(), // Only require HTTPS in production
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400, // 24 hours
-	})
+	cookie.SetSession(w, encrypted, 24*time.Hour)
 
 	return nil
 }

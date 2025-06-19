@@ -8,6 +8,7 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
@@ -156,7 +157,7 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 			defer func() {
 				if err := recover(); err != nil {
 					internal.Logf("<%s> Recovered from panic: %v", prefix, err)
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					jsonwriter.WriteInternalServerError(w, "Internal Server Error")
 				}
 			}()
 			next.ServeHTTP(w, r)
@@ -176,13 +177,13 @@ func newAuthMiddleware(tokens []string) MiddlewareFunc {
 				authHeader := r.Header.Get("Authorization")
 
 				if !strings.HasPrefix(authHeader, "Bearer ") {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					jsonwriter.WriteUnauthorized(w, "Unauthorized")
 					return
 				}
 
 				token := authHeader[7:] // Extract the actual token
 				if _, ok := tokenSet[token]; !ok {
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					jsonwriter.WriteUnauthorized(w, "Unauthorized")
 					return
 				}
 			}
@@ -197,12 +198,12 @@ func adminMiddleware(adminConfig *config.AdminConfig, store storage.Storage) Mid
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userEmail, ok := oauth.GetUserFromContext(r.Context())
 			if !ok {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				jsonwriter.WriteUnauthorized(w, "Unauthorized")
 				return
 			}
 
 			if !auth.IsAdmin(r.Context(), userEmail, adminConfig, store) {
-				http.Error(w, "Forbidden - Admin access required", http.StatusForbidden)
+				jsonwriter.WriteForbidden(w, "Forbidden - Admin access required")
 				return
 			}
 

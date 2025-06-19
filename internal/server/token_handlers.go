@@ -9,6 +9,7 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
@@ -53,13 +54,13 @@ func (h *TokenHandlers) validateCSRFToken(token string) bool {
 func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept GET
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
@@ -114,7 +115,7 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 			"error": err.Error(),
 			"user":  userEmail,
 		})
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Internal server error")
 		return
 	}
 
@@ -133,7 +134,7 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 			"error": err.Error(),
 			"user":  userEmail,
 		})
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		jsonwriter.WriteInternalServerError(w, "Internal server error")
 	}
 }
 
@@ -141,39 +142,39 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Parse form
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Bad request")
 		return
 	}
 
 	// Validate CSRF token
 	csrfToken := r.FormValue("csrf_token")
 	if !h.validateCSRFToken(csrfToken) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Invalid CSRF token")
 		return
 	}
 
 	serviceName := r.FormValue("service")
 	if serviceName == "" {
-		http.Error(w, "Service name is required", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Service name is required")
 		return
 	}
 
 	// Validate service exists and requires user token
 	serviceConfig, exists := h.mcpServers[serviceName]
 	if !exists || !serviceConfig.RequiresUserToken {
-		http.Error(w, "Service not found", http.StatusNotFound)
+		jsonwriter.WriteNotFound(w, "Service not found")
 		return
 	}
 
@@ -247,38 +248,38 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
 	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Parse form
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Bad request")
 		return
 	}
 
 	// Validate CSRF token
 	csrfToken := r.FormValue("csrf_token")
 	if !h.validateCSRFToken(csrfToken) {
-		http.Error(w, "Invalid CSRF token", http.StatusForbidden)
+		jsonwriter.WriteForbidden(w, "Invalid CSRF token")
 		return
 	}
 
 	serviceName := r.FormValue("service")
 	if serviceName == "" {
-		http.Error(w, "Service name is required", http.StatusBadRequest)
+		jsonwriter.WriteBadRequest(w, "Service name is required")
 		return
 	}
 
 	serviceConfig, exists := h.mcpServers[serviceName]
 	if !exists {
-		http.Error(w, "Service not found", http.StatusNotFound)
+		jsonwriter.WriteNotFound(w, "Service not found")
 		return
 	}
 

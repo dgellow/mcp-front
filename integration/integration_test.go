@@ -15,12 +15,11 @@ func TestIntegration(t *testing.T) {
 	waitForDB(t)
 
 	trace(t, "Starting mcp-front")
-	mcpCmd := startMCPFront(t, "config/config.test.json",
+	startMCPFront(t, "config/config.test.json",
 		"GOOGLE_OAUTH_AUTH_URL=http://localhost:9090/auth",
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
 	)
-	defer stopMCPFront(mcpCmd)
 
 	waitForMCPFront(t)
 	trace(t, "mcp-front is ready")

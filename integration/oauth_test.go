@@ -27,7 +27,7 @@ import (
 // TestBasicOAuthFlow tests the basic OAuth server functionality
 func TestBasicOAuthFlow(t *testing.T) {
 	// Start mcp-front with OAuth config
-	mcpCmd := startMCPFront(t, "config/config.oauth-test.json",
+	startMCPFront(t, "config/config.oauth-test.json",
 		"JWT_SECRET=test-jwt-secret-32-bytes-exactly!",
 		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-for-oauth",
@@ -37,7 +37,6 @@ func TestBasicOAuthFlow(t *testing.T) {
 		"GOOGLE_OAUTH_TOKEN_URL=http://localhost:9090/token",
 		"GOOGLE_USERINFO_URL=http://localhost:9090/userinfo",
 	)
-	defer stopMCPFront(mcpCmd)
 
 	// Wait for startup
 	waitForMCPFront(t)
@@ -802,7 +801,7 @@ func TestCORSHeaders(t *testing.T) {
 // but fail gracefully when invoked without the required token, and succeed with the token
 func TestToolAdvertisementWithUserTokens(t *testing.T) {
 	// Start OAuth server with user token configuration
-	mcpCmd := startMCPFront(t, "config/config.oauth-usertoken-tools-test.json",
+	startMCPFront(t, "config/config.oauth-usertoken-tools-test.json",
 		"JWT_SECRET=demo-jwt-secret-32-bytes-exactly!",
 		"ENCRYPTION_KEY=test-encryption-key-32-bytes-ok!",
 		"GOOGLE_CLIENT_ID=test-client-id-oauth",
@@ -813,7 +812,6 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		"MCP_FRONT_ENV=development",
 		"LOG_LEVEL=debug",
 	)
-	defer stopMCPFront(mcpCmd)
 
 	if !waitForHealthCheck(t, 30) {
 		t.Fatal("Server failed to start")
