@@ -47,14 +47,19 @@
               "--rm",
               "-i",
               "-e",
-              "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "-e",
+              "CLOUDSDK_CORE_PROJECT",
               "google/cloud-sdk:alpine",
-              "sh",
-              "-c",
-              "echo \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/creds.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json && gcloud compute instances list --project={{.project}} {{if .zone}}--zone={{.zone}}{{end}} --format=json"
+              "gcloud",
+              "compute",
+              "instances",
+              "list",
+              "--format=json"
             ],
             "env": {
-              "GOOGLE_APPLICATION_CREDENTIALS_JSON": {"$env": "GCP_SERVICE_ACCOUNT_JSON"}
+              "GOOGLE_APPLICATION_CREDENTIALS": {"$env": "GCP_SERVICE_ACCOUNT_JSON"},
+              "CLOUDSDK_CORE_PROJECT": {"$env": "GCP_PROJECT_ID"}
             },
             "timeout": "30s"
           },
@@ -85,14 +90,21 @@
               "--rm",
               "-i",
               "-e",
-              "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "-e",
+              "CLOUDSDK_CORE_PROJECT",
               "google/cloud-sdk:alpine",
-              "sh",
-              "-c",
-              "echo \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/creds.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json && gcloud container clusters describe {{.cluster}} --zone={{.zone}} --project={{.project}} --format=json"
+              "gcloud",
+              "container",
+              "clusters",
+              "describe",
+              "my-cluster",
+              "--zone=us-central1-a",
+              "--format=json"
             ],
             "env": {
-              "GOOGLE_APPLICATION_CREDENTIALS_JSON": {"$env": "GCP_SERVICE_ACCOUNT_JSON"}
+              "GOOGLE_APPLICATION_CREDENTIALS": {"$env": "GCP_SERVICE_ACCOUNT_JSON"},
+              "CLOUDSDK_CORE_PROJECT": {"$env": "GCP_PROJECT_ID"}
             },
             "timeout": "30s"
           },
@@ -115,14 +127,16 @@
               "--rm",
               "-i",
               "-e",
-              "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+              "GOOGLE_APPLICATION_CREDENTIALS",
+              "-e",
+              "CLOUDSDK_CORE_PROJECT",
               "google/cloud-sdk:alpine",
-              "sh",
-              "-c",
-              "echo \"$GOOGLE_APPLICATION_CREDENTIALS_JSON\" > /tmp/creds.json && export GOOGLE_APPLICATION_CREDENTIALS=/tmp/creds.json && gsutil ls -p {{.project}}"
+              "gsutil",
+              "ls"
             ],
             "env": {
-              "GOOGLE_APPLICATION_CREDENTIALS_JSON": {"$env": "GCP_SERVICE_ACCOUNT_JSON"}
+              "GOOGLE_APPLICATION_CREDENTIALS": {"$env": "GCP_SERVICE_ACCOUNT_JSON"},
+              "CLOUDSDK_CORE_PROJECT": {"$env": "GCP_PROJECT_ID"}
             },
             "timeout": "30s"
           }

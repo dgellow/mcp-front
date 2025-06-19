@@ -56,11 +56,8 @@
               "type": "object",
               "properties": {}
             },
-            "command": "sh",
-            "args": ["-c", "echo TEST_VAR=$TEST_VAR"],
-            "env": {
-              "TEST_VAR": {"$env": "TEST_ENV_VAR"}
-            }
+            "command": "echo",
+            "args": [{"$env": "TEST_ENV_VAR"}]
           }
         ]
       }
