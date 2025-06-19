@@ -1,0 +1,109 @@
+---
+// Custom theme switcher - simple toggle button instead of dropdown
+---
+
+<starlight-theme-select>
+  <button aria-label="Toggle theme" class="theme-toggle">
+    <svg class="theme-icon sun-icon" viewBox="0 0 24 24" width="20" height="20">
+      <circle cx="12" cy="12" r="4"></circle>
+      <path d="m12 2 0 2"></path>
+      <path d="m12 20 0 2"></path>
+      <path d="m4.93 4.93 1.41 1.41"></path>
+      <path d="m17.66 17.66 1.41 1.41"></path>
+      <path d="m2 12 2 0"></path>
+      <path d="m20 12 2 0"></path>
+      <path d="m6.34 17.66-1.41 1.41"></path>
+      <path d="m19.07 4.93-1.41 1.41"></path>
+    </svg>
+    <svg
+      class="theme-icon moon-icon"
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+    >
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+    </svg>
+  </button>
+</starlight-theme-select>
+
+<script>
+  class StarlightThemeSelect extends HTMLElement {
+    constructor() {
+      super();
+      this.addEventListener('click', this.onClick);
+      this.updateIcon();
+    }
+
+    onClick() {
+      const theme = document.documentElement.dataset.theme;
+      const newTheme = theme === 'dark' ? 'light' : 'dark';
+
+      document.documentElement.dataset.theme = newTheme;
+      localStorage.setItem('starlight-theme', newTheme);
+      this.updateIcon();
+    }
+
+    updateIcon() {
+      const theme = document.documentElement.dataset.theme;
+      const button = this.querySelector('button');
+      const sunIcon = this.querySelector('.sun-icon');
+      const moonIcon = this.querySelector('.moon-icon');
+
+      if (theme === 'dark') {
+        sunIcon.style.display = 'block';
+        moonIcon.style.display = 'none';
+        button.setAttribute('aria-label', 'Switch to light theme');
+      } else {
+        sunIcon.style.display = 'none';
+        moonIcon.style.display = 'block';
+        button.setAttribute('aria-label', 'Switch to dark theme');
+      }
+    }
+  }
+
+  customElements.define('starlight-theme-select', StarlightThemeSelect);
+</script>
+
+<style>
+  .theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 6px;
+    color: var(--sl-color-gray-2);
+    transition:
+      color 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .theme-toggle:hover {
+    background-color: var(--sl-color-gray-6);
+    color: var(--sl-color-gray-1);
+  }
+
+  .theme-icon {
+    display: block;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sun-icon {
+    display: none;
+  }
+
+  .moon-icon {
+    display: block;
+  }
+
+  [data-theme='dark'] .sun-icon {
+    display: block;
+  }
+
+  [data-theme='dark'] .moon-icon {
+    display: none;
+  }
+</style>

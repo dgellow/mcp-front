@@ -1,114 +1,110 @@
 ---
-title: ""
-description: The missing auth layer for MCP servers
-template: splash
+title: MCP Front
+description: Authentication proxy for MCP servers
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
-import AstralHero from '../../components/AstralHero.astro';
+import CustomHero from '../../components/CustomHero.astro';
 
-<AstralHero 
-  title="MCP Front" 
-  tagline="Authentication proxy for Model Context Protocol servers" 
+<CustomHero
+  title="MCP Front"
+  tagline="OAuth 2.1 proxy for Model Context Protocol"
+  actions={[
+    {
+      text: 'Quickstart',
+      link: '/mcp-front/quickstart/',
+      icon: 'right-arrow',
+      variant: 'primary',
+    },
+    {
+      text: 'GitHub',
+      link: 'https://github.com/dgellow/mcp-front',
+      icon: 'github',
+      attrs: { target: '_blank' },
+    },
+  ]}
 />
 
-## The Problem
+MCP Front is an authentication proxy that sits between Claude and your MCP servers. It handles user authentication so your MCP servers don't have to.
 
-MCP servers use static bearer tokens stored in configuration files. This creates security vulnerabilities:
+## The problem with MCP authentication
 
-- **No user attribution** - Can't track who accessed what
-- **No revocation** - Can't disable access for ex-employees  
-- **Plaintext secrets** - Database credentials exposed
-- **No restrictions** - Anyone with the token has full access
+MCP servers only support static bearer tokens stored in configuration files. This works fine for personal use, but creates problems when you want to share MCP servers with your team. You can't tell who's using what. You can't revoke access when someone leaves. And your database credentials are sitting in plaintext.
 
-## Features
+MCP Front fixes this by adding a proper authentication layer between Claude and your servers. Your MCP servers stay exactly the same. MCP Front validates the user, then proxies authenticated requests to your servers. You get user attribution, access control, and audit logs without changing a line of MCP server code.
 
-<div class="feature-grid">
-  <div class="feature-card">
-    <h3>OAuth 2.1 + PKCE</h3>
-    <p>Modern authorization with proof key for code exchange</p>
-  </div>
-  <div class="feature-card">
-    <h3>JWT Authentication</h3>
-    <p>Stateless tokens with configurable expiration</p>
-  </div>
-  <div class="feature-card">
-    <h3>Domain Restrictions</h3>
-    <p>Limit access to your organization's email domain</p>
-  </div>
-  <div class="feature-card">
-    <h3>Audit Logging</h3>
-    <p>Track every request with user attribution</p>
-  </div>
-</div>
+## Authentication
 
-## How It Works
+Users log in with their company Google account, and MCP Front checks they're from your domain. You get individual user tracking and instant access revocation.
 
-<div class="architecture-diagram">
-  <object data="/mcp-front/architecture.svg" type="image/svg+xml" aria-label="MCP Front Architecture">
-    <img src="/mcp-front/architecture.svg" alt="MCP Front Architecture" />
-  </object>
-</div>
-
-1. Claude connects to MCP Front endpoint
-2. User authenticates via OAuth 2.1 (Google by default)
-3. MCP Front validates JWT and checks domain
-4. Authorized requests proxy to your MCP servers
-5. Responses stream back through Server-Sent Events
-
-## Key Benefits
-
-<div class="feature-grid">
-  <div class="feature-card">
-    <h3>Enterprise SSO</h3>
-    <p>Integrate with Google Workspace or any OAuth 2.1 provider</p>
-  </div>
-  <div class="feature-card">
-    <h3>Zero Trust Security</h3>
-    <p>No credentials stored in Claude, everything validated per-request</p>
-  </div>
-  <div class="feature-card">
-    <h3>Protocol Translation</h3>
-    <p>Automatically convert stdio-based servers to HTTP/SSE</p>
-  </div>
-  <div class="feature-card">
-    <h3>Production Ready</h3>
-    <p>Health checks, structured logging, and horizontal scaling</p>
-  </div>
-</div>
-
-## Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/dgellow/mcp-front
-cd mcp-front
-
-# Copy example config
-cp config-oauth.example.json config.json
-
-# Start with Docker Compose
-docker-compose up -d
+```json
+{
+  "auth": {
+    "kind": "oauth",
+    "issuer": "https://mcp.company.com",
+    "allowedDomains": ["company.com"],
+    "googleClientId": { "$env": "GOOGLE_CLIENT_ID" },
+    "googleClientSecret": { "$env": "GOOGLE_CLIENT_SECRET" },
+    "jwtSecret": { "$env": "JWT_SECRET" },
+    "encryptionKey": { "$env": "ENCRYPTION_KEY" }
+  }
+}
 ```
 
-## Use Cases
+<details>
+<summary>Or use bearer tokens</summary>
 
-<div class="feature-grid">
-  <div class="feature-card">
-    <h3>Database Access</h3>
-    <p>Query internal databases without exposing credentials</p>
-  </div>
-  <div class="feature-card">
-    <h3>Git Repositories</h3>
-    <p>Access private repos with proper authentication</p>
-  </div>
-  <div class="feature-card">
-    <h3>Internal APIs</h3>
-    <p>Expose any HTTP API through authenticated proxy</p>
-  </div>
-  <div class="feature-card">
-    <h3>Knowledge Bases</h3>
-    <p>Connect Notion, Confluence, or wikis securely</p>
-  </div>
-</div>
+For development or simple setups, you can use static bearer tokens. Map server names to lists of valid tokens. Users provide a token when connecting, and if it's in the list for that server, they get access.
 
+```json
+{
+  "auth": {
+    "kind": "bearerToken",
+    "tokens": {
+      "linear": [{ "$env": "MY_ACCESS_TOKEN" }]
+    }
+  }
+}
+```
+
+</details>
+
+## Try it in 30 seconds
+
+```bash
+# Create a minimal config
+cat > config.json << 'EOF'
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "name": "Test Proxy",
+    "addr": ":8080",
+    "auth": {
+      "kind": "bearerToken",
+      "tokens": {
+        "filesystem": ["test-123"]
+      }
+    }
+  },
+  "mcpServers": {
+    "filesystem": {
+      "transportType": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  }
+}
+EOF
+
+# Run it
+docker run -p 8080:8080 -v ./config.json:/config.json ghcr.io/dgellow/mcp-front:latest
+```
+
+Then connect from Claude with URL `http://localhost:8080/sse` and token `test-123`. That's it.
+
+## Built for production
+
+MCP Front uses <span class="feature-underline">OAuth 2.1 with PKCE</span>, the latest standard. It integrates with Google Workspace for enterprise SSO. Domain restrictions mean only your employees get access.
+
+Sessions persist in Firestore so they survive restarts. <span class="feature-underline">Structured JSON logging</span> makes debugging straightforward. Health checks work with any monitoring system.
+
+The code is simple Go with minimal dependencies.

@@ -1,251 +1,294 @@
-/* Astral-inspired theme */
+/* Clean, minimal light theme */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 :root {
-  /* Colors inspired by Astral */
-  --sl-color-bg: #0C0C0C;
-  --sl-color-bg-nav: #0C0C0C;
-  --sl-color-bg-sidebar: #0C0C0C;
-  --sl-color-bg-inline-code: #1A1A1A;
-  
-  --sl-color-text: #FAFAFA;
-  --sl-color-text-accent: #A0A0A0;
-  
+  color-scheme: light;
   --sl-color-accent: #FF6B6B;
-  --sl-color-accent-high: #FF8787;
-  
-  --sl-color-gray-1: #1A1A1A;
-  --sl-color-gray-2: #262626;
-  --sl-color-gray-3: #333333;
-  --sl-color-gray-4: #4D4D4D;
-  --sl-color-gray-5: #666666;
-  --sl-color-gray-6: #808080;
-  
-  --sl-font: 'Inter', -apple-system, system-ui, sans-serif;
-  --sl-font-mono: 'JetBrains Mono', monospace;
 }
 
-/* Base styles */
-body {
-  background: #0C0C0C;
-  font-family: var(--sl-font);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+[data-theme='dark'] {
+  --sl-color-accent: #FF6B6B;
+  --sl-color-accent-low: #FF6B6B;
+  --sl-color-accent-high: #FF5252;
+  --sl-color-text-accent: #333333;
 }
 
-/* Typography */
+/* Fix GitHub button in dark mode */
+[data-theme='dark'] .sl-nav .social-icons a {
+  color: #FFFFFF !important;
+}
+
+[data-theme='dark'] .sl-nav .social-icons svg {
+  fill: #FFFFFF !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme='dark'] .sl-nav .social-icons svg path {
+  fill: #FFFFFF !important;
+}
+
+[data-theme='dark'] .sl-nav .social-icons * {
+  color: #FFFFFF !important;
+  fill: #FFFFFF !important;
+}
+
+/* Try broader selectors for GitHub icon */
+[data-theme='dark'] header svg {
+  fill: #FFFFFF !important;
+}
+
+[data-theme='dark'] header [href*="github"] {
+  color: #FFFFFF !important;
+}
+
+[data-theme='dark'] header [href*="github"] svg {
+  fill: #FFFFFF !important;
+}
+
+/* Fix table of contents current section in dark mode */
+[data-theme='dark'] .sl-toc a[aria-current="true"] {
+  color: #FF6B6B !important;
+  font-weight: 600;
+}
+
+[data-theme='dark'] .sl-toc .current-header-link {
+  color: #FF6B6B !important;
+  font-weight: 600;
+}
+
+[data-theme='dark'] .sl-toc li.current {
+  color: #FF6B6B !important;
+}
+
+[data-theme='dark'] .sl-toc li.current a {
+  color: #FF6B6B !important;
+}
+
+/* Try broader TOC selectors */
+[data-theme='dark'] aside a[aria-current] {
+  color: #FF6B6B !important;
+}
+
+[data-theme='dark'] .right-sidebar a[aria-current] {
+  color: #FF6B6B !important;
+}
+
+[data-theme='dark'] nav[aria-labelledby*="toc"] a[aria-current] {
+  color: #FF6B6B !important;
+}
+
+/* Keep regular content links red, but exclude heading anchor links */
+[data-theme='dark'] .sl-markdown-content p a,
+[data-theme='dark'] .sl-markdown-content li a {
+  color: #FF9999 !important;
+}
+
+/* Fix heading anchor links in dark mode */
+[data-theme='dark'] .sl-markdown-content h1 a,
+[data-theme='dark'] .sl-markdown-content h2 a,
+[data-theme='dark'] .sl-markdown-content h3 a,
+[data-theme='dark'] .sl-markdown-content h4 a,
+[data-theme='dark'] .sl-markdown-content h5 a,
+[data-theme='dark'] .sl-markdown-content h6 a {
+  color: #E5E5E5 !important;
+}
+
+/* Typography improvements */
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
 }
 
-h1 {
-  font-size: 3.5rem;
-  font-weight: 700;
-  background: linear-gradient(to bottom right, #FAFAFA 30%, #808080);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-h2 {
-  font-size: 2rem;
-  margin-top: 3rem;
-  margin-bottom: 1.5rem;
-}
-
-/* Hero section */
-.hero-section {
-  text-align: center;
-  padding: 6rem 0;
-  position: relative;
-  overflow: hidden;
-}
-
-.hero-title {
-  font-size: 4rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  margin-bottom: 1rem;
-  background: linear-gradient(to bottom right, #FAFAFA 30%, #808080);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero-tagline {
-  font-size: 1.25rem;
-  color: #A0A0A0;
-  margin-bottom: 3rem;
-}
-
-/* Gradient orb effect like Astral */
-.gradient-orb {
-  position: absolute;
-  width: 800px;
-  height: 800px;
-  background: radial-gradient(circle, rgba(255, 107, 107, 0.15) 0%, transparent 70%);
-  border-radius: 50%;
-  filter: blur(100px);
-  top: -400px;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-/* Cards with glass effect */
-.card {
-  background: rgba(26, 26, 26, 0.5) !important;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 12px !important;
-  padding: 1.5rem !important;
-  transition: all 0.2s ease;
-}
-
-.card:hover {
-  background: rgba(26, 26, 26, 0.8) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  transform: translateY(-2px);
-}
-
-/* Buttons */
-.hero-buttons {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin-top: 2rem;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: all 0.2s ease;
-}
-
-.button-primary {
-  background: #FF6B6B;
-  color: white;
-}
-
-.button-primary:hover {
-  background: #FF5252;
-  transform: translateY(-1px);
-}
-
-.button-secondary {
-  background: rgba(255, 255, 255, 0.1);
-  color: #FAFAFA;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.button-secondary:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-/* Code blocks */
-pre {
-  background: #1A1A1A !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 8px !important;
-}
-
-code:not(pre code) {
-  background: #1A1A1A;
-  color: #FF6B6B;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
+/* Code styling */
+code {
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
   font-size: 0.875em;
 }
 
-/* Architecture diagram */
-.architecture-diagram {
-  margin: 4rem 0;
-  padding: 2rem;
-  background: #1A1A1A;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* Container width */
+.sl-container {
+  max-width: 900px;
 }
 
-.architecture-diagram img,
-.architecture-diagram object {
+/* Clean architecture showcase */
+.architecture-showcase {
+  margin: 3rem 0;
+  padding: 2rem;
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.architecture-diagram {
   width: 100%;
-  max-width: 1000px;
-  margin: 0 auto;
+  max-width: 800px;
+  height: auto;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+  transition: transform 0.3s ease;
+}
+
+.architecture-diagram:hover {
+  transform: scale(1.02);
+}
+
+
+/* Feature highlights */
+.feature-highlight {
+  display: inline-block;
+  background: #FF6B6B;
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin: 0 0.25rem;
+}
+
+/* Feature underlines */
+.feature-underline {
+  text-decoration: underline;
+  text-decoration-color: #FF6B6B;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+/* Code example enhancement */
+.code-example {
+  position: relative;
+  margin: 2rem 0;
+}
+
+.code-example::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #FF6B6B, #FF5252);
+  border-radius: 6px 6px 0 0;
+}
+
+/* Quick test section styling */
+.quick-test {
+  background: #f6f8fa;
+  border: 1px solid #d1d9e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 2rem 0;
+}
+
+.quick-test h2 {
+  margin-top: 0;
+  color: #FF6B6B;
+}
+
+/* Logo enhancement in header */
+.sl-nav-header img {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Hero logo positioning */
+.hero-logo {
   display: block;
 }
 
-/* Feature grid */
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin: 3rem 0;
+/* Eye animations - looking left, right, center, then blink */
+.left-eye {
+  animation: leftEyeLook 12s linear infinite;
+  transform-origin: 10px 20px;
 }
 
-.feature-card {
-  background: rgba(26, 26, 26, 0.5);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 1.5rem;
-  transition: all 0.2s ease;
+.right-eye {
+  animation: rightEyeLook 12s linear infinite;
+  transform-origin: 30px 20px;
 }
 
-.feature-card:hover {
-  background: rgba(26, 26, 26, 0.8);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
+/* Nose animation - subtle 3D rotation when looking around */
+.nose {
+  animation: noseRotate 12s ease-in-out infinite;
+  transform-origin: 20px 20px;
 }
 
-.feature-icon {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 1rem;
-  opacity: 0.8;
+@keyframes noseRotate {
+  0%, 15% { 
+    transform: rotate(0deg) scaleX(1);
+  }
+  20%, 35% { 
+    transform: rotate(-1deg) scaleX(0.95); /* Nose turns left slightly */
+  }
+  40%, 55% { 
+    transform: rotate(1deg) scaleX(0.95); /* Nose turns right slightly */
+  }
+  60%, 75% { 
+    transform: rotate(0deg) scaleX(1); /* Nose back to center */
+  }
+  80%, 100% { 
+    transform: rotate(0deg) scaleX(1); /* Stay center during blink */
+  }
 }
 
-/* Links */
-a {
-  color: #FF6B6B;
-  text-decoration: none;
-  transition: color 0.2s ease;
+@keyframes leftEyeLook {
+  0%, 15% { 
+    transform: translate(0, 0) scaleY(1);
+  }
+  20%, 35% { 
+    transform: translate(-1px, 0) scaleY(1); /* Look left */
+  }
+  40%, 55% { 
+    transform: translate(1px, 0) scaleY(1); /* Look right */
+  }
+  60%, 75% { 
+    transform: translate(0, 0) scaleY(1); /* Look center */
+  }
+  80% { 
+    transform: translate(0, 0) scaleY(1); /* Eyes open */
+  }
+  80.2% { 
+    transform: translate(0, 0) scaleY(0.1); /* Eyes close quickly */
+  }
+  81.5% { 
+    transform: translate(0, 0) scaleY(0.1); /* Stay closed */
+  }
+  81.7% { 
+    transform: translate(0, 0) scaleY(1); /* Eyes open quickly */
+  }
+  100% { 
+    transform: translate(0, 0) scaleY(1); /* Stay open */
+  }
 }
 
-a:hover {
-  color: #FF8787;
+@keyframes rightEyeLook {
+  0%, 15% { 
+    transform: translate(0, 0) scaleY(1);
+  }
+  20%, 35% { 
+    transform: translate(-1px, 0) scaleY(1); /* Look left */
+  }
+  40%, 55% { 
+    transform: translate(1px, 0) scaleY(1); /* Look right */
+  }
+  60%, 75% { 
+    transform: translate(0, 0) scaleY(1); /* Look center */
+  }
+  80% { 
+    transform: translate(0, 0) scaleY(1); /* Eyes open */
+  }
+  80.2% { 
+    transform: translate(0, 0) scaleY(0.1); /* Eyes close quickly */
+  }
+  81.5% { 
+    transform: translate(0, 0) scaleY(0.1); /* Stay closed */
+  }
+  81.7% { 
+    transform: translate(0, 0) scaleY(1); /* Eyes open quickly */
+  }
+  100% { 
+    transform: translate(0, 0) scaleY(1); /* Stay open */
+  }
 }
 
-/* Sidebar */
-.sidebar-pane {
-  background: transparent !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-}
-
-/* Navigation */
-nav {
-  background: transparent !important;
-}
-
-/* Remove Starlight defaults we don't want */
-.sl-container {
-  max-width: 1400px !important;
-}
-
-/* Smooth scroll */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Selection color */
-::selection {
-  background: rgba(255, 107, 107, 0.3);
-  color: #FAFAFA;
-}

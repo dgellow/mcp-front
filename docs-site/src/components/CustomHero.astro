@@ -1,0 +1,93 @@
+---
+import { Icon } from '@astrojs/starlight/components';
+import AnimatedLogo from './AnimatedLogo.astro';
+
+const { title, tagline, actions } = Astro.props;
+---
+
+<div class="hero sl-flex">
+  <div class="sl-flex hero-content">
+    <div class="hero-text">
+      <h1 class="hero-title">{title}</h1>
+      <p class="hero-tagline">{tagline}</p>
+      <div class="hero-actions sl-flex">
+        {
+          actions.map((action) => (
+            <a
+              href={action.link}
+              class={`action ${action.variant || 'secondary'}`}
+              {...action.attrs}
+            >
+              {action.icon && <Icon name={action.icon} />}
+              {action.text}
+            </a>
+          ))
+        }
+      </div>
+    </div>
+    <div class="hero-image">
+      <AnimatedLogo />
+    </div>
+  </div>
+</div>
+
+<style>
+  .hero {
+    padding: 3rem 0;
+  }
+
+  .hero-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .hero-text {
+    flex: 1;
+  }
+
+  .hero-title {
+    font-size: 3rem;
+    font-weight: 600;
+    margin: 0 0 1rem 0;
+    line-height: 1.2;
+  }
+
+  .hero-tagline {
+    font-size: 1.25rem;
+    margin: 0 0 2rem 0;
+    opacity: 0.8;
+  }
+
+  .hero-actions {
+    gap: 1rem;
+  }
+
+  .action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .action.primary {
+    background: var(--sl-color-accent);
+    color: white;
+  }
+
+  .action.secondary {
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-gray-1);
+  }
+
+  .hero-image {
+    flex-shrink: 0;
+  }
+</style>

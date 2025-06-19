@@ -1,10 +1,10 @@
 <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-  <!-- MCP Front logo - gateway concept -->
+  <!-- MCP Front logo - gateway concept (light mode) -->
   
   <!-- Left bracket representing input -->
   <path d="M 12 8 L 4 8 L 4 32 L 12 32" 
         fill="none" 
-        stroke="#888888" 
+        stroke="#333333" 
         stroke-width="2"
         stroke-linecap="round"/>
   
@@ -14,11 +14,11 @@
   <!-- Right bracket representing output -->
   <path d="M 28 8 L 36 8 L 36 32 L 28 32" 
         fill="none" 
-        stroke="#888888" 
+        stroke="#333333" 
         stroke-width="2"
         stroke-linecap="round"/>
   
   <!-- Connection dots -->
-  <circle cx="10" cy="20" r="1.5" fill="#CCCCCC"/>
-  <circle cx="30" cy="20" r="1.5" fill="#CCCCCC"/>
+  <circle cx="10" cy="20" r="1.5" fill="#666666"/>
+  <circle cx="30" cy="20" r="1.5" fill="#666666"/>
 </svg>
