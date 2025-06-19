@@ -71,6 +71,9 @@ For development or simple setups, you can use static bearer tokens. Map server n
 ## Try it in 30 seconds
 
 ```bash
+# Install and run locally
+go install github.com/dgellow/mcp-front/cmd/mcp-front@latest
+
 # Create a minimal config
 cat > config.json << 'EOF'
 {
@@ -81,25 +84,25 @@ cat > config.json << 'EOF'
     "auth": {
       "kind": "bearerToken",
       "tokens": {
-        "filesystem": ["test-123"]
+        "echo": ["test-123"]
       }
     }
   },
   "mcpServers": {
-    "filesystem": {
+    "echo": {
       "transportType": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+      "command": "sh",
+      "args": ["-c", "echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{}}}' && cat"]
     }
   }
 }
 EOF
 
 # Run it
-docker run -p 8080:8080 -v ./config.json:/config.json ghcr.io/dgellow/mcp-front:latest
+mcp-front -config config.json
 ```
 
-Then connect from Claude with URL `http://localhost:8080/sse` and token `test-123`. That's it.
+Then connect from Claude with URL `http://localhost:8080/sse` and token `test-123`. The echo server will mirror your requests back.
 
 ## Built for production
 
