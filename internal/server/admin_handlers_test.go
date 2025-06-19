@@ -53,7 +53,7 @@ func TestAdminHandlers_CSRF(t *testing.T) {
 		invalidTokens := []string{
 			"",
 			"invalid",
-			"part1:part2", // Missing signature
+			"part1:part2",             // Missing signature
 			"part1:part2:part3:part4", // Too many parts
 		}
 
@@ -68,7 +68,7 @@ func TestAdminHandlers_CSRF(t *testing.T) {
 		// Test that validateCSRFToken rejects malformed tokens
 		// An expired token would have a timestamp from > 15 minutes ago
 		expiredToken := "test-nonce:0:invalid-signature"
-		
+
 		if handlers.validateCSRFToken(expiredToken) {
 			t.Error("Expired token should be invalid")
 		}
@@ -77,18 +77,18 @@ func TestAdminHandlers_CSRF(t *testing.T) {
 	t.Run("different encryption keys", func(t *testing.T) {
 		// Create handlers with different key
 		handlers2 := NewAdminHandlers(storage, cfg, sessionManager, "different-encryption-key-32bytes")
-		
+
 		// Generate token with first handler
 		token1, err := handlers.generateCSRFToken()
 		if err != nil {
 			t.Fatalf("Failed to generate token: %v", err)
 		}
-		
+
 		// Token from handler1 should not validate with handler2
 		if handlers2.validateCSRFToken(token1) {
 			t.Error("Token should not validate with different encryption key")
 		}
-		
+
 		// But should still validate with original handler
 		if !handlers.validateCSRFToken(token1) {
 			t.Error("Token should validate with original handler")

@@ -107,7 +107,7 @@ type MCPClientConfig struct {
 	// User token requirements
 	RequiresUserToken bool              `json:"requiresUserToken,omitempty"`
 	TokenSetup        *TokenSetupConfig `json:"tokenSetup,omitempty"`
-	
+
 	// Inline MCP server configuration
 	InlineConfig json.RawMessage `json:"inline,omitempty"`
 }
@@ -138,11 +138,11 @@ type OAuthAuthConfig struct {
 
 // ProxyConfig represents the proxy configuration with resolved values
 type ProxyConfig struct {
-	BaseURL string        `json:"baseURL"`
-	Addr    string        `json:"addr"`
-	Name    string        `json:"name"`
-	Auth    interface{}   `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
-	Admin   *AdminConfig  `json:"admin,omitempty"`
+	BaseURL string       `json:"baseURL"`
+	Addr    string       `json:"addr"`
+	Name    string       `json:"name"`
+	Auth    interface{}  `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
+	Admin   *AdminConfig `json:"admin,omitempty"`
 }
 
 // Config represents the config structure with resolved values

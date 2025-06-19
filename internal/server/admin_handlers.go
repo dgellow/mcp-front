@@ -42,16 +42,16 @@ func (h *AdminHandlers) generateCSRFToken() (string, error) {
 	if nonce == "" {
 		return "", fmt.Errorf("failed to generate nonce")
 	}
-	
+
 	// Add timestamp (Unix seconds)
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	
+
 	// Create data to sign: nonce:timestamp
 	data := nonce + ":" + timestamp
-	
+
 	// Sign with HMAC
 	signature := crypto.SignData(data, h.encryptionKey)
-	
+
 	// Return format: nonce:timestamp:signature
 	return fmt.Sprintf("%s:%s:%s", nonce, timestamp, signature), nil
 }
@@ -64,31 +64,31 @@ func (h *AdminHandlers) validateCSRFToken(token string) bool {
 		internal.LogDebug("Invalid CSRF token format")
 		return false
 	}
-	
+
 	nonce := parts[0]
 	timestampStr := parts[1]
 	signature := parts[2]
-	
+
 	// Verify timestamp (15 minute expiry)
 	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
 	if err != nil {
 		internal.LogDebug("Invalid CSRF token timestamp: %v", err)
 		return false
 	}
-	
+
 	now := time.Now().Unix()
 	if now-timestamp > 900 { // 15 minutes
 		internal.LogDebug("CSRF token expired")
 		return false
 	}
-	
+
 	// Verify HMAC signature
 	data := nonce + ":" + timestampStr
 	if !crypto.ValidateSignedData(data, signature, h.encryptionKey) {
 		internal.LogDebug("Invalid CSRF token signature")
 		return false
 	}
-	
+
 	return true
 }
 
@@ -130,7 +130,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 		})
 		rawUsers = []storage.UserInfo{} // Empty list on error
 	}
-	
+
 	// Convert to UserInfoWithAdminType
 	users := make([]UserInfoWithAdminType, len(rawUsers))
 	for i, user := range rawUsers {
@@ -294,7 +294,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 					break
 				}
 			}
-			
+
 			if !userExists {
 				message = fmt.Sprintf("User %s not found", targetEmail)
 				messageType = "error"
@@ -347,7 +347,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	// Redirect back to admin page with message
-	http.Redirect(w, r, fmt.Sprintf("/admin?tab=users&message=%s&type=%s", 
+	http.Redirect(w, r, fmt.Sprintf("/admin?tab=users&message=%s&type=%s",
 		url.QueryEscape(message), messageType), http.StatusSeeOther)
 }
 
@@ -433,7 +433,7 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Redirect back to admin page with message
-	http.Redirect(w, r, fmt.Sprintf("/admin?tab=sessions&message=%s&type=%s", 
+	http.Redirect(w, r, fmt.Sprintf("/admin?tab=sessions&message=%s&type=%s",
 		url.QueryEscape(message), messageType), http.StatusSeeOther)
 }
 
@@ -484,7 +484,7 @@ func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Requ
 		messageType = "error"
 	} else {
 		message = fmt.Sprintf("Log level changed to %s", logLevel)
-		
+
 		// Log the change at INFO level
 		internal.LogInfoWithFields("admin", "Log level changed by admin", map[string]interface{}{
 			"new_level": logLevel,
@@ -493,7 +493,7 @@ func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Redirect back to admin page with message
-	http.Redirect(w, r, fmt.Sprintf("/admin?tab=logging&message=%s&type=%s", 
+	http.Redirect(w, r, fmt.Sprintf("/admin?tab=logging&message=%s&type=%s",
 		url.QueryEscape(message), messageType), http.StatusSeeOther)
 }
 

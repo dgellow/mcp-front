@@ -98,11 +98,11 @@ func validateProxyStructure(rawConfig map[string]interface{}, result *Validation
 	if auth, ok := proxy["auth"].(map[string]interface{}); ok {
 		validateAuthStructure(auth, result)
 	}
-	
+
 	// Check admin if present
 	if admin, ok := proxy["admin"].(map[string]interface{}); ok {
 		validateAdminStructure(admin, result)
-		
+
 		// If admin is enabled, ensure OAuth is configured
 		if enabled, ok := admin["enabled"].(bool); ok && enabled {
 			hasOAuth := false
@@ -195,7 +195,7 @@ func validateAdminStructure(admin map[string]interface{}, result *ValidationResu
 		})
 		return
 	}
-	
+
 	if enabled {
 		// Check adminEmails when enabled
 		emails, ok := admin["adminEmails"].([]interface{})
@@ -220,7 +220,7 @@ func validateAdminStructure(admin map[string]interface{}, result *ValidationResu
 				}
 			}
 		}
-		
+
 		// Check that OAuth is configured (required for admin functionality)
 		// Note: We check this at the parent level since auth is a sibling of admin
 	}

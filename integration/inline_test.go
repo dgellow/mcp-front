@@ -61,7 +61,7 @@ func TestInlineMCPServer(t *testing.T) {
 
 		firstContent, ok := content[0].(map[string]interface{})
 		require.True(t, ok, "Expected content item to be map")
-		
+
 		text, ok := firstContent["text"].(string)
 		require.True(t, ok, "Expected text in content")
 		assert.Contains(t, text, "Hello, inline MCP!")
@@ -70,7 +70,7 @@ func TestInlineMCPServer(t *testing.T) {
 	// Test 2: Environment variables
 	t.Run("environment variables", func(t *testing.T) {
 		params := map[string]interface{}{
-			"name": "env_test",
+			"name":      "env_test",
 			"arguments": map[string]interface{}{},
 		}
 
@@ -151,11 +151,11 @@ func TestInlineMCPServer(t *testing.T) {
 		resultMap, _ := result["result"].(map[string]interface{})
 		content, _ := resultMap["content"].([]interface{})
 		firstContent, _ := content[0].(map[string]interface{})
-		
+
 		// The JSON output should be in the text field as a string
 		text, ok := firstContent["text"].(string)
 		require.True(t, ok, "Expected text in content for JSON output")
-		
+
 		// Use testify's JSON assertions
 		expectedJSON := `{"status":"ok","input":"test-input","timestamp":1234567890}`
 		assert.JSONEq(t, expectedJSON, text)
@@ -174,11 +174,11 @@ func TestInlineMCPServer(t *testing.T) {
 		// Check for error in response
 		errorMap, hasError := result["error"].(map[string]interface{})
 		assert.True(t, hasError, "Expected error for failing tool")
-		
+
 		if hasError {
 			code, _ := errorMap["code"].(float64)
 			assert.Equal(t, float64(-32603), code, "Expected internal error code")
-			
+
 			message, _ := errorMap["message"].(string)
 			assert.Contains(t, message, "command failed")
 		}
@@ -213,4 +213,3 @@ func TestInlineMCPServer(t *testing.T) {
 		assert.Contains(t, toolNames, "slow_tool")
 	})
 }
-

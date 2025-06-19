@@ -47,7 +47,7 @@ func TestServer_GetCapabilities(t *testing.T) {
 	capabilities := server.GetCapabilities()
 
 	assert.Len(t, capabilities.Tools, 2)
-	
+
 	echoTool, exists := capabilities.Tools["echo"]
 	assert.True(t, exists)
 	assert.Equal(t, "echo", echoTool.Name)
@@ -123,9 +123,9 @@ func TestServer_HandleToolCall(t *testing.T) {
 			},
 		},
 		{
-			name:     "nonexistent tool",
-			toolName: "nonexistent",
-			args:     map[string]interface{}{},
+			name:      "nonexistent tool",
+			toolName:  "nonexistent",
+			args:      map[string]interface{}{},
 			wantError: true,
 			validate: func(t *testing.T, result interface{}, err error) {
 				assert.Error(t, err)
@@ -148,9 +148,9 @@ func TestServer_HandleToolCall(t *testing.T) {
 			},
 		},
 		{
-			name:     "environment variable test",
-			toolName: "env_test",
-			args:     map[string]interface{}{},
+			name:      "environment variable test",
+			toolName:  "env_test",
+			args:      map[string]interface{}{},
 			wantError: false,
 			validate: func(t *testing.T, result interface{}, err error) {
 				resultMap, ok := result.(map[string]interface{})
@@ -262,12 +262,12 @@ func TestServer_HandleToolCall_JSON(t *testing.T) {
 	}
 
 	server := NewServer("test", Config{}, resolvedTools)
-	
+
 	ctx := context.Background()
 	result, err := server.HandleToolCall(ctx, "json_output", map[string]interface{}{})
-	
+
 	require.NoError(t, err)
-	
+
 	// Should parse as JSON
 	resultMap, ok := result.(map[string]interface{})
 	require.True(t, ok)
@@ -292,24 +292,24 @@ func TestServer_HandleToolCall_Timeout(t *testing.T) {
 	}
 
 	server := NewServer("test", Config{}, resolvedTools)
-	
+
 	ctx := context.Background()
 	result, err := server.HandleToolCall(ctx, "slow_command", map[string]interface{}{})
-	
+
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "command failed")
-	
+
 	// Check that we got a timeout-related error in stderr or error message
 	if resultMap, ok := result.(map[string]interface{}); ok {
 		stderr, _ := resultMap["stderr"].(string)
 		errorMsg, _ := resultMap["error"].(string)
 		// The actual error message varies by OS, but it should indicate termination
-		assert.True(t, 
-			strings.Contains(stderr, "signal") || 
-			strings.Contains(stderr, "terminated") ||
-			strings.Contains(stderr, "killed") ||
-			strings.Contains(errorMsg, "signal") ||
-			strings.Contains(errorMsg, "killed"),
+		assert.True(t,
+			strings.Contains(stderr, "signal") ||
+				strings.Contains(stderr, "terminated") ||
+				strings.Contains(stderr, "killed") ||
+				strings.Contains(errorMsg, "signal") ||
+				strings.Contains(errorMsg, "killed"),
 			"Expected error to contain signal/terminated/killed, got stderr: %s, error: %s", stderr, errorMsg)
 	}
 }

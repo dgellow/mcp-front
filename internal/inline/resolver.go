@@ -13,9 +13,9 @@ func ResolveConfig(rawConfig json.RawMessage) (Config, []ResolvedToolConfig, err
 	if err := json.Unmarshal(rawConfig, &cfg); err != nil {
 		return Config{}, nil, fmt.Errorf("failed to unmarshal inline config: %w", err)
 	}
-	
+
 	resolvedTools := make([]ResolvedToolConfig, len(cfg.Tools))
-	
+
 	for i, tool := range cfg.Tools {
 		resolved := ResolvedToolConfig{
 			Name:        tool.Name,
@@ -26,7 +26,7 @@ func ResolveConfig(rawConfig json.RawMessage) (Config, []ResolvedToolConfig, err
 			Args:        make([]string, 0, len(tool.Args)),
 			Env:         make(map[string]string),
 		}
-		
+
 		// Resolve args using the config package's parser
 		if len(tool.Args) > 0 {
 			values, needsToken, err := config.ParseConfigValueSlice(tool.Args)
@@ -41,7 +41,7 @@ func ResolveConfig(rawConfig json.RawMessage) (Config, []ResolvedToolConfig, err
 			}
 			resolved.Args = values
 		}
-		
+
 		// Resolve env using the config package's parser
 		if len(tool.Env) > 0 {
 			values, needsToken, err := config.ParseConfigValueMap(tool.Env)
@@ -56,9 +56,9 @@ func ResolveConfig(rawConfig json.RawMessage) (Config, []ResolvedToolConfig, err
 			}
 			resolved.Env = values
 		}
-		
+
 		resolvedTools[i] = resolved
 	}
-	
+
 	return cfg, resolvedTools, nil
 }

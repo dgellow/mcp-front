@@ -50,16 +50,16 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Generate a cryptographically secure session ID
 	sessionID := crypto.GenerateSecureToken()
-	
+
 	// Send initial endpoint message
 	endpoint := map[string]interface{}{
 		"type":        "endpoint",
@@ -67,12 +67,12 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		"version":     "1.0",
 		"description": h.server.GetDescription(),
 	}
-	
+
 	if err := sse.WriteMessage(w, flusher, endpoint); err != nil {
 		internal.LogError("Failed to write endpoint message: %v", err)
 		return
 	}
-	
+
 	// Send message endpoint path for MCP protocol
 	// MCP clients expect to receive the message endpoint after the endpoint message
 	// Send as relative path - client will construct full URL based on where it connected
@@ -81,7 +81,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 		internal.LogError("Failed to write message endpoint path: %v", err)
 		return
 	}
-	
+
 	// Start the SSE loop
 	h.runSSELoop(r.Context(), w, flusher)
 }
@@ -90,7 +90,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) runSSELoop(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -127,9 +127,9 @@ func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
 	// For inline servers, we accept any sessionId parameter without validation
 	// since inline servers are stateless and don't track sessions
 	_ = r.URL.Query().Get("sessionId") // Accept but don't validate
-	
+
 	var request JSONRPCRequest
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		// Invalid JSON should return HTTP 400
 		w.Header().Set("Content-Type", "application/json")
@@ -146,7 +146,7 @@ func (h *Handler) handleMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	switch request.Method {
 	case "initialize":
 		h.handleInitialize(w, &request)
@@ -173,7 +173,7 @@ func (h *Handler) handleInitialize(w http.ResponseWriter, req *JSONRPCRequest) {
 			},
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		internal.LogError("Failed to encode JSON-RPC response: %v", err)
@@ -183,7 +183,7 @@ func (h *Handler) handleInitialize(w http.ResponseWriter, req *JSONRPCRequest) {
 // handleToolsList handles the tools/list request
 func (h *Handler) handleToolsList(w http.ResponseWriter, req *JSONRPCRequest) {
 	capabilities := h.server.GetCapabilities()
-	
+
 	tools := make([]map[string]interface{}, 0, len(capabilities.Tools))
 	for _, tool := range capabilities.Tools {
 		tools = append(tools, map[string]interface{}{
@@ -192,7 +192,7 @@ func (h *Handler) handleToolsList(w http.ResponseWriter, req *JSONRPCRequest) {
 			"inputSchema": tool.InputSchema,
 		})
 	}
-	
+
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -200,7 +200,7 @@ func (h *Handler) handleToolsList(w http.ResponseWriter, req *JSONRPCRequest) {
 			"tools": tools,
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		internal.LogError("Failed to encode JSON-RPC response: %v", err)
@@ -213,19 +213,19 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *JSONRPCRequest) {
 		Name      string                 `json:"name"`
 		Arguments map[string]interface{} `json:"arguments"`
 	}
-	
+
 	if err := json.Unmarshal(req.Params, &params); err != nil {
 		writeJSONRPCError(w, req.ID, -32602, "Invalid parameters")
 		return
 	}
-	
+
 	// Execute the tool
 	result, err := h.server.HandleToolCall(context.Background(), params.Name, params.Arguments)
 	if err != nil {
 		writeJSONRPCError(w, req.ID, -32603, err.Error())
 		return
 	}
-	
+
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -239,7 +239,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *JSONRPCRequest) {
 			"isError": err != nil,
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		internal.LogError("Failed to encode JSON-RPC response: %v", err)
@@ -252,7 +252,7 @@ func formatToolResult(result interface{}) string {
 	if str, ok := result.(string); ok {
 		return str
 	}
-	
+
 	// If it's a map with output field, return that
 	if m, ok := result.(map[string]interface{}); ok {
 		if output, exists := m["output"]; exists {
@@ -261,7 +261,7 @@ func formatToolResult(result interface{}) string {
 			}
 		}
 	}
-	
+
 	// Otherwise, marshal as JSON
 	bytes, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
@@ -280,7 +280,7 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 			"message": message,
 		},
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		internal.LogError("Failed to encode JSON-RPC response: %v", err)

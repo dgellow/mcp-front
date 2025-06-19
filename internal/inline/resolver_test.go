@@ -169,7 +169,7 @@ func TestResolveConfig_ComplexEnvVars(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, tools, 1)
-	
+
 	tool := tools[0]
 	assert.Equal(t, "docker_run", tool.Name)
 	assert.Equal(t, []string{"run", "--rm", "-i", "-v /tmp:/tmp:ro", "alpine:latest", "sh", "-c", "{{.command}}"}, tool.Args)

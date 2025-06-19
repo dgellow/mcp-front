@@ -200,12 +200,12 @@ func adminMiddleware(adminConfig *config.AdminConfig, store storage.Storage) Mid
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			
+
 			if !auth.IsAdmin(r.Context(), userEmail, adminConfig, store) {
 				http.Error(w, "Forbidden - Admin access required", http.StatusForbidden)
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}

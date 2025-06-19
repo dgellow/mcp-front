@@ -418,12 +418,12 @@ func (s *Server) buildClientRegistrationResponse(client *fosite.DefaultClient, t
 		"scope":                      strings.Join(client.GetScopes(), " "), // Space-separated string
 		"token_endpoint_auth_method": tokenEndpointAuthMethod,
 	}
-	
+
 	// Include client_secret only for confidential clients
 	if clientSecret != "" {
 		response["client_secret"] = clientSecret
 	}
-	
+
 	return response
 }
 
@@ -465,7 +465,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		
+
 		hashedSecret, err := crypto.HashClientSecret(generatedSecret)
 		if err != nil {
 			internal.LogError("Failed to hash client secret: %v", err)

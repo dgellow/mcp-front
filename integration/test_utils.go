@@ -119,7 +119,7 @@ func (c *MCPClient) ConnectToServer(serverName string) error {
 		// Look for data lines
 		if strings.HasPrefix(line, "data: ") {
 			data := strings.TrimPrefix(line, "data: ")
-			
+
 			// Check if it's an endpoint message (for inline servers)
 			if strings.Contains(data, `"type":"endpoint"`) {
 				gotEndpointMessage = true
@@ -128,7 +128,7 @@ func (c *MCPClient) ConnectToServer(serverName string) error {
 				tracef("ConnectToServer: inline server detected, using endpoint: %s", c.messageEndpoint)
 				break
 			}
-			
+
 			// Check if it's a message endpoint URL (for stdio servers)
 			if strings.Contains(data, "http://") || strings.Contains(data, "https://") {
 				c.messageEndpoint = data

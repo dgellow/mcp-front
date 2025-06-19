@@ -69,7 +69,7 @@ func TestBasicOAuthFlow(t *testing.T) {
 	// Verify client_secret_post is advertised
 	authMethods, ok := discovery["token_endpoint_auth_methods_supported"].([]interface{})
 	assert.True(t, ok, "token_endpoint_auth_methods_supported should be present")
-	
+
 	var hasNone, hasClientSecretPost bool
 	for _, method := range authMethods {
 		if method == "none" {
@@ -280,12 +280,12 @@ func TestClientRegistration(t *testing.T) {
 		if len(clientSecret) < 40 {
 			t.Errorf("Client secret seems too short: %d chars", len(clientSecret))
 		}
-		
+
 		tokenAuthMethod, ok := clientResp["token_endpoint_auth_method"].(string)
 		if !ok || tokenAuthMethod != "client_secret_post" {
 			t.Errorf("Expected token_endpoint_auth_method 'client_secret_post', got: %v", clientResp["token_endpoint_auth_method"])
 		}
-		
+
 		// Verify scope is returned as string
 		if scope, ok := clientResp["scope"].(string); !ok || scope != "read write" {
 			t.Errorf("Expected scope 'read write' as string, got: %v", clientResp["scope"])
@@ -294,14 +294,14 @@ func TestClientRegistration(t *testing.T) {
 
 	t.Run("PublicVsConfidentialClients", func(t *testing.T) {
 		// Test that public clients don't get secrets and confidential ones do
-		
+
 		// First, create a public client
 		publicReq := map[string]interface{}{
 			"redirect_uris": []string{"https://public.example.com/callback"},
 			"scope":         "read",
 			// No token_endpoint_auth_method specified - defaults to "none"
 		}
-		
+
 		body, _ := json.Marshal(publicReq)
 		resp, err := http.Post(
 			"http://localhost:8080/register",
@@ -310,10 +310,10 @@ func TestClientRegistration(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		
+
 		var publicResp map[string]interface{}
 		_ = json.NewDecoder(resp.Body).Decode(&publicResp)
-		
+
 		// Verify public client has no secret
 		if _, hasSecret := publicResp["client_secret"]; hasSecret {
 			t.Error("Public client should not have a secret")
@@ -321,14 +321,14 @@ func TestClientRegistration(t *testing.T) {
 		if authMethod := publicResp["token_endpoint_auth_method"]; authMethod != "none" {
 			t.Errorf("Public client should have auth method 'none', got: %v", authMethod)
 		}
-		
+
 		// Now create a confidential client
 		confidentialReq := map[string]interface{}{
 			"redirect_uris":              []string{"https://confidential.example.com/callback"},
 			"scope":                      "read write",
 			"token_endpoint_auth_method": "client_secret_post",
 		}
-		
+
 		body, _ = json.Marshal(confidentialReq)
 		resp, err = http.Post(
 			"http://localhost:8080/register",
@@ -337,10 +337,10 @@ func TestClientRegistration(t *testing.T) {
 		)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		
+
 		var confResp map[string]interface{}
 		_ = json.NewDecoder(resp.Body).Decode(&confResp)
-		
+
 		// Verify confidential client has a secret
 		if secret, ok := confResp["client_secret"].(string); !ok || secret == "" {
 			t.Error("Confidential client should have a secret")

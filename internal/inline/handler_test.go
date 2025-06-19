@@ -25,7 +25,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			Args:        []string{"{{.message}}"},
 		},
 	}
-	
+
 	server := NewServer("test", config, resolvedTools)
 	handler := NewHandler("test", server)
 
@@ -55,9 +55,9 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			rec := httptest.NewRecorder()
-			
+
 			handler.ServeHTTP(rec, req)
-			
+
 			assert.Equal(t, tt.wantStatus, rec.Code)
 		})
 	}
@@ -73,7 +73,7 @@ func TestHandler_Message_Initialize(t *testing.T) {
 			Args:        []string{"{{.message}}"},
 		},
 	}
-	
+
 	server := NewServer("test", Config{Description: "Test server"}, resolvedTools)
 	handler := NewHandler("test", server)
 
@@ -84,28 +84,28 @@ func TestHandler_Message_Initialize(t *testing.T) {
 		Method:  "initialize",
 		Params:  json.RawMessage(`{}`),
 	}
-	
+
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rec, req)
-	
+
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-	
+
 	// Parse response
 	var response JSONRPCResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
-	
+
 	assert.Equal(t, "2.0", response.JSONRPC)
 	assert.Equal(t, float64(1), response.ID) // JSON numbers are float64
 	assert.Nil(t, response.Error)
-	
+
 	result, ok := response.Result.(map[string]interface{})
 	require.True(t, ok)
-	
+
 	assert.Equal(t, "2024-11-05", result["protocolVersion"])
 	assert.Contains(t, result, "capabilities")
 	assert.Contains(t, result, "serverInfo")
@@ -126,7 +126,7 @@ func TestHandler_Message_ToolsList(t *testing.T) {
 			Command:     "echo",
 		},
 	}
-	
+
 	server := NewServer("test", Config{Description: "Test server"}, resolvedTools)
 	handler := NewHandler("test", server)
 
@@ -136,23 +136,23 @@ func TestHandler_Message_ToolsList(t *testing.T) {
 		ID:      2,
 		Method:  "tools/list",
 	}
-	
+
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rec, req)
-	
+
 	assert.Equal(t, http.StatusOK, rec.Code)
-	
+
 	// Parse response
 	var response JSONRPCResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
-	
+
 	result, ok := response.Result.(map[string]interface{})
 	require.True(t, ok)
-	
+
 	tools, ok := result["tools"].([]interface{})
 	require.True(t, ok)
 	assert.Len(t, tools, 2)
@@ -167,7 +167,7 @@ func TestHandler_Message_ToolCall(t *testing.T) {
 			Args:        []string{"{{.message}}"},
 		},
 	}
-	
+
 	server := NewServer("test", Config{}, resolvedTools)
 	handler := NewHandler("test", server)
 
@@ -179,36 +179,36 @@ func TestHandler_Message_ToolCall(t *testing.T) {
 		},
 	}
 	paramsJSON, _ := json.Marshal(params)
-	
+
 	request := JSONRPCRequest{
 		JSONRPC: "2.0",
 		ID:      3,
 		Method:  "tools/call",
 		Params:  json.RawMessage(paramsJSON),
 	}
-	
+
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	
+
 	handler.ServeHTTP(rec, req)
-	
+
 	assert.Equal(t, http.StatusOK, rec.Code)
-	
+
 	// Parse response
 	var response JSONRPCResponse
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
-	
+
 	assert.Nil(t, response.Error)
-	
+
 	result, ok := response.Result.(map[string]interface{})
 	require.True(t, ok)
-	
+
 	content, ok := result["content"].([]interface{})
 	require.True(t, ok)
 	assert.Len(t, content, 1)
-	
+
 	contentItem, ok := content[0].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, "text", contentItem["type"])
@@ -260,22 +260,22 @@ func TestHandler_Message_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/message", bytes.NewReader([]byte(tt.body)))
 			rec := httptest.NewRecorder()
-			
+
 			handler.ServeHTTP(rec, req)
-			
+
 			assert.Equal(t, tt.expectedStatus, rec.Code)
-			
+
 			// Parse response
 			var response JSONRPCResponse
 			err := json.Unmarshal(rec.Body.Bytes(), &response)
 			require.NoError(t, err)
-			
+
 			assert.Nil(t, response.Result)
 			require.NotNil(t, response.Error)
-			
+
 			errorObj, ok := response.Error.(map[string]interface{})
 			require.True(t, ok)
-			
+
 			assert.Equal(t, float64(tt.expectedError), errorObj["code"])
 			assert.Equal(t, tt.expectedMsg, errorObj["message"])
 		})
@@ -315,7 +315,7 @@ func TestHandler_SSE_Headers(t *testing.T) {
 		},
 	}
 	handler := NewHandler("test", mockServer)
-	
+
 	// Create a custom ResponseWriter that doesn't support flushing
 	// to test the error case
 	t.Run("no flusher support", func(t *testing.T) {
@@ -323,13 +323,13 @@ func TestHandler_SSE_Headers(t *testing.T) {
 		rec := httptest.NewRecorder()
 		// Wrap recorder to hide Flusher interface
 		nonFlushingWriter := struct{ http.ResponseWriter }{rec}
-		
+
 		handler.handleSSE(nonFlushingWriter, req)
-		
+
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Contains(t, rec.Body.String(), "Streaming unsupported")
 	})
-	
+
 	// Test successful SSE setup
 	t.Run("successful setup", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/sse", nil)
@@ -338,25 +338,25 @@ func TestHandler_SSE_Headers(t *testing.T) {
 			ResponseRecorder: httptest.NewRecorder(),
 			messages:         []string{},
 		}
-		
+
 		// Create a context that's already cancelled to prevent the loop from running
 		ctx, cancel := context.WithCancel(req.Context())
 		cancel()
 		req = req.WithContext(ctx)
-		
+
 		handler.handleSSE(rec, req)
-		
+
 		// Check headers
 		assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
 		assert.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
 		assert.Equal(t, "keep-alive", rec.Header().Get("Connection"))
-		
+
 		// Check that initial endpoint message and message endpoint URL were sent
 		assert.Len(t, rec.messages, 2)
 		assert.Contains(t, rec.messages[0], `"type":"endpoint"`)
 		assert.Contains(t, rec.messages[0], `"name":"test"`)
 		assert.Contains(t, rec.messages[0], `"description":"Test server for SSE"`)
-		
+
 		// Check that message endpoint path was sent (relative path)
 		assert.Contains(t, rec.messages[1], "/test/message?sessionId=")
 	})
