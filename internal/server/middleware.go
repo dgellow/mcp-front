@@ -11,6 +11,7 @@ import (
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
+	"github.com/dgellow/mcp-front/internal/urlutil"
 )
 
 // MiddlewareFunc is a function that wraps an http.Handler
@@ -166,24 +167,31 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 }
 
 // newAuthMiddleware creates middleware for bearer token authentication
-func newAuthMiddleware(tokens []string) MiddlewareFunc {
+func newAuthMiddleware(tokens []string, baseURL string, realm string) MiddlewareFunc {
 	tokenSet := make(map[string]struct{}, len(tokens))
 	for _, token := range tokens {
 		tokenSet[token] = struct{}{}
 	}
+	
+	// Build the resource metadata URI
+	resourceMetadataURI := urlutil.MustJoinPath(baseURL, ".well-known", "oauth-protected-resource")
+	if realm == "" {
+		realm = "Bearer" // Fallback if realm not provided
+	}
+	
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if len(tokens) != 0 {
 				authHeader := r.Header.Get("Authorization")
 
 				if !strings.HasPrefix(authHeader, "Bearer ") {
-					jsonwriter.WriteUnauthorized(w, "Unauthorized")
+					jsonwriter.WriteUnauthorizedWithChallenge(w, "Unauthorized", realm, resourceMetadataURI)
 					return
 				}
 
 				token := authHeader[7:] // Extract the actual token
 				if _, ok := tokenSet[token]; !ok {
-					jsonwriter.WriteUnauthorized(w, "Unauthorized")
+					jsonwriter.WriteUnauthorizedWithChallenge(w, "Unauthorized", realm, resourceMetadataURI)
 					return
 				}
 			}

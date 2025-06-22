@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -134,6 +135,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 		oauthConfig := oauth.Config{
 			Issuer:              oauthAuth.Issuer,
+			ProxyName:           cfg.Proxy.Name,
 			TokenTTL:            ttl,
 			AllowedDomains:      oauthAuth.AllowedDomains,
 			AllowedOrigins:      oauthAuth.AllowedOrigins,
@@ -184,6 +186,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 
 		mux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(s.oauthServer.WellKnownHandler), oauthMiddlewares...))
+		mux.Handle("/.well-known/oauth-protected-resource", chainMiddleware(http.HandlerFunc(s.oauthServer.ProtectedResourceMetadataHandler), oauthMiddlewares...))
 		mux.Handle("/authorize", chainMiddleware(http.HandlerFunc(s.oauthServer.AuthorizeHandler), oauthMiddlewares...))
 		mux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(s.oauthServer.GoogleCallbackHandler), oauthMiddlewares...))
 		mux.Handle("/token", chainMiddleware(http.HandlerFunc(s.oauthServer.TokenHandler), oauthMiddlewares...))
@@ -354,7 +357,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
 		} else if serverConfig.Options != nil && len(serverConfig.Options.AuthTokens) > 0 {
 			// Bearer token authentication - request must include valid bearer token
-			middlewares = append(middlewares, newAuthMiddleware(serverConfig.Options.AuthTokens))
+			middlewares = append(middlewares, newAuthMiddleware(serverConfig.Options.AuthTokens, baseURL.String(), cfg.Proxy.Name))
 		}
 		// else: no auth required for this endpoint
 
@@ -402,6 +405,22 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+	
+	// If OAuth is not configured, still provide the protected resource metadata endpoint
+	// This ensures compliance with MCP Standard 2025-06-18 even for bearer token auth
+	if s.oauthServer == nil {
+		mux.HandleFunc("/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
+			metadata := map[string]interface{}{
+				"resource": baseURL.String(),
+				"authorization_servers": []string{}, // No authorization servers for bearer token auth
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(metadata); err != nil {
+				internal.LogError("Failed to encode protected resource metadata: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+		})
+	}
 
 	internal.LogInfoWithFields("server", "MCP proxy server initialized", nil)
 	return s, nil
