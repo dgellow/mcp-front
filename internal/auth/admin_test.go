@@ -8,7 +8,6 @@ import (
 	"github.com/dgellow/mcp-front/internal/storage"
 )
 
-
 func TestIsConfigAdmin(t *testing.T) {
 	adminConfig := &config.AdminConfig{
 		Enabled: true,
@@ -112,7 +111,7 @@ func TestIsConfigAdmin_NilOrDisabled(t *testing.T) {
 
 func TestIsAdmin(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Create a mock storage with a promoted admin
 	store := storage.NewMemoryStorage()
 	// Create users and set admin status
