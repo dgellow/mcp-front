@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/dgellow/mcp-front/internal/utils"
 )
 
 // UnmarshalJSON implements custom unmarshaling for MCPClientConfig
@@ -203,6 +205,15 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 
 	p.Name = raw.Name
 	p.Admin = raw.Admin
+
+	// Normalize admin emails for consistent comparison
+	if p.Admin != nil && len(p.Admin.AdminEmails) > 0 {
+		normalizedEmails := make([]string, len(p.Admin.AdminEmails))
+		for i, email := range p.Admin.AdminEmails {
+			normalizedEmails[i] = utils.NormalizeEmail(email)
+		}
+		p.Admin.AdminEmails = normalizedEmails
+	}
 
 	// Parse BaseURL
 	if raw.BaseURL != nil {
