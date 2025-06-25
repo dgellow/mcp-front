@@ -1,6 +1,10 @@
 package utils
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestNormalizeEmail(t *testing.T) {
 	tests := []struct {
@@ -58,9 +62,7 @@ func TestNormalizeEmail(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := NormalizeEmail(tt.input)
-			if result != tt.expected {
-				t.Errorf("NormalizeEmail(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result, "NormalizeEmail(%q)", tt.input)
 		})
 	}
 }

@@ -6,6 +6,8 @@ import (
 
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/storage"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIsConfigAdmin(t *testing.T) {
@@ -68,9 +70,7 @@ func TestIsConfigAdmin(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := IsConfigAdmin(tt.email, adminConfig)
-			if result != tt.expected {
-				t.Errorf("IsConfigAdmin(%q, adminConfig) = %v, want %v", tt.email, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result, "IsConfigAdmin(%q, adminConfig)", tt.email)
 		})
 	}
 }
@@ -102,9 +102,7 @@ func TestIsConfigAdmin_NilOrDisabled(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := IsConfigAdmin(tt.email, tt.adminConfig)
-			if result != tt.expected {
-				t.Errorf("IsConfigAdmin(%q, %v) = %v, want %v", tt.email, tt.adminConfig, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result, "IsConfigAdmin(%q, %v)", tt.email, tt.adminConfig)
 		})
 	}
 }
@@ -115,9 +113,9 @@ func TestIsAdmin(t *testing.T) {
 	// Create a mock storage with a promoted admin
 	store := storage.NewMemoryStorage()
 	// Create users and set admin status
-	store.UpsertUser(ctx, "PROMOTED@EXAMPLE.COM") // Uppercase to test normalization
-	store.SetUserAdmin(ctx, "PROMOTED@EXAMPLE.COM", true)
-	store.UpsertUser(ctx, "regular@example.com")
+	require.NoError(t, store.UpsertUser(ctx, "PROMOTED@EXAMPLE.COM"), "Failed to upsert promoted user") // Uppercase to test normalization
+	require.NoError(t, store.SetUserAdmin(ctx, "PROMOTED@EXAMPLE.COM", true), "Failed to set user as admin")
+	require.NoError(t, store.UpsertUser(ctx, "regular@example.com"), "Failed to upsert regular user")
 	// regular@example.com remains non-admin by default
 
 	adminConfig := &config.AdminConfig{
@@ -167,9 +165,7 @@ func TestIsAdmin(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := IsAdmin(ctx, tt.email, adminConfig, store)
-			if result != tt.expected {
-				t.Errorf("IsAdmin(ctx, %q, adminConfig, store) = %v, want %v", tt.email, result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result, "IsAdmin(ctx, %q, adminConfig, store)", tt.email)
 		})
 	}
 }
