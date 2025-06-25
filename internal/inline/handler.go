@@ -11,7 +11,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
-	"github.com/dgellow/mcp-front/internal/server/sse"
+	"github.com/dgellow/mcp-front/internal/sse"
 )
 
 // MCPServer defines the interface that Handler depends on
@@ -98,7 +98,6 @@ func (h *Handler) runSSELoop(ctx context.Context, w http.ResponseWriter, flusher
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Send ping to keep connection alive
 			if err := sse.WriteMessage(w, flusher, map[string]any{
 				"type": "ping",
 			}); err != nil {

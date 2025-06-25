@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -17,6 +19,14 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// SessionManager defines the interface for managing stdio sessions
+type SessionManager interface {
+	GetSession(key client.SessionKey) (*client.StdioSession, bool)
+	GetOrCreateSession(ctx context.Context, key client.SessionKey, config *config.MCPClientConfig, info mcp.Implementation, setupBaseURL string) (*client.StdioSession, error)
+	RemoveSession(key client.SessionKey)
+	Shutdown()
+}
+
 // MCPHandler handles MCP requests with session management for stdio servers
 type MCPHandler struct {
 	serverName      string
@@ -24,7 +34,7 @@ type MCPHandler struct {
 	tokenStore      storage.UserTokenStore
 	setupBaseURL    string
 	info            mcp.Implementation
-	sessionManager  *client.StdioSessionManager
+	sessionManager  SessionManager
 	sharedSSEServer *server.SSEServer // Shared SSE server for stdio servers
 }
 
@@ -35,7 +45,7 @@ func NewMCPHandler(
 	tokenStore storage.UserTokenStore,
 	setupBaseURL string,
 	info mcp.Implementation,
-	sessionManager *client.StdioSessionManager,
+	sessionManager SessionManager,
 	sharedSSEServer *server.SSEServer, // Shared SSE server for stdio servers
 ) *MCPHandler {
 	return &MCPHandler{
@@ -158,134 +168,73 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 	h.sharedSSEServer.ServeHTTP(w, r)
 }
 
-// handleMessageRequest handles message endpoint requests for stdio servers
+// handleMessageRequest handles message endpoint requests
 func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
 	// Track user access
 	h.trackUserAccess(ctx, userEmail)
 
-	if !isStdioServer(config) {
-		jsonrpc.WriteError(w, nil, jsonrpc.InvalidRequest, "Message endpoint not supported for this transport")
-		return
-	}
+	if isStdioServer(config) {
+		sessionID := r.URL.Query().Get("sessionId")
+		if sessionID == "" {
+			jsonrpc.WriteError(w, nil, jsonrpc.InvalidParams, "Missing sessionId")
+			return
+		}
 
-	sessionID := r.URL.Query().Get("sessionId")
-	if sessionID == "" {
-		jsonrpc.WriteError(w, nil, jsonrpc.InvalidParams, "Missing sessionId")
-		return
-	}
+		key := client.SessionKey{
+			UserEmail:  userEmail,
+			ServerName: h.serverName,
+			SessionID:  sessionID,
+		}
 
-	// Look up existing stdio session
-	key := client.SessionKey{
-		UserEmail:  userEmail,
-		ServerName: h.serverName,
-		SessionID:  sessionID,
-	}
-
-	internal.LogDebugWithFields("mcp", "Looking up session", map[string]any{
-		"sessionID": sessionID,
-		"server":    h.serverName,
-		"user":      userEmail,
-	})
-
-	internal.LogDebugWithFields("mcp", "About to call GetSession", map[string]any{
-		"key": key,
-	})
-
-	_, ok := h.sessionManager.GetSession(key)
-
-	internal.LogDebugWithFields("mcp", "GetSession returned", map[string]any{
-		"found": ok,
-		"key":   key,
-	})
-
-	if !ok {
-		internal.LogWarnWithFields("mcp", "Session not found - returning 404 with JSON-RPC error per MCP spec", map[string]any{
+		internal.LogDebugWithFields("mcp", "Looking up stdio session", map[string]any{
 			"sessionID": sessionID,
 			"server":    h.serverName,
 			"user":      userEmail,
 		})
-		// Per MCP spec: return HTTP 404 Not Found when session is terminated or not found
-		// The response body MAY comprise a JSON-RPC error response
-		jsonrpc.WriteErrorWithStatus(w, nil, jsonrpc.InvalidParams, "Session not found", http.StatusNotFound)
-		return
-	}
 
-	// For stdio servers, use the shared SSE server
-	if h.sharedSSEServer == nil {
-		internal.LogErrorWithFields("mcp", "No shared SSE server configured", map[string]any{
+		_, ok := h.sessionManager.GetSession(key)
+		if !ok {
+			internal.LogWarnWithFields("mcp", "Session not found - returning 404 with JSON-RPC error per MCP spec", map[string]any{
+				"sessionID": sessionID,
+				"server":    h.serverName,
+				"user":      userEmail,
+			})
+			// Per MCP spec: return HTTP 404 Not Found when session is terminated or not found
+			// The response body MAY comprise a JSON-RPC error response
+			jsonrpc.WriteErrorWithStatus(w, nil, jsonrpc.InvalidParams, "Session not found", http.StatusNotFound)
+			return
+		}
+		if h.sharedSSEServer == nil {
+			internal.LogErrorWithFields("mcp", "No shared SSE server configured", map[string]any{
+				"sessionID": sessionID,
+			})
+			jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Server misconfiguration")
+			return
+		}
+
+		internal.LogDebugWithFields("mcp", "Forwarding message request to shared SSE server", map[string]any{
 			"sessionID": sessionID,
+			"server":    h.serverName,
+			"user":      userEmail,
 		})
-		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Server misconfiguration")
+
+		h.sharedSSEServer.ServeHTTP(w, r)
 		return
 	}
 
-	internal.LogDebugWithFields("mcp", "Forwarding message request to shared SSE server", map[string]any{
-		"sessionID": sessionID,
-		"server":    h.serverName,
-		"user":      userEmail,
-	})
-
-	// Use the shared SSE server directly
-	h.sharedSSEServer.ServeHTTP(w, r)
+	h.forwardMessageToBackend(ctx, w, r, config)
 }
 
 // handleNonStdioSSERequest handles SSE requests for non-stdio (native SSE) servers
 func (h *MCPHandler) handleNonStdioSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
-	// Create MCP client
-	mcpClient, err := client.NewMCPClient(h.serverName, config)
-	if err != nil {
-		internal.LogErrorWithFields("mcp", "Failed to create MCP client", map[string]any{
-			"error":   err.Error(),
-			"user":    userEmail,
-			"service": h.serverName,
-		})
-		jsonwriter.WriteServiceUnavailable(w, "Failed to connect to service")
-		return
-	}
-	defer mcpClient.Close()
-
-	// Create MCP server
-	mcpServer := server.NewMCPServer(h.serverName, "1.0.0",
-		server.WithPromptCapabilities(true),
-		server.WithResourceCapabilities(true, true),
-		server.WithToolCapabilities(true),
-		server.WithLogging(),
-	)
-
-	// Connect client to server
-	if err := mcpClient.AddToMCPServerWithTokenCheck(
-		ctx,
-		h.info,
-		mcpServer,
-		userEmail,
-		h.serverConfig.RequiresUserToken,
-		h.tokenStore,
-		h.serverName,
-		h.setupBaseURL,
-		h.serverConfig.TokenSetup,
-	); err != nil {
-		internal.LogErrorWithFields("mcp", "Failed to connect client to server", map[string]any{
-			"error":   err.Error(),
-			"user":    userEmail,
-			"service": h.serverName,
-		})
-		jsonwriter.WriteInternalServerError(w, "Failed to initialize service")
-		return
-	}
-
-	// Create SSE server and serve
-	sseServer := server.NewSSEServer(mcpServer,
-		server.WithStaticBasePath(h.serverName),
-		server.WithBaseURL(h.setupBaseURL),
-	)
-
-	internal.LogInfoWithFields("mcp", "Serving SSE request", map[string]any{
+	internal.LogInfoWithFields("mcp", "Proxying SSE request to backend", map[string]any{
 		"service": h.serverName,
-		"isStdio": false,
 		"user":    userEmail,
+		"backend": config.URL,
 	})
 
-	sseServer.ServeHTTP(w, r)
+	// Forward the SSE request directly to the backend
+	forwardSSEToBackend(ctx, w, r, config)
 }
 
 // getUserTokenIfAvailable gets the user token if available, but doesn't send error responses
@@ -310,4 +259,79 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	}
 
 	return token, nil
+}
+
+// forwardMessageToBackend forwards a message request to the backend SSE server
+func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.ResponseWriter, r *http.Request, config *config.MCPClientConfig) {
+	backendURL := config.URL + "/message"
+	if r.URL.RawQuery != "" {
+		backendURL += "?" + r.URL.RawQuery
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		internal.LogErrorWithFields("mcp", "Failed to read request body", map[string]any{
+			"error":  err.Error(),
+			"server": h.serverName,
+		})
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to read request")
+		return
+	}
+
+	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, bytes.NewReader(body))
+	if err != nil {
+		internal.LogErrorWithFields("mcp", "Failed to create backend request", map[string]any{
+			"error":  err.Error(),
+			"server": h.serverName,
+			"url":    backendURL,
+		})
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to create request")
+		return
+	}
+
+	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		req.Header.Set("Content-Type", ct)
+	} else {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	for k, v := range config.Headers {
+		req.Header.Set(k, v)
+	}
+
+	internal.LogDebugWithFields("mcp", "Forwarding message to backend", map[string]any{
+		"server":     h.serverName,
+		"backendURL": backendURL,
+		"method":     r.Method,
+		"headers":    config.Headers,
+	})
+
+	client := &http.Client{
+		Timeout: config.Timeout,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		internal.LogErrorWithFields("mcp", "Backend request failed", map[string]any{
+			"error":  err.Error(),
+			"server": h.serverName,
+			"url":    backendURL,
+		})
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Backend request failed")
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteHeader(resp.StatusCode)
+
+	for k, v := range resp.Header {
+		w.Header()[k] = v
+	}
+
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		internal.LogErrorWithFields("mcp", "Failed to copy response body", map[string]any{
+			"error":  err.Error(),
+			"server": h.serverName,
+		})
+	}
 }
