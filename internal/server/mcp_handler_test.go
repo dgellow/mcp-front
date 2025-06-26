@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/client"
-	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
+	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -54,7 +54,7 @@ func createTestMCPHandler(serverName string, config *config.MCPClientConfig) *MC
 	tokenStore := new(testutil.MockUserTokenStore)
 	sessionManager := new(mockSessionManager)
 	info := mcp.Implementation{Name: "test", Version: "1.0"}
-	
+
 	return NewMCPHandler(
 		serverName,
 		config,
@@ -65,7 +65,6 @@ func createTestMCPHandler(serverName string, config *config.MCPClientConfig) *MC
 		nil,
 	)
 }
-
 
 func TestIsMessageRequest(t *testing.T) {
 	tests := []struct {
@@ -101,7 +100,7 @@ func TestIsMessageRequest(t *testing.T) {
 	}
 
 	handler := createTestMCPHandler("test", &config.MCPClientConfig{})
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, tt.path, nil)
@@ -116,12 +115,12 @@ func TestHandleMessageRequest_SSEServer(t *testing.T) {
 	backendCalled := false
 	var capturedRequest *http.Request
 	var capturedBody []byte
-	
+
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		backendCalled = true
 		capturedRequest = r
 		capturedBody, _ = io.ReadAll(r.Body)
-		
+
 		// Return a JSON-RPC response
 		response := jsonrpc.NewResponse(1, map[string]any{"result": "success"})
 		w.Header().Set("Content-Type", "application/json")
@@ -139,7 +138,7 @@ func TestHandleMessageRequest_SSEServer(t *testing.T) {
 		},
 		Timeout: 5 * time.Second,
 	}
-	
+
 	handler := createTestMCPHandler("test-sse", sseConfig)
 
 	// Create test request
@@ -150,7 +149,7 @@ func TestHandleMessageRequest_SSEServer(t *testing.T) {
 		Params:  json.RawMessage(`{"key": "value"}`),
 	}
 	body, _ := json.Marshal(requestBody)
-	
+
 	req := httptest.NewRequest(http.MethodPost, "/test-sse/message?sessionId=optional", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -160,7 +159,7 @@ func TestHandleMessageRequest_SSEServer(t *testing.T) {
 
 	// Verify backend was called
 	assert.True(t, backendCalled, "Backend should have been called")
-	
+
 	// Verify request forwarding
 	assert.Equal(t, "/message?sessionId=optional", capturedRequest.URL.Path+"?"+capturedRequest.URL.RawQuery)
 	assert.Equal(t, "Bearer test-token", capturedRequest.Header.Get("Authorization"))
@@ -171,17 +170,16 @@ func TestHandleMessageRequest_SSEServer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 	assert.Equal(t, "test-value", rec.Header().Get("X-Custom-Header"))
-	
+
 	var response jsonrpc.Response
 	err := json.Unmarshal(rec.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, float64(1), response.ID)
-	
+
 	result, ok := response.Result.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "success", result["result"])
 }
-
 
 func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 	t.Run("backend connection failure", func(t *testing.T) {
@@ -191,7 +189,7 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 			TransportType: config.MCPClientTypeSSE,
 			Timeout:       100 * time.Millisecond,
 		}
-		
+
 		handler := createTestMCPHandler("test-sse", sseConfig)
 
 		requestBody := jsonrpc.Request{
@@ -200,18 +198,18 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 			Method:  "test/method",
 		}
 		body, _ := json.Marshal(requestBody)
-		
+
 		req := httptest.NewRequest(http.MethodPost, "/test-sse/message", bytes.NewReader(body))
 		rec := httptest.NewRecorder()
 
 		handler.forwardMessageToBackend(context.Background(), rec, req, sseConfig)
 
 		assert.Equal(t, http.StatusOK, rec.Code)
-		
+
 		var response jsonrpc.Response
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		require.NoError(t, err)
-		
+
 		assert.NotNil(t, response.Error)
 		assert.Equal(t, jsonrpc.InternalError, response.Error.Code)
 		assert.Equal(t, "Backend request failed", response.Error.Message)
@@ -228,7 +226,7 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 			URL:           backendServer.URL,
 			TransportType: config.MCPClientTypeSSE,
 		}
-		
+
 		handler := createTestMCPHandler("test-sse", sseConfig)
 
 		req := httptest.NewRequest(http.MethodPost, "/test-sse/message", bytes.NewReader([]byte("{}")))
@@ -251,11 +249,11 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 		handler.forwardMessageToBackend(context.Background(), rec, req, &config.MCPClientConfig{})
 
 		assert.Equal(t, http.StatusOK, rec.Code)
-		
+
 		var response jsonrpc.Response
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		require.NoError(t, err)
-		
+
 		assert.NotNil(t, response.Error)
 		assert.Equal(t, jsonrpc.InternalError, response.Error.Code)
 		assert.Equal(t, "Failed to read request", response.Error.Message)
@@ -264,7 +262,7 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 
 func TestForwardMessageToBackend_HeaderHandling(t *testing.T) {
 	var capturedHeaders http.Header
-	
+
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedHeaders = r.Header
 		w.Header().Set("X-Response-Header", "response-value")
@@ -281,7 +279,7 @@ func TestForwardMessageToBackend_HeaderHandling(t *testing.T) {
 			"X-Custom":      "custom-value",
 		},
 	}
-	
+
 	handler := createTestMCPHandler("test-sse", sseConfig)
 
 	req := httptest.NewRequest(http.MethodPost, "/test-sse/message", bytes.NewReader([]byte("{}")))

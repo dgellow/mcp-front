@@ -7,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
 
 func TestStdioSessionManager_CreateAndRetrieve(t *testing.T) {
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {

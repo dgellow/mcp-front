@@ -14,7 +14,7 @@ import (
 func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Request, config *config.MCPClientConfig) {
 	// Build the backend URL - SSE servers should expose their SSE endpoint at the root
 	backendURL := config.URL
-	
+
 	// Create the backend request
 	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil)
 	if err != nil {
@@ -57,7 +57,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 			return http.ErrUseLastResponse
 		},
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		internal.LogErrorWithFields("sse_proxy", "Backend request failed", map[string]any{
@@ -85,7 +85,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	
+
 	// Copy any other headers from backend
 	for k, v := range resp.Header {
 		if k == "Content-Type" || k == "Cache-Control" || k == "Connection" {
@@ -96,7 +96,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 
 	// Start streaming
 	w.WriteHeader(http.StatusOK)
-	
+
 	// Get flusher for SSE
 	flusher, ok := w.(http.Flusher)
 	if !ok {
