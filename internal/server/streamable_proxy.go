@@ -33,7 +33,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 	}
 
 	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
-	
+
 	for k, v := range config.Headers {
 		req.Header.Set(k, v)
 	}
@@ -61,26 +61,26 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 	defer resp.Body.Close()
 
 	contentType := resp.Header.Get("Content-Type")
-	
+
 	if strings.HasPrefix(contentType, "text/event-stream") {
 		internal.LogInfoWithFields("streamable_proxy", "Backend returned SSE stream", map[string]any{
 			"status": resp.StatusCode,
 		})
-		
+
 		for k, v := range resp.Header {
 			if k == "Content-Type" || k == "Cache-Control" || k == "Connection" {
 				w.Header()[k] = v
 			}
 		}
-		
+
 		w.WriteHeader(resp.StatusCode)
-		
+
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			internal.LogError("Response writer doesn't support flushing")
 			return
 		}
-		
+
 		buf := make([]byte, 4096)
 		for {
 			n, err := resp.Body.Read(buf)
@@ -105,11 +105,11 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 		}
 	} else {
 		w.WriteHeader(resp.StatusCode)
-		
+
 		for k, v := range resp.Header {
 			w.Header()[k] = v
 		}
-		
+
 		if _, err := io.Copy(w, resp.Body); err != nil {
 			internal.LogErrorWithFields("streamable_proxy", "Failed to copy response body", map[string]any{
 				"error": err.Error(),

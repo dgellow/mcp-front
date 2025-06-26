@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"os/exec"
 	"testing"
 	"time"
 
@@ -32,7 +33,6 @@ func TestSSEServerIntegration(t *testing.T) {
 
 		t.Log("Connected to SSE MCP server")
 
-		// The server-everything should provide tools we can test
 		// Let's list available tools first
 		params := map[string]interface{}{
 			"method": "tools/list",
@@ -48,7 +48,7 @@ func TestSSEServerIntegration(t *testing.T) {
 	})
 
 	t.Run("SSE tool invocation", func(t *testing.T) {
-		// The mock server provides echo_text tool
+		// The mock server should provide echo_text tool
 		params := map[string]interface{}{
 			"name": "echo_text",
 			"arguments": map[string]interface{}{
@@ -76,7 +76,7 @@ func TestSSEServerIntegration(t *testing.T) {
 	})
 
 	t.Run("SSE server disconnection handling", func(t *testing.T) {
-		// Close the current connection
+		// Simulate server disconnection
 		client.Close()
 
 		// Try to reconnect
@@ -133,10 +133,12 @@ func TestSSEServerIntegration(t *testing.T) {
 	})
 
 	t.Run("Multiple concurrent SSE requests", func(t *testing.T) {
-		// Test that we can handle multiple concurrent requests
-		done := make(chan bool, 3)
+		COUNT := 10
 
-		for i := 0; i < 3; i++ {
+		// Test that we can handle multiple concurrent requests
+		done := make(chan bool, COUNT)
+
+		for i := 0; i < COUNT; i++ {
 			go func(index int) {
 				defer func() { done <- true }()
 
@@ -155,7 +157,7 @@ func TestSSEServerIntegration(t *testing.T) {
 
 		// Wait for all requests to complete
 		timeout := time.After(10 * time.Second)
-		for i := 0; i < 3; i++ {
+		for i := 0; i < COUNT; i++ {
 			select {
 			case <-done:
 				// Good
@@ -170,7 +172,6 @@ func TestSSEServerIntegration(t *testing.T) {
 func TestSSEServerRestart(t *testing.T) {
 	trace(t, "Starting SSE server restart test")
 
-	// Start mcp-front with SSE config
 	startMCPFront(t, "config/config.sse-test.json")
 	waitForMCPFront(t)
 
@@ -194,8 +195,15 @@ func TestSSEServerRestart(t *testing.T) {
 	require.NoError(t, err, "Failed initial request")
 	assert.NotNil(t, result)
 
-	// Note: In a real test, we would restart the SSE server here
-	// For now, we just test reconnection behavior
+	// Restart the SSE server
+	cmd := exec.Command("docker", "compose", "restart", "test-sse-server")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "Failed to restart SSE server: %s", output)
+
+	// Wait for the server to be ready
+	time.Sleep(3 * time.Second)
+
+	// Test reconnection behavior
 	client.Close()
 
 	// Wait a bit

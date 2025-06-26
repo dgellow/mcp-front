@@ -19,17 +19,17 @@ func TestForwardSSEToBackend(t *testing.T) {
 		backendCalled := false
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			backendCalled = true
-			
+
 			// Verify request
 			assert.Equal(t, "text/event-stream", r.Header.Get("Accept"))
 			assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
-			
+
 			// Send SSE response
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")
 			w.Header().Set("X-Custom-Header", "test-value")
 			w.WriteHeader(http.StatusOK)
-			
+
 			// Send some SSE data
 			_, _ = w.Write([]byte("data: {\"type\":\"test\"}\n\n"))
 			w.(http.Flusher).Flush()
@@ -54,7 +54,7 @@ func TestForwardSSEToBackend(t *testing.T) {
 
 		// Verify backend was called
 		assert.True(t, backendCalled)
-		
+
 		// Verify response
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
@@ -126,10 +126,10 @@ func TestForwardSSEToBackend(t *testing.T) {
 
 	t.Run("headers are properly forwarded", func(t *testing.T) {
 		var capturedHeaders http.Header
-		
+
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			capturedHeaders = r.Header
-			
+
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
 		}))
@@ -155,11 +155,11 @@ func TestForwardSSEToBackend(t *testing.T) {
 		assert.Equal(t, "Bearer config-token", capturedHeaders.Get("Authorization"))
 		assert.Equal(t, "custom-value", capturedHeaders.Get("X-Custom"))
 		assert.Equal(t, "text/event-stream", capturedHeaders.Get("Accept"))
-		
+
 		// Original request headers should also be forwarded (except hop-by-hop)
 		assert.Equal(t, "test-agent", capturedHeaders.Get("User-Agent"))
 		assert.Equal(t, "request-value", capturedHeaders.Get("X-Request-Header"))
-		
+
 		// Hop-by-hop headers should not be forwarded
 		assert.Empty(t, capturedHeaders.Get("Connection"))
 		assert.Empty(t, capturedHeaders.Get("Upgrade"))
@@ -171,11 +171,11 @@ func TestForwardSSEToBackend(t *testing.T) {
 			"data: {\"message\":\"second\"}\n\n",
 			"data: {\"message\":\"third\"}\n\n",
 		}
-		
+
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			
+
 			flusher := w.(http.Flusher)
 			for _, msg := range messages {
 				_, _ = w.Write([]byte(msg))
@@ -205,37 +205,37 @@ func TestForwardSSEToBackend(t *testing.T) {
 		// Track what was sent
 		var messagesSent []string
 		done := make(chan bool)
-		
+
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			
+
 			flusher := w.(http.Flusher)
-			
+
 			// Send initial message
 			msg := "data: {\"type\":\"connected\"}\n\n"
 			messagesSent = append(messagesSent, msg)
 			_, _ = w.Write([]byte(msg))
 			flusher.Flush()
-			
+
 			// Send keepalive
 			keepalive := ":keepalive\n\n"
 			messagesSent = append(messagesSent, keepalive)
 			_, _ = w.Write([]byte(keepalive))
 			flusher.Flush()
-			
+
 			// Send real-time update
 			update := "data: {\"type\":\"update\",\"value\":42}\n\n"
 			messagesSent = append(messagesSent, update)
 			_, _ = w.Write([]byte(update))
 			flusher.Flush()
-			
+
 			// Send comment
 			comment := ": this is a comment\n\n"
 			messagesSent = append(messagesSent, comment)
 			_, _ = w.Write([]byte(comment))
 			flusher.Flush()
-			
+
 			close(done)
 		}))
 		defer backend.Close()
@@ -249,7 +249,7 @@ func TestForwardSSEToBackend(t *testing.T) {
 		rec := httptest.NewRecorder()
 
 		forwardSSEToBackend(context.Background(), rec, req, config)
-		
+
 		// Wait for backend to finish
 		select {
 		case <-done:
@@ -259,13 +259,13 @@ func TestForwardSSEToBackend(t *testing.T) {
 		}
 
 		body := rec.Body.String()
-		
+
 		// Verify all message types were forwarded
 		assert.Contains(t, body, "data: {\"type\":\"connected\"}")
 		assert.Contains(t, body, ":keepalive")
 		assert.Contains(t, body, "data: {\"type\":\"update\",\"value\":42}")
 		assert.Contains(t, body, ": this is a comment")
-		
+
 		// Verify proper SSE format preserved
 		assert.Contains(t, body, "\n\n", "SSE messages should end with double newline")
 	})
@@ -275,18 +275,18 @@ func TestForwardSSEToBackend(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		streamStarted := make(chan bool)
 		streamStopped := make(chan bool)
-		
+
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			
+
 			flusher := w.(http.Flusher)
 			close(streamStarted)
-			
+
 			// Keep streaming until context is cancelled
 			ticker := time.NewTicker(50 * time.Millisecond)
 			defer ticker.Stop()
-			
+
 			for {
 				select {
 				case <-r.Context().Done():
@@ -316,7 +316,7 @@ func TestForwardSSEToBackend(t *testing.T) {
 
 		// Start streaming in background
 		go forwardSSEToBackend(ctx, rec, req, config)
-		
+
 		// Wait for stream to start
 		select {
 		case <-streamStarted:
@@ -324,13 +324,13 @@ func TestForwardSSEToBackend(t *testing.T) {
 		case <-time.After(1 * time.Second):
 			t.Fatal("Stream didn't start")
 		}
-		
+
 		// Let it stream a bit
 		time.Sleep(100 * time.Millisecond)
-		
+
 		// Cancel the context (simulate client disconnect)
 		cancel()
-		
+
 		// Verify backend stops streaming
 		select {
 		case <-streamStopped:
@@ -338,7 +338,7 @@ func TestForwardSSEToBackend(t *testing.T) {
 		case <-time.After(1 * time.Second):
 			t.Fatal("Backend didn't stop streaming after client disconnect")
 		}
-		
+
 		// Verify we got some data before disconnect
 		body := rec.Body.String()
 		assert.Contains(t, body, "data: {\"tick\":1}")
@@ -371,7 +371,7 @@ func TestForwardSSEToBackend(t *testing.T) {
 
 	t.Run("authentication header forwarding", func(t *testing.T) {
 		var capturedAuth string
-		
+
 		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			capturedAuth = r.Header.Get("Authorization")
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -431,7 +431,7 @@ func TestForwardSSEToBackend(t *testing.T) {
 				if tc.expectedAuth != "" {
 					assert.Equal(t, tc.expectedAuth, capturedAuth)
 				}
-				
+
 				// Verify custom headers are also forwarded
 				if _, hasAPIKey := tc.configHeaders["X-API-Key"]; hasAPIKey {
 					// Need to check this was captured too
@@ -457,7 +457,7 @@ func TestHandleNonStdioSSERequest(t *testing.T) {
 		TransportType: config.MCPClientTypeSSE,
 		Timeout:       5 * time.Second,
 	}
-	
+
 	handler := createTestMCPHandler("test-sse", config)
 
 	// Create request
@@ -487,14 +487,14 @@ func TestSSEVsStdioRouting(t *testing.T) {
 			URL:           backend.URL,
 			TransportType: config.MCPClientTypeSSE,
 		}
-		
+
 		handler := createTestMCPHandler("test-sse", config)
-		
+
 		req := httptest.NewRequest(http.MethodGet, "/test-sse/sse", nil)
 		rec := httptest.NewRecorder()
-		
+
 		handler.ServeHTTP(rec, req)
-		
+
 		// Should get response from backend
 		assert.Contains(t, rec.Body.String(), "from-backend")
 	})
@@ -505,17 +505,17 @@ func TestSSEVsStdioRouting(t *testing.T) {
 			Args:          []string{"test"},
 			TransportType: config.MCPClientTypeStdio,
 		}
-		
+
 		handler := createTestMCPHandler("test-stdio", config)
-		
+
 		// For stdio, we need a shared SSE server
 		handler.sharedSSEServer = &server.SSEServer{}
-		
+
 		req := httptest.NewRequest(http.MethodGet, "/test-stdio/sse", nil)
 		rec := httptest.NewRecorder()
-		
+
 		handler.ServeHTTP(rec, req)
-		
+
 		// Should not get the backend response (stdio doesn't proxy)
 		assert.NotContains(t, rec.Body.String(), "from-backend")
 	})

@@ -251,8 +251,8 @@ func (c *MCPSSEClient) SendMCPRequest(method string, params interface{}) (map[st
 	return result, nil
 }
 
-// StreamableClient is a test client for HTTP-Streamable MCP servers
-type StreamableClient struct {
+// MCPStreamableClient is a test client for HTTP-Streamable MCP servers
+type MCPStreamableClient struct {
 	baseURL    string
 	serverName string
 	token      string
@@ -266,9 +266,9 @@ type StreamableClient struct {
 	mu sync.Mutex
 }
 
-// NewStreamableClient creates a new streamable-http test client
-func NewStreamableClient(baseURL string) *StreamableClient {
-	return &StreamableClient{
+// NewMCPStreamableClient creates a new streamable-http test client
+func NewMCPStreamableClient(baseURL string) *MCPStreamableClient {
+	return &MCPStreamableClient{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
@@ -277,12 +277,12 @@ func NewStreamableClient(baseURL string) *StreamableClient {
 }
 
 // SetAuthToken sets the authentication token
-func (c *StreamableClient) SetAuthToken(token string) {
+func (c *MCPStreamableClient) SetAuthToken(token string) {
 	c.token = token
 }
 
 // ConnectToServer establishes connection to a streamable-http server
-func (c *StreamableClient) ConnectToServer(serverName string) error {
+func (c *MCPStreamableClient) ConnectToServer(serverName string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -297,7 +297,7 @@ func (c *StreamableClient) ConnectToServer(serverName string) error {
 }
 
 // openSSEStream opens a GET SSE connection for receiving server-initiated messages
-func (c *StreamableClient) openSSEStream() error {
+func (c *MCPStreamableClient) openSSEStream() error {
 	url := c.baseURL + "/" + c.serverName + "/sse"
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -333,7 +333,7 @@ func (c *StreamableClient) openSSEStream() error {
 }
 
 // readSSEMessages reads server-initiated messages from the SSE stream
-func (c *StreamableClient) readSSEMessages() {
+func (c *MCPStreamableClient) readSSEMessages() {
 	for {
 		select {
 		case <-c.sseCancel:
@@ -355,7 +355,7 @@ func (c *StreamableClient) readSSEMessages() {
 }
 
 // SendMCPRequest sends a JSON-RPC request via POST
-func (c *StreamableClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
+func (c *MCPStreamableClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
 	c.mu.Lock()
 	serverName := c.serverName
 	c.mu.Unlock()
@@ -409,7 +409,7 @@ func (c *StreamableClient) SendMCPRequest(method string, params interface{}) (ma
 }
 
 // handleJSONResponse processes a regular JSON response
-func (c *StreamableClient) handleJSONResponse(body io.Reader) (map[string]interface{}, error) {
+func (c *MCPStreamableClient) handleJSONResponse(body io.Reader) (map[string]interface{}, error) {
 	var response map[string]interface{}
 	if err := json.NewDecoder(body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON response: %v", err)
@@ -418,7 +418,7 @@ func (c *StreamableClient) handleJSONResponse(body io.Reader) (map[string]interf
 }
 
 // handleSSEResponse processes an SSE stream response from a POST
-func (c *StreamableClient) handleSSEResponse(body io.Reader) (map[string]interface{}, error) {
+func (c *MCPStreamableClient) handleSSEResponse(body io.Reader) (map[string]interface{}, error) {
 	scanner := bufio.NewScanner(body)
 	var lastResponse map[string]interface{}
 
@@ -444,14 +444,14 @@ func (c *StreamableClient) handleSSEResponse(body io.Reader) (map[string]interfa
 }
 
 // Close closes all connections
-func (c *StreamableClient) Close() {
+func (c *MCPStreamableClient) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.close()
 }
 
 // close is the internal close method (must be called with lock held)
-func (c *StreamableClient) close() {
+func (c *MCPStreamableClient) close() {
 	if c.sseCancel != nil {
 		close(c.sseCancel)
 		c.sseCancel = nil
