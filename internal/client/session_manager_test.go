@@ -7,74 +7,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockMCPClient implements MCPClientInterface for testing
-type mockMCPClient struct {
-	closed bool
-	mu     sync.Mutex
-}
-
-func (m *mockMCPClient) Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error) {
-	return &mcp.InitializeResult{}, nil
-}
-
-func (m *mockMCPClient) ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
-	return &mcp.ListToolsResult{}, nil
-}
-
-func (m *mockMCPClient) CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return &mcp.CallToolResult{}, nil
-}
-
-func (m *mockMCPClient) ListPrompts(ctx context.Context, request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error) {
-	return &mcp.ListPromptsResult{}, nil
-}
-
-func (m *mockMCPClient) GetPrompt(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	return &mcp.GetPromptResult{}, nil
-}
-
-func (m *mockMCPClient) ListResources(ctx context.Context, request mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error) {
-	return &mcp.ListResourcesResult{}, nil
-}
-
-func (m *mockMCPClient) ReadResource(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	return &mcp.ReadResourceResult{}, nil
-}
-
-func (m *mockMCPClient) ListResourceTemplates(ctx context.Context, request mcp.ListResourceTemplatesRequest) (*mcp.ListResourceTemplatesResult, error) {
-	return &mcp.ListResourceTemplatesResult{}, nil
-}
-
-func (m *mockMCPClient) Ping(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockMCPClient) Start(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockMCPClient) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.closed = true
-	return nil
-}
-
-func (m *mockMCPClient) IsClosed() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.closed
-}
 
 func TestStdioSessionManager_CreateAndRetrieve(t *testing.T) {
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {
-		return &Client{client: &mockMCPClient{}}, nil
+		mockClient := new(testutil.MockMCPClient)
+		mockClient.On("Close").Return(nil).Maybe()
+		return &Client{client: mockClient}, nil
 	}
 
 	sm := NewStdioSessionManager(
@@ -120,7 +65,9 @@ func TestStdioSessionManager_CreateAndRetrieve(t *testing.T) {
 
 func TestStdioSessionManager_UserLimits(t *testing.T) {
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {
-		return &Client{client: &mockMCPClient{}}, nil
+		mockClient := new(testutil.MockMCPClient)
+		mockClient.On("Close").Return(nil).Maybe()
+		return &Client{client: mockClient}, nil
 	}
 
 	sm := NewStdioSessionManager(
@@ -155,11 +102,12 @@ func TestStdioSessionManager_UserLimits(t *testing.T) {
 }
 
 func TestStdioSessionManager_RemoveSession(t *testing.T) {
-	closedClients := make(map[string]*mockMCPClient)
+	var createdClient *testutil.MockMCPClient
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {
-		mc := &mockMCPClient{}
-		closedClients[name] = mc
-		return &Client{client: mc}, nil
+		mockClient := new(testutil.MockMCPClient)
+		mockClient.On("Close").Return(nil).Once()
+		createdClient = mockClient
+		return &Client{client: mockClient}, nil
 	}
 
 	sm := NewStdioSessionManager(WithClientCreator(mockCreator))
@@ -186,13 +134,15 @@ func TestStdioSessionManager_RemoveSession(t *testing.T) {
 	_, ok := sm.GetSession(key)
 	assert.False(t, ok)
 
-	// Client should be closed
-	assert.True(t, closedClients["test-server"].IsClosed())
+	// Client should have been closed
+	createdClient.AssertExpectations(t)
 }
 
 func TestStdioSessionManager_Timeout(t *testing.T) {
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {
-		return &Client{client: &mockMCPClient{}}, nil
+		mockClient := new(testutil.MockMCPClient)
+		mockClient.On("Close").Return(nil).Maybe()
+		return &Client{client: mockClient}, nil
 	}
 
 	sm := NewStdioSessionManager(
@@ -230,7 +180,9 @@ func TestStdioSessionManager_Timeout(t *testing.T) {
 
 func TestStdioSessionManager_ConcurrentAccess(t *testing.T) {
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {
-		return &Client{client: &mockMCPClient{}}, nil
+		mockClient := new(testutil.MockMCPClient)
+		mockClient.On("Close").Return(nil).Maybe()
+		return &Client{client: mockClient}, nil
 	}
 
 	sm := NewStdioSessionManager(WithClientCreator(mockCreator))
@@ -270,7 +222,9 @@ func TestStdioSessionManager_ConcurrentAccess(t *testing.T) {
 
 func TestStdioSessionManager_NoLimitsForAnonymous(t *testing.T) {
 	mockCreator := func(name string, config *config.MCPClientConfig) (*Client, error) {
-		return &Client{client: &mockMCPClient{}}, nil
+		mockClient := new(testutil.MockMCPClient)
+		mockClient.On("Close").Return(nil).Maybe()
+		return &Client{client: mockClient}, nil
 	}
 
 	sm := NewStdioSessionManager(
