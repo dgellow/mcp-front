@@ -14,3 +14,33 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  
+  test-sse-server:
+    image: node:20-alpine
+    command: node /app/mock-sse-server.js
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+    volumes:
+      - ./fixtures/mock-sse-server.js:/app/mock-sse-server.js
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  test-streamable-server:
+    image: node:20-alpine
+    command: node /app/mock-streamable-server.js
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+    volumes:
+      - ./fixtures/mock-streamable-server.js:/app/mock-streamable-server.js
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

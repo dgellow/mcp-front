@@ -25,11 +25,11 @@ func TestMultiUserSessionIsolation(t *testing.T) {
 	t.Logf("Initial mcp/postgres containers: %d", len(initialContainers))
 
 	// Create two clients with different auth tokens
-	client1 := NewMCPClient("http://localhost:8080")
+	client1 := NewMCPSSEClient("http://localhost:8080")
 	client1.SetAuthToken("test-token") // First user
 	defer client1.Close()
 
-	client2 := NewMCPClient("http://localhost:8080")
+	client2 := NewMCPSSEClient("http://localhost:8080")
 	client2.SetAuthToken("alt-test-token") // Second user
 	defer client2.Close()
 
@@ -221,7 +221,7 @@ func TestSessionCleanupAfterTimeout(t *testing.T) {
 	t.Logf("Initial mcp/postgres containers: %d", len(initialContainers))
 
 	// Create a client and connect
-	client := NewMCPClient("http://localhost:8080")
+	client := NewMCPSSEClient("http://localhost:8080")
 	client.SetAuthToken("test-token")
 
 	// Add cleanup for this test
@@ -290,7 +290,7 @@ func TestSessionTimerReset(t *testing.T) {
 	t.Logf("Initial mcp/postgres containers: %d", len(initialContainers))
 
 	// Create a client and connect
-	client := NewMCPClient("http://localhost:8080")
+	client := NewMCPSSEClient("http://localhost:8080")
 	client.SetAuthToken("test-token")
 
 	// Add cleanup for this test
@@ -370,10 +370,10 @@ func TestMultiUserTimerIndependence(t *testing.T) {
 	t.Logf("Initial mcp/postgres containers: %d", len(initialContainers))
 
 	// Create two clients
-	client1 := NewMCPClient("http://localhost:8080")
+	client1 := NewMCPSSEClient("http://localhost:8080")
 	client1.SetAuthToken("test-token")
 
-	client2 := NewMCPClient("http://localhost:8080")
+	client2 := NewMCPSSEClient("http://localhost:8080")
 	client2.SetAuthToken("alt-test-token")
 
 	// Add cleanup for this test

@@ -822,7 +822,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 
 	t.Run("ToolsAdvertisedWithoutToken", func(t *testing.T) {
 		// Create MCP client with OAuth token
-		mcpClient := NewMCPClient("http://localhost:8080")
+		mcpClient := NewMCPSSEClient("http://localhost:8080")
 		mcpClient.SetAuthToken(accessToken)
 
 		// Connect to postgres SSE endpoint
@@ -858,7 +858,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 
 	t.Run("ToolInvocationFailsWithoutToken", func(t *testing.T) {
 		// Create MCP client with OAuth token
-		mcpClient := NewMCPClient("http://localhost:8080")
+		mcpClient := NewMCPSSEClient("http://localhost:8080")
 		mcpClient.SetAuthToken(accessToken)
 
 		// Connect to postgres SSE endpoint
@@ -992,7 +992,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		}
 
 		// Step 3: Now test tool invocation with the token
-		mcpClient := NewMCPClient("http://localhost:8080")
+		mcpClient := NewMCPSSEClient("http://localhost:8080")
 		mcpClient.SetAuthToken(accessToken)
 
 		err = mcpClient.Connect()

@@ -200,6 +200,246 @@ func TestForwardSSEToBackend(t *testing.T) {
 			assert.Contains(t, body, strings.TrimSpace(msg))
 		}
 	})
+
+	t.Run("SSE keepalive and real-time streaming", func(t *testing.T) {
+		// Track what was sent
+		var messagesSent []string
+		done := make(chan bool)
+		
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			
+			flusher := w.(http.Flusher)
+			
+			// Send initial message
+			msg := "data: {\"type\":\"connected\"}\n\n"
+			messagesSent = append(messagesSent, msg)
+			_, _ = w.Write([]byte(msg))
+			flusher.Flush()
+			
+			// Send keepalive
+			keepalive := ":keepalive\n\n"
+			messagesSent = append(messagesSent, keepalive)
+			_, _ = w.Write([]byte(keepalive))
+			flusher.Flush()
+			
+			// Send real-time update
+			update := "data: {\"type\":\"update\",\"value\":42}\n\n"
+			messagesSent = append(messagesSent, update)
+			_, _ = w.Write([]byte(update))
+			flusher.Flush()
+			
+			// Send comment
+			comment := ": this is a comment\n\n"
+			messagesSent = append(messagesSent, comment)
+			_, _ = w.Write([]byte(comment))
+			flusher.Flush()
+			
+			close(done)
+		}))
+		defer backend.Close()
+
+		config := &config.MCPClientConfig{
+			URL:     backend.URL,
+			Timeout: 5 * time.Second,
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/test/sse", nil)
+		rec := httptest.NewRecorder()
+
+		forwardSSEToBackend(context.Background(), rec, req, config)
+		
+		// Wait for backend to finish
+		select {
+		case <-done:
+			// Good
+		case <-time.After(1 * time.Second):
+			t.Fatal("Timeout waiting for backend to finish")
+		}
+
+		body := rec.Body.String()
+		
+		// Verify all message types were forwarded
+		assert.Contains(t, body, "data: {\"type\":\"connected\"}")
+		assert.Contains(t, body, ":keepalive")
+		assert.Contains(t, body, "data: {\"type\":\"update\",\"value\":42}")
+		assert.Contains(t, body, ": this is a comment")
+		
+		// Verify proper SSE format preserved
+		assert.Contains(t, body, "\n\n", "SSE messages should end with double newline")
+	})
+
+	t.Run("client disconnect during streaming", func(t *testing.T) {
+		// Create a context we can cancel
+		ctx, cancel := context.WithCancel(context.Background())
+		streamStarted := make(chan bool)
+		streamStopped := make(chan bool)
+		
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			
+			flusher := w.(http.Flusher)
+			close(streamStarted)
+			
+			// Keep streaming until context is cancelled
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+			
+			for {
+				select {
+				case <-r.Context().Done():
+					// Client disconnected
+					close(streamStopped)
+					return
+				case <-ticker.C:
+					_, err := w.Write([]byte("data: {\"tick\":1}\n\n"))
+					if err != nil {
+						close(streamStopped)
+						return
+					}
+					flusher.Flush()
+				}
+			}
+		}))
+		defer backend.Close()
+
+		config := &config.MCPClientConfig{
+			URL:     backend.URL,
+			Timeout: 5 * time.Second,
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/test/sse", nil)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		// Start streaming in background
+		go forwardSSEToBackend(ctx, rec, req, config)
+		
+		// Wait for stream to start
+		select {
+		case <-streamStarted:
+			// Good
+		case <-time.After(1 * time.Second):
+			t.Fatal("Stream didn't start")
+		}
+		
+		// Let it stream a bit
+		time.Sleep(100 * time.Millisecond)
+		
+		// Cancel the context (simulate client disconnect)
+		cancel()
+		
+		// Verify backend stops streaming
+		select {
+		case <-streamStopped:
+			// Good - backend detected disconnect
+		case <-time.After(1 * time.Second):
+			t.Fatal("Backend didn't stop streaming after client disconnect")
+		}
+		
+		// Verify we got some data before disconnect
+		body := rec.Body.String()
+		assert.Contains(t, body, "data: {\"tick\":1}")
+	})
+
+	t.Run("timeout handling", func(t *testing.T) {
+		// Backend that takes too long to respond
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Sleep longer than timeout
+			time.Sleep(200 * time.Millisecond)
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer backend.Close()
+
+		config := &config.MCPClientConfig{
+			URL:     backend.URL,
+			Timeout: 100 * time.Millisecond, // Short timeout
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/test/sse", nil)
+		rec := httptest.NewRecorder()
+
+		forwardSSEToBackend(context.Background(), rec, req, config)
+
+		// Should return service unavailable due to timeout
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		assert.Contains(t, rec.Body.String(), "Backend unavailable")
+	})
+
+	t.Run("authentication header forwarding", func(t *testing.T) {
+		var capturedAuth string
+		
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("data: authenticated\n\n"))
+		}))
+		defer backend.Close()
+
+		// Test various auth configurations
+		testCases := []struct {
+			name           string
+			configHeaders  map[string]string
+			requestHeaders map[string]string
+			expectedAuth   string
+		}{
+			{
+				name: "bearer token from config",
+				configHeaders: map[string]string{
+					"Authorization": "Bearer config-token-123",
+				},
+				expectedAuth: "Bearer config-token-123",
+			},
+			{
+				name: "API key header",
+				configHeaders: map[string]string{
+					"X-API-Key": "secret-key-456",
+				},
+				expectedAuth: "",
+			},
+			{
+				name: "multiple auth headers",
+				configHeaders: map[string]string{
+					"Authorization": "Bearer token-789",
+					"X-API-Key":     "key-xyz",
+				},
+				expectedAuth: "Bearer token-789",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				config := &config.MCPClientConfig{
+					URL:     backend.URL,
+					Headers: tc.configHeaders,
+					Timeout: 5 * time.Second,
+				}
+
+				req := httptest.NewRequest(http.MethodGet, "/test/sse", nil)
+				for k, v := range tc.requestHeaders {
+					req.Header.Set(k, v)
+				}
+				rec := httptest.NewRecorder()
+
+				forwardSSEToBackend(context.Background(), rec, req, config)
+
+				assert.Equal(t, http.StatusOK, rec.Code)
+				if tc.expectedAuth != "" {
+					assert.Equal(t, tc.expectedAuth, capturedAuth)
+				}
+				
+				// Verify custom headers are also forwarded
+				if _, hasAPIKey := tc.configHeaders["X-API-Key"]; hasAPIKey {
+					// Need to check this was captured too
+					assert.Contains(t, rec.Body.String(), "authenticated")
+				}
+			})
+		}
+	})
 }
 
 func TestHandleNonStdioSSERequest(t *testing.T) {

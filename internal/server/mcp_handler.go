@@ -73,34 +73,56 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply user token to config if available
-	config := h.serverConfig
+	serverConfig := h.serverConfig
 	if userToken != "" {
-		config = config.ApplyUserToken(userToken)
+		serverConfig = serverConfig.ApplyUserToken(userToken)
 	}
 
-	// Determine request type and route accordingly
-	if h.isMessageRequest(r) {
-		internal.LogInfoWithFields("mcp", "Handling message request", map[string]any{
-			"path":          r.URL.Path,
-			"server":        h.serverName,
-			"isStdio":       isStdioServer(config),
-			"user":          userEmail,
-			"remoteAddr":    r.RemoteAddr,
-			"contentLength": r.ContentLength,
-			"query":         r.URL.RawQuery,
-		})
-		h.handleMessageRequest(ctx, w, r, userEmail, config)
+	if serverConfig.TransportType == config.MCPClientTypeStreamable {
+		if r.Method == http.MethodPost {
+			internal.LogInfoWithFields("mcp", "Handling streamable POST request", map[string]any{
+				"path":          r.URL.Path,
+				"server":        h.serverName,
+				"user":          userEmail,
+				"remoteAddr":    r.RemoteAddr,
+				"contentLength": r.ContentLength,
+			})
+			h.handleStreamablePost(ctx, w, r, userEmail, serverConfig)
+		} else if r.Method == http.MethodGet {
+			internal.LogInfoWithFields("mcp", "Handling streamable GET request", map[string]any{
+				"path":       r.URL.Path,
+				"server":     h.serverName,
+				"user":       userEmail,
+				"remoteAddr": r.RemoteAddr,
+				"userAgent":  r.UserAgent(),
+			})
+			h.handleStreamableGet(ctx, w, r, userEmail, serverConfig)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	} else {
-		// Handle as SSE request (including legacy paths)
-		internal.LogInfoWithFields("mcp", "Handling SSE request", map[string]any{
-			"path":       r.URL.Path,
-			"server":     h.serverName,
-			"isStdio":    isStdioServer(config),
-			"user":       userEmail,
-			"remoteAddr": r.RemoteAddr,
-			"userAgent":  r.UserAgent(),
-		})
-		h.handleSSERequest(ctx, w, r, userEmail, config)
+		if h.isMessageRequest(r) {
+			internal.LogInfoWithFields("mcp", "Handling message request", map[string]any{
+				"path":          r.URL.Path,
+				"server":        h.serverName,
+				"isStdio":       isStdioServer(serverConfig),
+				"user":          userEmail,
+				"remoteAddr":    r.RemoteAddr,
+				"contentLength": r.ContentLength,
+				"query":         r.URL.RawQuery,
+			})
+			h.handleMessageRequest(ctx, w, r, userEmail, serverConfig)
+		} else {
+			internal.LogInfoWithFields("mcp", "Handling SSE request", map[string]any{
+				"path":       r.URL.Path,
+				"server":     h.serverName,
+				"isStdio":    isStdioServer(serverConfig),
+				"user":       userEmail,
+				"remoteAddr": r.RemoteAddr,
+				"userAgent":  r.UserAgent(),
+			})
+			h.handleSSERequest(ctx, w, r, userEmail, serverConfig)
+		}
 	}
 }
 
@@ -127,7 +149,6 @@ func (h *MCPHandler) trackUserAccess(ctx context.Context, userEmail string) {
 
 // handleSSERequest handles SSE connection requests for stdio servers
 func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
-	// Track user access
 	h.trackUserAccess(ctx, userEmail)
 
 	if !isStdioServer(config) {
@@ -170,7 +191,6 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 
 // handleMessageRequest handles message endpoint requests
 func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
-	// Track user access
 	h.trackUserAccess(ctx, userEmail)
 
 	if isStdioServer(config) {
@@ -261,9 +281,8 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	return token, nil
 }
 
-// forwardMessageToBackend forwards a message request to the backend SSE server
 func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.ResponseWriter, r *http.Request, config *config.MCPClientConfig) {
-	backendURL := config.URL + "/message"
+	backendURL := strings.TrimSuffix(config.URL, "/sse") + "/message"
 	if r.URL.RawQuery != "" {
 		backendURL += "?" + r.URL.RawQuery
 	}
@@ -334,4 +353,36 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 			"server": h.serverName,
 		})
 	}
+}
+
+// handleStreamablePost handles POST requests for streamable-http transport
+func (h *MCPHandler) handleStreamablePost(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
+	h.trackUserAccess(ctx, userEmail)
+
+	internal.LogInfoWithFields("mcp", "Proxying streamable POST request to backend", map[string]any{
+		"service": h.serverName,
+		"user":    userEmail,
+		"backend": config.URL,
+	})
+
+	forwardStreamablePostToBackend(ctx, w, r, config)
+}
+
+// handleStreamableGet handles GET requests for streamable-http transport
+func (h *MCPHandler) handleStreamableGet(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
+	h.trackUserAccess(ctx, userEmail)
+
+	acceptHeader := r.Header.Get("Accept")
+	if !strings.Contains(acceptHeader, "text/event-stream") {
+		http.Error(w, "GET requests must accept text/event-stream", http.StatusNotAcceptable)
+		return
+	}
+
+	internal.LogInfoWithFields("mcp", "Proxying streamable GET request to backend", map[string]any{
+		"service": h.serverName,
+		"user":    userEmail,
+		"backend": config.URL,
+	})
+
+	forwardSSEToBackend(ctx, w, r, config)
 }

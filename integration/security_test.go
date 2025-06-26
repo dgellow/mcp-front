@@ -80,7 +80,7 @@ func TestSecurityScenarios(t *testing.T) {
 	t.Run("SQLInjectionAttempts", func(t *testing.T) {
 		t.Skip("Skipping SQL injection tests, it's not a responsibility of mcp-front to guard mcp/postgres")
 
-		client := NewMCPClient("http://localhost:8080")
+		client := NewMCPSSEClient("http://localhost:8080")
 		_ = client.Authenticate()
 
 		// Validate backend connectivity first
@@ -191,10 +191,10 @@ func TestSecurityScenarios(t *testing.T) {
 		// Test:
 
 		// Test that the same token works consistently
-		client1 := NewMCPClient("http://localhost:8080")
+		client1 := NewMCPSSEClient("http://localhost:8080")
 		client1.token = "test-token"
 
-		client2 := NewMCPClient("http://localhost:8080")
+		client2 := NewMCPSSEClient("http://localhost:8080")
 		client2.token = "test-token"
 
 		// Both should work with same token
@@ -268,7 +268,7 @@ func TestSecurityScenarios(t *testing.T) {
 	t.Run("RateLimitingCheck", func(t *testing.T) {
 		// Test:
 
-		client := NewMCPClient("http://localhost:8080")
+		client := NewMCPSSEClient("http://localhost:8080")
 		_ = client.Authenticate()
 
 		successCount := 0
