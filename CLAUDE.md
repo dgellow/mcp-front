@@ -300,6 +300,20 @@ The animated logo creates a face-like character:
 - Assume developer audience
 - Keep it concise but complete
 
+### Pull Request Guidelines
+
+**PR Titles**: Use clear, descriptive titles focused on the change impact, not just restating commit messages. Examples:
+- ❌ "feat: add message endpoint support for SSE MCP servers"
+- ✅ "Add SSE message endpoint support"
+- ❌ "fix: implement session-specific tool registration for stdio clients" 
+- ✅ "Fix stdio session tool handler conflicts"
+
+**PR Descriptions**: Write terse prose for humans, not documentation. Avoid bullet lists unless they add genuine value. Focus on the problem solved and solution approach:
+- Explain what was broken and how it's fixed
+- Use conversational, developer-to-developer tone
+- Skip implementation details unless critical for review
+- Keep it concise but informative
+
 ### Common Issues
 
 1. **Theme switching breaks**: Check CSS variable inheritance
