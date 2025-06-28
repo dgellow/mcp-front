@@ -280,7 +280,7 @@ func (c *Client) addToolsToServer(
 	})
 
 	totalTools := 0
-	
+
 	var sessionWithTools server.SessionWithTools
 	var sessionTools map[string]server.ServerTool
 	if session != nil {
@@ -295,7 +295,7 @@ func (c *Client) addToolsToServer(
 			"sessionID": session.SessionID(),
 		})
 	}
-	
+
 	for {
 		tools, err := c.client.ListTools(ctx, toolsRequest)
 		if err != nil {
@@ -333,7 +333,7 @@ func (c *Client) addToolsToServer(
 				} else {
 					handler = c.client.CallTool
 				}
-				
+
 				if sessionTools != nil {
 					sessionTools[tool.Name] = server.ServerTool{
 						Tool:    tool,
@@ -349,7 +349,7 @@ func (c *Client) addToolsToServer(
 		}
 		toolsRequest.Params.Cursor = tools.NextCursor
 	}
-	
+
 	if len(sessionTools) > 0 {
 		sessionWithTools.SetSessionTools(sessionTools)
 		internal.LogInfoWithFields("client", "Registered session-specific tools", map[string]interface{}{

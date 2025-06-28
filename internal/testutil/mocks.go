@@ -137,7 +137,6 @@ func (m *MockSession) SessionID() string {
 	return args.String(0)
 }
 
-
 type MockSessionWithTools struct {
 	MockSession
 }
@@ -180,4 +179,3 @@ func (m *MockUserTokenStore) ListUserServices(ctx context.Context, userEmail str
 	}
 	return args.Get(0).([]string), args.Error(1)
 }
-

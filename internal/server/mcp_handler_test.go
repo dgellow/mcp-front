@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/client"
-	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
+	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
