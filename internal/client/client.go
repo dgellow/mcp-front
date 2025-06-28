@@ -151,6 +151,22 @@ func (c *Client) AddToMCPServerWithTokenCheck(
 	setupBaseURL string,
 	tokenSetup *config.TokenSetupConfig,
 ) error {
+	return c.AddToMCPServerWithSession(ctx, clientInfo, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup, nil)
+}
+
+// AddToMCPServerWithSession connects the client to an MCP server with optional session-specific tools
+func (c *Client) AddToMCPServerWithSession(
+	ctx context.Context,
+	clientInfo mcp.Implementation,
+	mcpServer *server.MCPServer,
+	userEmail string,
+	requiresToken bool,
+	tokenStore storage.UserTokenStore,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+	session server.ClientSession,
+) error {
 	if c.needManualStart {
 		err := c.client.Start(ctx)
 		if err != nil {
@@ -176,7 +192,7 @@ func (c *Client) AddToMCPServerWithTokenCheck(
 		"server": c.name,
 	})
 
-	err = c.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup)
+	err = c.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup, session)
 	if err != nil {
 		return err
 	}
@@ -224,6 +240,7 @@ func (c *Client) addToolsToServer(
 	serverName string,
 	setupBaseURL string,
 	tokenSetup *config.TokenSetupConfig,
+	session server.ClientSession,
 ) error {
 	toolsRequest := mcp.ListToolsRequest{}
 	filterFunc := func(toolName string) bool {
@@ -263,6 +280,22 @@ func (c *Client) addToolsToServer(
 	})
 
 	totalTools := 0
+
+	var sessionWithTools server.SessionWithTools
+	var sessionTools map[string]server.ServerTool
+	if session != nil {
+		var ok bool
+		sessionWithTools, ok = session.(server.SessionWithTools)
+		if !ok {
+			return fmt.Errorf("session does not support session-specific tools")
+		}
+		sessionTools = make(map[string]server.ServerTool)
+		internal.LogInfoWithFields("client", "Using session-specific tool registration", map[string]interface{}{
+			"server":    c.name,
+			"sessionID": session.SessionID(),
+		})
+	}
+
 	for {
 		tools, err := c.client.ListTools(ctx, toolsRequest)
 		if err != nil {
@@ -286,8 +319,9 @@ func (c *Client) addToolsToServer(
 					"description": tool.Description,
 				})
 				// Wrap the tool handler to check for user tokens if required
+				var handler server.ToolHandlerFunc
 				if requiresToken && tokenStore != nil {
-					wrappedHandler := c.wrapToolHandler(
+					handler = c.wrapToolHandler(
 						c.client.CallTool,
 						requiresToken,
 						tokenStore,
@@ -296,9 +330,17 @@ func (c *Client) addToolsToServer(
 						setupBaseURL,
 						tokenSetup,
 					)
-					mcpServer.AddTool(tool, wrappedHandler)
 				} else {
-					mcpServer.AddTool(tool, c.client.CallTool)
+					handler = c.client.CallTool
+				}
+
+				if sessionTools != nil {
+					sessionTools[tool.Name] = server.ServerTool{
+						Tool:    tool,
+						Handler: handler,
+					}
+				} else {
+					mcpServer.AddTool(tool, handler)
 				}
 			}
 		}
@@ -306,6 +348,15 @@ func (c *Client) addToolsToServer(
 			break
 		}
 		toolsRequest.Params.Cursor = tools.NextCursor
+	}
+
+	if len(sessionTools) > 0 {
+		sessionWithTools.SetSessionTools(sessionTools)
+		internal.LogInfoWithFields("client", "Registered session-specific tools", map[string]interface{}{
+			"server":    c.name,
+			"sessionID": session.SessionID(),
+			"toolCount": len(sessionTools),
+		})
 	}
 
 	internal.LogInfoWithFields("client", "Tool discovery completed", map[string]interface{}{

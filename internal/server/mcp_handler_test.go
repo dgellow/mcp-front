@@ -15,38 +15,13 @@ import (
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
+	"github.com/dgellow/mcp-front/internal/testutil"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-// mockUserTokenStore is a testify mock for storage.UserTokenStore
-type mockUserTokenStore struct {
-	mock.Mock
-}
-
-func (m *mockUserTokenStore) GetUserToken(ctx context.Context, userEmail, serverName string) (string, error) {
-	args := m.Called(ctx, userEmail, serverName)
-	return args.String(0), args.Error(1)
-}
-
-func (m *mockUserTokenStore) SetUserToken(ctx context.Context, userEmail, serverName, token string) error {
-	args := m.Called(ctx, userEmail, serverName, token)
-	return args.Error(0)
-}
-
-func (m *mockUserTokenStore) DeleteUserToken(ctx context.Context, userEmail, serverName string) error {
-	args := m.Called(ctx, userEmail, serverName)
-	return args.Error(0)
-}
-
-func (m *mockUserTokenStore) ListUserServices(ctx context.Context, userEmail string) ([]string, error) {
-	args := m.Called(ctx, userEmail)
-	return args.Get(0).([]string), args.Error(1)
-}
-
-// mockSessionManager is a testify mock for SessionManager
 type mockSessionManager struct {
 	mock.Mock
 }
@@ -77,7 +52,7 @@ func (m *mockSessionManager) Shutdown() {
 
 // Test helper to create MCPHandler for SSE tests
 func createTestMCPHandler(serverName string, config *config.MCPClientConfig) *MCPHandler {
-	tokenStore := new(mockUserTokenStore)
+	tokenStore := new(testutil.MockUserTokenStore)
 	sessionManager := new(mockSessionManager)
 	info := mcp.Implementation{Name: "test", Version: "1.0"}
 

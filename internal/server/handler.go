@@ -474,7 +474,8 @@ func handleSessionRegistration(
 	}
 
 	// Connect stdio client directly to the shared MCP server
-	if err := stdioSession.GetClient().AddToMCPServerWithTokenCheck(
+	// Pass the session to enable session-specific tool registration
+	if err := stdioSession.GetClient().AddToMCPServerWithSession(
 		sessionCtx,
 		handler.h.info,
 		handler.mcpServer,
@@ -484,6 +485,7 @@ func handleSessionRegistration(
 		handler.h.serverName,
 		handler.h.setupBaseURL,
 		handler.config.TokenSetup,
+		session,
 	); err != nil {
 		internal.LogErrorWithFields("server", "Failed to connect client to server", map[string]interface{}{
 			"error":     err.Error(),
