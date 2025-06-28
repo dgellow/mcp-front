@@ -1,0 +1,22 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-streamable-test",
+    "auth": {
+      "kind": "bearerToken",
+      "tokens": {
+        "test-streamable": [
+          "streamable-test-token"
+        ]
+      }
+    }
+  },
+  "mcpServers": {
+    "test-streamable": {
+      "transportType": "streamable-http",
+      "url": "http://localhost:3002"
+    }
+  }
+}

@@ -12,6 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -36,8 +38,8 @@ func execDockerCompose(args ...string) *exec.Cmd {
 	return exec.Command("docker-compose", args...)
 }
 
-// MCPClient simulates an MCP client for testing
-type MCPClient struct {
+// MCPSSEClient simulates an MCP client for testing
+type MCPSSEClient struct {
 	baseURL         string
 	token           string
 	sseConn         io.ReadCloser
@@ -46,31 +48,31 @@ type MCPClient struct {
 	sessionID       string
 }
 
-// NewMCPClient creates a new MCP client for testing
-func NewMCPClient(baseURL string) *MCPClient {
-	return &MCPClient{
+// NewMCPSSEClient creates a new MCP client for testing
+func NewMCPSSEClient(baseURL string) *MCPSSEClient {
+	return &MCPSSEClient{
 		baseURL: baseURL,
 	}
 }
 
 // Authenticate sets up authentication for the client
-func (c *MCPClient) Authenticate() error {
+func (c *MCPSSEClient) Authenticate() error {
 	c.token = "test-token"
 	return nil
 }
 
 // SetAuthToken sets a specific auth token for the client
-func (c *MCPClient) SetAuthToken(token string) {
+func (c *MCPSSEClient) SetAuthToken(token string) {
 	c.token = token
 }
 
 // Connect establishes an SSE connection and retrieves the message endpoint
-func (c *MCPClient) Connect() error {
+func (c *MCPSSEClient) Connect() error {
 	return c.ConnectToServer("postgres")
 }
 
 // ConnectToServer establishes an SSE connection to a specific server
-func (c *MCPClient) ConnectToServer(serverName string) error {
+func (c *MCPSSEClient) ConnectToServer(serverName string) error {
 	// Close any existing connection
 	if c.sseConn != nil {
 		c.sseConn.Close()
@@ -155,12 +157,12 @@ func (c *MCPClient) ConnectToServer(serverName string) error {
 }
 
 // ValidateBackendConnectivity checks if we can connect to the MCP server
-func (c *MCPClient) ValidateBackendConnectivity() error {
+func (c *MCPSSEClient) ValidateBackendConnectivity() error {
 	return c.Connect()
 }
 
 // Close closes the SSE connection
-func (c *MCPClient) Close() {
+func (c *MCPSSEClient) Close() {
 	if c.sseConn != nil {
 		c.sseConn.Close()
 		c.sseConn = nil
@@ -170,7 +172,7 @@ func (c *MCPClient) Close() {
 }
 
 // SendMCPRequest sends an MCP JSON-RPC request and returns the response
-func (c *MCPClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
+func (c *MCPSSEClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
 	// Ensure we have a connection
 	if c.messageEndpoint == "" {
 		if err := c.Connect(); err != nil {
@@ -247,6 +249,221 @@ func (c *MCPClient) SendMCPRequest(method string, params interface{}) (map[strin
 	}
 
 	return result, nil
+}
+
+// MCPStreamableClient is a test client for HTTP-Streamable MCP servers
+type MCPStreamableClient struct {
+	baseURL    string
+	serverName string
+	token      string
+	httpClient *http.Client
+
+	// For GET SSE streaming
+	sseConn    io.ReadCloser
+	sseScanner *bufio.Scanner
+	sseCancel  chan struct{}
+
+	mu sync.Mutex
+}
+
+// NewMCPStreamableClient creates a new streamable-http test client
+func NewMCPStreamableClient(baseURL string) *MCPStreamableClient {
+	return &MCPStreamableClient{
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// SetAuthToken sets the authentication token
+func (c *MCPStreamableClient) SetAuthToken(token string) {
+	c.token = token
+}
+
+// ConnectToServer establishes connection to a streamable-http server
+func (c *MCPStreamableClient) ConnectToServer(serverName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Close any existing connection
+	c.close()
+
+	c.serverName = serverName
+
+	// For streamable-http, we can optionally open a GET SSE stream for server-initiated messages
+	// But it's not required for basic request/response
+	return c.openSSEStream()
+}
+
+// openSSEStream opens a GET SSE connection for receiving server-initiated messages
+func (c *MCPStreamableClient) openSSEStream() error {
+	url := c.baseURL + "/" + c.serverName + "/sse"
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create GET request: %v", err)
+	}
+
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Cache-Control", "no-cache")
+
+	// Use a client without timeout for SSE
+	sseClient := &http.Client{}
+	resp, err := sseClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("SSE connection failed: %v", err)
+	}
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return fmt.Errorf("SSE connection returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	c.sseConn = resp.Body
+	c.sseScanner = bufio.NewScanner(resp.Body)
+	c.sseCancel = make(chan struct{})
+
+	// Start reading SSE messages in background
+	go c.readSSEMessages()
+
+	return nil
+}
+
+// readSSEMessages reads server-initiated messages from the SSE stream
+func (c *MCPStreamableClient) readSSEMessages() {
+	for {
+		select {
+		case <-c.sseCancel:
+			return
+		default:
+			if c.sseScanner.Scan() {
+				line := c.sseScanner.Text()
+				if strings.HasPrefix(line, "data: ") {
+					data := strings.TrimPrefix(line, "data: ")
+					// In a real implementation, we'd process server-initiated messages here
+					tracef("StreamableClient: received SSE message: %s", data)
+				}
+			} else {
+				// Scanner stopped - connection closed or error
+				return
+			}
+		}
+	}
+}
+
+// SendMCPRequest sends a JSON-RPC request via POST
+func (c *MCPStreamableClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
+	c.mu.Lock()
+	serverName := c.serverName
+	c.mu.Unlock()
+
+	if serverName == "" {
+		return nil, fmt.Errorf("not connected to any server")
+	}
+
+	// For streamable-http, we POST to the server endpoint
+	url := c.baseURL + "/" + serverName + "/sse"
+
+	// Construct JSON-RPC request
+	request := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  method,
+		"params":  params,
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create POST request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	// Accept both JSON and SSE responses
+	req.Header.Set("Accept", "application/json, text/event-stream")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check content type to determine response format
+	contentType := resp.Header.Get("Content-Type")
+
+	if strings.HasPrefix(contentType, "text/event-stream") {
+		// Handle SSE response
+		return c.handleSSEResponse(resp.Body)
+	} else {
+		// Handle JSON response
+		return c.handleJSONResponse(resp.Body)
+	}
+}
+
+// handleJSONResponse processes a regular JSON response
+func (c *MCPStreamableClient) handleJSONResponse(body io.Reader) (map[string]interface{}, error) {
+	var response map[string]interface{}
+	if err := json.NewDecoder(body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode JSON response: %v", err)
+	}
+	return response, nil
+}
+
+// handleSSEResponse processes an SSE stream response from a POST
+func (c *MCPStreamableClient) handleSSEResponse(body io.Reader) (map[string]interface{}, error) {
+	scanner := bufio.NewScanner(body)
+	var lastResponse map[string]interface{}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+			var msg map[string]interface{}
+			if err := json.Unmarshal([]byte(data), &msg); err == nil {
+				// Keep the last response with an ID (not a notification)
+				if _, hasID := msg["id"]; hasID {
+					lastResponse = msg
+				}
+			}
+		}
+	}
+
+	if lastResponse == nil {
+		return nil, fmt.Errorf("no response received in SSE stream")
+	}
+
+	return lastResponse, nil
+}
+
+// Close closes all connections
+func (c *MCPStreamableClient) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.close()
+}
+
+// close is the internal close method (must be called with lock held)
+func (c *MCPStreamableClient) close() {
+	if c.sseCancel != nil {
+		close(c.sseCancel)
+		c.sseCancel = nil
+	}
+
+	if c.sseConn != nil {
+		c.sseConn.Close()
+		c.sseConn = nil
+		c.sseScanner = nil
+	}
+
+	c.serverName = ""
 }
 
 // MockGCPServer provides a mock GCP IAM server for testing
@@ -335,7 +552,7 @@ type TestEnvironment struct {
 	dbCmd   *exec.Cmd
 	mcpCmd  *exec.Cmd
 	mockGCP *MockGCPServer
-	client  *MCPClient
+	client  *MCPSSEClient
 }
 
 // SetupTestEnvironment creates and starts all components needed for testing
@@ -379,7 +596,7 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 	time.Sleep(15 * time.Second)
 
 	// Create and authenticate client
-	env.client = NewMCPClient("http://localhost:8080")
+	env.client = NewMCPSSEClient("http://localhost:8080")
 	if err := env.client.Authenticate(); err != nil {
 		t.Fatalf("Authentication failed: %v", err)
 	}
@@ -401,4 +618,233 @@ func (env *TestEnvironment) Cleanup() {
 		downCmd := execDockerCompose("-f", "config/docker-compose.test.yml", "down", "-v")
 		_ = downCmd.Run()
 	}
+}
+
+// TestConfig holds all timeout configurations for integration tests
+type TestConfig struct {
+	SessionTimeout     string
+	CleanupInterval    string
+	CleanupWaitTime    string
+	TimerResetWaitTime string
+	MultiUserWaitTime  string
+}
+
+// GetTestConfig returns test configuration from environment variables or defaults
+func GetTestConfig() TestConfig {
+	c := TestConfig{
+		SessionTimeout:     "10s",
+		CleanupInterval:    "2s",
+		CleanupWaitTime:    "15s",
+		TimerResetWaitTime: "12s",
+		MultiUserWaitTime:  "15s",
+	}
+
+	// Override from environment if set
+	if v := os.Getenv("SESSION_TIMEOUT"); v != "" {
+		c.SessionTimeout = v
+	}
+	if v := os.Getenv("SESSION_CLEANUP_INTERVAL"); v != "" {
+		c.CleanupInterval = v
+	}
+	if v := os.Getenv("TEST_CLEANUP_WAIT_TIME"); v != "" {
+		c.CleanupWaitTime = v
+	}
+	if v := os.Getenv("TEST_TIMER_RESET_WAIT_TIME"); v != "" {
+		c.TimerResetWaitTime = v
+	}
+	if v := os.Getenv("TEST_MULTI_USER_WAIT_TIME"); v != "" {
+		c.MultiUserWaitTime = v
+	}
+
+	return c
+}
+
+func waitForDB(t *testing.T) {
+	waitForSec := 5
+	for i := 0; i < waitForSec; i++ {
+		// Check if container is running
+		psCmd := exec.Command("docker", "compose", "ps", "-q", "test-postgres")
+		if output, err := psCmd.Output(); err != nil || len(output) == 0 {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		// Check if database is ready
+		checkCmd := exec.Command("docker", "compose", "exec", "-T", "test-postgres", "pg_isready", "-U", "testuser", "-d", "testdb")
+		if err := checkCmd.Run(); err == nil {
+			return
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	t.Fatalf("Database failed to become ready after %d seconds", waitForSec)
+}
+
+// trace logs a message if TRACE environment variable is set
+func trace(t *testing.T, format string, args ...interface{}) {
+	if os.Getenv("TRACE") == "1" {
+		t.Logf("TRACE: "+format, args...)
+	}
+}
+
+// tracef logs a formatted message to stdout if TRACE is set (for use outside tests)
+func tracef(format string, args ...interface{}) {
+	if os.Getenv("TRACE") == "1" {
+		fmt.Printf("TRACE: "+format+"\n", args...)
+	}
+}
+
+// startMCPFront starts the mcp-front server with the given config
+func startMCPFront(t *testing.T, configPath string, extraEnv ...string) {
+	mcpCmd := exec.Command("../cmd/mcp-front/mcp-front", "-config", configPath)
+
+	// Get test config for session timeouts
+	testConfig := GetTestConfig()
+
+	// Build default environment with test timeouts
+	defaultEnv := []string{
+		"SESSION_TIMEOUT=" + testConfig.SessionTimeout,
+		"SESSION_CLEANUP_INTERVAL=" + testConfig.CleanupInterval,
+	}
+
+	// Start with system environment
+	mcpCmd.Env = os.Environ()
+
+	// Apply defaults first
+	mcpCmd.Env = append(mcpCmd.Env, defaultEnv...)
+
+	// Apply extra env (can override defaults)
+	mcpCmd.Env = append(mcpCmd.Env, extraEnv...)
+
+	// Pass through LOG_LEVEL and LOG_FORMAT if set
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		mcpCmd.Env = append(mcpCmd.Env, "LOG_LEVEL="+logLevel)
+	}
+	if logFormat := os.Getenv("LOG_FORMAT"); logFormat != "" {
+		mcpCmd.Env = append(mcpCmd.Env, "LOG_FORMAT="+logFormat)
+	}
+
+	// Capture output to log file if MCP_LOG_FILE is set
+	if logFile := os.Getenv("MCP_LOG_FILE"); logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			mcpCmd.Stderr = f
+			mcpCmd.Stdout = f
+			t.Cleanup(func() { f.Close() })
+		}
+	}
+
+	if err := mcpCmd.Start(); err != nil {
+		t.Fatalf("Failed to start mcp-front: %v", err)
+	}
+
+	// Register cleanup that runs even if test is killed
+	t.Cleanup(func() {
+		stopMCPFront(mcpCmd)
+	})
+}
+
+// stopMCPFront stops the mcp-front server gracefully
+func stopMCPFront(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+
+	// Try graceful shutdown first (SIGINT)
+	if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
+		// If SIGINT fails, force kill immediately
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return
+	}
+
+	// Wait up to 5 seconds for graceful shutdown
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-done:
+		// Graceful shutdown completed
+		return
+	case <-time.After(5 * time.Second):
+		// Timeout, force kill
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}
+}
+
+// waitForMCPFront waits for the mcp-front server to be ready
+func waitForMCPFront(t *testing.T) {
+	t.Helper()
+	for i := 0; i < 10; i++ {
+		resp, err := http.Get("http://localhost:8080/health")
+		if err == nil && resp.StatusCode == 200 {
+			resp.Body.Close()
+			return
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(1 * time.Second)
+	}
+	t.Fatal("mcp-front failed to become ready after 10 seconds")
+}
+
+// getMCPContainers returns a list of running mcp/postgres container IDs
+func getMCPContainers() []string {
+	cmd := exec.Command("docker", "ps", "--format", "{{.ID}}", "--filter", "ancestor=mcp/postgres")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var containers []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line != "" {
+			containers = append(containers, line)
+		}
+	}
+	return containers
+}
+
+// cleanupContainers forces cleanup of containers that weren't in the initial set
+func cleanupContainers(t *testing.T, initialContainers []string) {
+	time.Sleep(2 * time.Second)
+	containers := getMCPContainers()
+	for _, container := range containers {
+		isInitial := false
+		for _, initial := range initialContainers {
+			if container == initial {
+				isInitial = true
+				break
+			}
+		}
+		if !isInitial {
+			t.Logf("Force stopping container: %s...", container)
+			if err := exec.Command("docker", "stop", container).Run(); err != nil {
+				t.Logf("Failed to stop container %s: %v", container, err)
+			} else {
+				t.Logf("Stopped container: %s", container)
+			}
+		}
+	}
+}
+
+// TestQuickSmoke provides a fast validation test
+func TestQuickSmoke(t *testing.T) {
+	t.Log("Running quick smoke test...")
+
+	// Just verify the test infrastructure works
+	client := NewMCPSSEClient("http://localhost:8080")
+	if client == nil {
+		t.Fatal("Failed to create client")
+	}
+
+	if err := client.Authenticate(); err != nil {
+		t.Fatal("Failed to set up authentication")
+	}
+
+	t.Log("Quick smoke test passed - test infrastructure is working")
 }

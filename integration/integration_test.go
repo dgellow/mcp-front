@@ -24,7 +24,7 @@ func TestIntegration(t *testing.T) {
 	waitForMCPFront(t)
 	trace(t, "mcp-front is ready")
 
-	client := NewMCPClient("http://localhost:8080")
+	client := NewMCPSSEClient("http://localhost:8080")
 	require.NotNil(t, client, "Failed to create MCP client")
 	defer client.Close() // Ensure SSE connection is closed
 

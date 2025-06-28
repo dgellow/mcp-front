@@ -3,6 +3,7 @@ package integration
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"testing"
@@ -74,6 +75,44 @@ func TestMain(m *testing.M) {
 		}
 		if i == 29 {
 			fmt.Println("Database failed to become ready after 30 seconds")
+			exitCode = 1
+			return
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	// Wait for SSE server to be ready
+	fmt.Println("Waiting for SSE server to be ready...")
+	for i := 0; i < 30; i++ { // Wait up to 30 seconds
+		resp, err := http.Get("http://localhost:3001")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				fmt.Println("SSE server is ready!")
+				break
+			}
+		}
+		if i == 29 {
+			fmt.Println("SSE server failed to become ready after 30 seconds")
+			exitCode = 1
+			return
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	// Wait for Streamable server to be ready
+	fmt.Println("Waiting for Streamable server to be ready...")
+	for i := 0; i < 30; i++ { // Wait up to 30 seconds
+		resp, err := http.Get("http://localhost:3002")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				fmt.Println("Streamable server is ready!")
+				break
+			}
+		}
+		if i == 29 {
+			fmt.Println("Streamable server failed to become ready after 30 seconds")
 			exitCode = 1
 			return
 		}
