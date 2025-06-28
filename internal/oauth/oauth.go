@@ -14,6 +14,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/storage"
+	"github.com/dgellow/mcp-front/internal/urlutil"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
 )
@@ -47,6 +48,7 @@ type Server struct {
 // Config holds OAuth server configuration
 type Config struct {
 	Issuer              string
+	ProxyName           string // Name of the proxy for WWW-Authenticate realm
 	TokenTTL            time.Duration
 	SessionDuration     time.Duration // Duration for browser session cookies (default: 24h)
 	AllowedDomains      []string
@@ -149,9 +151,9 @@ func NewServer(config Config, store storage.Storage) (*Server, error) {
 func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	metadata := map[string]interface{}{
 		"issuer":                 s.config.Issuer,
-		"authorization_endpoint": s.config.Issuer + "/authorize",
-		"token_endpoint":         s.config.Issuer + "/token",
-		"registration_endpoint":  s.config.Issuer + "/register",
+		"authorization_endpoint": urlutil.MustJoinPath(s.config.Issuer, "authorize"),
+		"token_endpoint":         urlutil.MustJoinPath(s.config.Issuer, "token"),
+		"registration_endpoint":  urlutil.MustJoinPath(s.config.Issuer, "register"),
 		"scopes_supported": []string{
 			"read",
 			"write",
@@ -170,8 +172,8 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 			"none",
 			"client_secret_post",
 		},
-		"revocation_endpoint":    s.config.Issuer + "/revoke",
-		"introspection_endpoint": s.config.Issuer + "/introspect",
+		"revocation_endpoint":    urlutil.MustJoinPath(s.config.Issuer, "revoke"),
+		"introspection_endpoint": urlutil.MustJoinPath(s.config.Issuer, "introspect"),
 	}
 
 	if err := jsonwriter.Write(w, metadata); err != nil {
@@ -520,6 +522,13 @@ func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 
 // ValidateTokenMiddleware creates middleware that validates OAuth tokens
 func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
+	// Build the resource metadata URI once
+	resourceMetadataURI := urlutil.MustJoinPath(s.config.Issuer, ".well-known", "oauth-protected-resource")
+	realm := s.config.ProxyName
+	if realm == "" {
+		realm = "OAuth" // Fallback if proxy name not configured
+	}
+	
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
@@ -527,13 +536,13 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 			// Extract token from Authorization header
 			auth := r.Header.Get("Authorization")
 			if auth == "" {
-				jsonwriter.WriteUnauthorized(w, "Missing authorization header")
+				jsonwriter.WriteUnauthorizedWithChallenge(w, "Missing authorization header", realm, resourceMetadataURI)
 				return
 			}
 
 			parts := strings.Split(auth, " ")
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				jsonwriter.WriteUnauthorized(w, "Invalid authorization header format")
+				jsonwriter.WriteUnauthorizedWithChallenge(w, "Invalid authorization header format", realm, resourceMetadataURI)
 				return
 			}
 
@@ -548,7 +557,7 @@ func (s *Server) ValidateTokenMiddleware() func(http.Handler) http.Handler {
 			session := &Session{DefaultSession: &fosite.DefaultSession{}}
 			_, accessRequest, err := s.provider.IntrospectToken(ctx, token, fosite.AccessToken, session)
 			if err != nil {
-				jsonwriter.WriteUnauthorized(w, "Invalid or expired token")
+				jsonwriter.WriteUnauthorizedWithChallenge(w, "Invalid or expired token", realm, resourceMetadataURI)
 				return
 			}
 

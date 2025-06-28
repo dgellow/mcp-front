@@ -2,6 +2,7 @@ package json
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/dgellow/mcp-front/internal"
@@ -45,6 +46,17 @@ func WriteError(w http.ResponseWriter, statusCode int, error string, message str
 
 // Common error responses
 func WriteUnauthorized(w http.ResponseWriter, message string) {
+	WriteError(w, http.StatusUnauthorized, "unauthorized", message)
+}
+
+// WriteUnauthorizedWithChallenge writes a 401 Unauthorized response with WWW-Authenticate header
+// This is used for MCP Standard 2025-06-18 compliance
+func WriteUnauthorizedWithChallenge(w http.ResponseWriter, message string, realm string, resourceMetadataURI string) {
+	if resourceMetadataURI != "" && realm != "" {
+		// Format: Bearer realm="example", as_uri="https://example.com/.well-known/oauth-protected-resource"
+		challenge := fmt.Sprintf(`Bearer realm="%s", as_uri="%s"`, realm, resourceMetadataURI)
+		w.Header().Set("WWW-Authenticate", challenge)
+	}
 	WriteError(w, http.StatusUnauthorized, "unauthorized", message)
 }
 
