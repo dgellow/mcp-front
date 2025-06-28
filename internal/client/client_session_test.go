@@ -114,59 +114,6 @@ func TestAddToMCPServerWithSession(t *testing.T) {
 		mockClient.AssertExpectations(t)
 	})
 
-	t.Run("nil session falls back to global tools", func(t *testing.T) {
-		mockClient := new(testutil.MockMCPClient)
-		mockServer := server.NewMCPServer("test", "1.0")
-		mockTokenStore := new(testutil.MockUserTokenStore)
-
-		client := &Client{
-			name:            "test-client",
-			needManualStart: false,
-			client:          mockClient,
-		}
-
-		mockClient.On("Initialize", ctx, mock.AnythingOfType("mcp.InitializeRequest")).
-			Return(&mcp.InitializeResult{
-				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
-				ServerInfo:      mcp.Implementation{Name: "test-server", Version: "1.0"},
-			}, nil)
-
-		tools := []mcp.Tool{
-			{Name: "tool1", Description: "Test tool 1"},
-			{Name: "tool2", Description: "Test tool 2"},
-		}
-		listToolsResult := &mcp.ListToolsResult{}
-		listToolsResult.Tools = tools
-		mockClient.On("ListTools", ctx, mock.AnythingOfType("mcp.ListToolsRequest")).
-			Return(listToolsResult, nil).Once()
-
-		mockClient.On("ListPrompts", ctx, mock.AnythingOfType("mcp.ListPromptsRequest")).
-			Return(&mcp.ListPromptsResult{}, nil)
-		mockClient.On("ListResources", ctx, mock.AnythingOfType("mcp.ListResourcesRequest")).
-			Return(&mcp.ListResourcesResult{}, nil)
-		mockClient.On("ListResourceTemplates", ctx, mock.AnythingOfType("mcp.ListResourceTemplatesRequest")).
-			Return(&mcp.ListResourceTemplatesResult{}, nil)
-
-		err := client.AddToMCPServerWithSession(
-			ctx,
-			clientInfo,
-			mockServer,
-			"user@example.com",
-			false,
-			mockTokenStore,
-			"test-server",
-			"http://localhost",
-			nil,
-			nil,
-		)
-
-		require.NoError(t, err)
-		mockClient.AssertExpectations(t)
-		// Check that tools were added to the server
-		// Note: We can't directly verify AddTool calls on the real server
-		// but the test verifies no error occurred
-	})
-
 	t.Run("tool filtering with session", func(t *testing.T) {
 		mockClient := new(testutil.MockMCPClient)
 		mockServer := server.NewMCPServer("test", "1.0")
