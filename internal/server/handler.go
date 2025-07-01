@@ -23,7 +23,7 @@ type Server struct {
 	mux            *http.ServeMux
 	config         *config.Config
 	oauthServer    *oauth.Server
-	tokenStore     storage.UserTokenStore
+	storage        storage.Storage
 	sessionManager *client.StdioSessionManager
 	sseServers     map[string]*server.SSEServer // serverName -> SSE server for stdio servers
 }
@@ -143,8 +143,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, fmt.Errorf("failed to create OAuth server: %w", err)
 		}
 
-		// Use the storage directly as token store
-		s.tokenStore = store
+		s.storage = store
 
 		// Initialize admin users if admin is enabled
 		if cfg.Proxy.Admin != nil && cfg.Proxy.Admin.Enabled {
@@ -180,7 +179,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		mux.Handle("/register", chainMiddleware(http.HandlerFunc(s.oauthServer.RegisterHandler), oauthMiddlewares...))
 
 		// Protected endpoints - require authentication
-		tokenHandlers := NewTokenHandlers(s.tokenStore, cfg.MCPServers, s.oauthServer != nil)
+		tokenHandlers := NewTokenHandlers(s.storage, cfg.MCPServers, s.oauthServer != nil)
 		tokenMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
@@ -280,9 +279,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 					}
 					s.sessionManager.RemoveSession(key)
 
-					// Remove session from storage
-					if store, ok := handler.h.tokenStore.(storage.Storage); ok {
-						if err := store.RevokeSession(sessionCtx, session.SessionID()); err != nil {
+					if handler.h.storage != nil {
+						if err := handler.h.storage.RevokeSession(sessionCtx, session.SessionID()); err != nil {
 							internal.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
 								"error":     err.Error(),
 								"sessionID": session.SessionID(),
@@ -321,7 +319,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		handler := NewMCPHandler(
 			serverName,
 			serverConfig,
-			s.tokenStore,
+			s.storage,
 			baseURL.String(),
 			info,
 			s.sessionManager,
@@ -371,12 +369,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			encryptionKey = oauthAuth.EncryptionKey
 		}
 
-		adminHandlers := NewAdminHandlers(s.tokenStore.(storage.Storage), cfg, s.sessionManager, encryptionKey)
+		adminHandlers := NewAdminHandlers(s.storage, cfg, s.sessionManager, encryptionKey)
 		adminMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("admin"),
-			s.oauthServer.SSOMiddleware(),                                    // Browser SSO
-			adminMiddleware(cfg.Proxy.Admin, s.tokenStore.(storage.Storage)), // Admin check
+			s.oauthServer.SSOMiddleware(),               // Browser SSO
+			adminMiddleware(cfg.Proxy.Admin, s.storage), // Admin check
 		}
 
 		// Admin routes - all protected by admin middleware
@@ -478,7 +476,7 @@ func handleSessionRegistration(
 		handler.mcpServer,
 		handler.userEmail,
 		handler.config.RequiresUserToken,
-		handler.h.tokenStore,
+		handler.h.storage,
 		handler.h.serverName,
 		handler.h.setupBaseURL,
 		handler.config.TokenSetup,
@@ -495,7 +493,7 @@ func handleSessionRegistration(
 	}
 
 	if handler.userEmail != "" {
-		if store, ok := handler.h.tokenStore.(storage.Storage); ok {
+		if handler.h.storage != nil {
 			activeSession := storage.ActiveSession{
 				SessionID:  session.SessionID(),
 				UserEmail:  handler.userEmail,
@@ -503,7 +501,7 @@ func handleSessionRegistration(
 				Created:    time.Now(),
 				LastActive: time.Now(),
 			}
-			if err := store.TrackSession(sessionCtx, activeSession); err != nil {
+			if err := handler.h.storage.TrackSession(sessionCtx, activeSession); err != nil {
 				internal.LogWarnWithFields("server", "Failed to track session", map[string]interface{}{
 					"error":     err.Error(),
 					"sessionID": session.SessionID(),

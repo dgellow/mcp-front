@@ -15,7 +15,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
-	"github.com/dgellow/mcp-front/internal/testutil"
+	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -24,6 +24,28 @@ import (
 
 type mockSessionManager struct {
 	mock.Mock
+}
+
+type mockStorage struct {
+	*storage.MemoryStorage
+	mock.Mock
+}
+
+// Override only the methods we want to mock
+func (m *mockStorage) GetUserToken(ctx context.Context, userEmail, service string) (string, error) {
+	if m.Mock.ExpectedCalls != nil {
+		args := m.Called(ctx, userEmail, service)
+		return args.String(0), args.Error(1)
+	}
+	return m.MemoryStorage.GetUserToken(ctx, userEmail, service)
+}
+
+func (m *mockStorage) UpsertUser(ctx context.Context, email string) error {
+	if m.Mock.ExpectedCalls != nil {
+		args := m.Called(ctx, email)
+		return args.Error(0)
+	}
+	return m.MemoryStorage.UpsertUser(ctx, email)
 }
 
 func (m *mockSessionManager) GetSession(key client.SessionKey) (*client.StdioSession, bool) {
@@ -52,14 +74,16 @@ func (m *mockSessionManager) Shutdown() {
 
 // Test helper to create MCPHandler for SSE tests
 func createTestMCPHandler(serverName string, config *config.MCPClientConfig) *MCPHandler {
-	tokenStore := new(testutil.MockUserTokenStore)
+	mockStore := &mockStorage{
+		MemoryStorage: storage.NewMemoryStorage(),
+	}
 	sessionManager := new(mockSessionManager)
 	info := mcp.Implementation{Name: "test", Version: "1.0"}
 
 	return NewMCPHandler(
 		serverName,
 		config,
-		tokenStore,
+		mockStore,
 		"http://localhost:8080",
 		info,
 		sessionManager,
