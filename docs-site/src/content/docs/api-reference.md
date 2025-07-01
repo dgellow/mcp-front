@@ -43,7 +43,7 @@ Main endpoint for MCP protocol communication over Server-Sent Events.
 The request flow:
 
 1. Claude connects via SSE
-2. MCP Front validates auth token  
+2. MCP Front validates auth token
 3. MCP Front connects to MCP server
 4. Bidirectional message streaming
 

@@ -92,7 +92,7 @@
             },
             "command": "sleep",
             "args": ["10"],
-            "timeout": 100000000
+            "timeout": "100ms"
           }
         ]
       }
