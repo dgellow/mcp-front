@@ -198,7 +198,7 @@ func TestServer_HandleToolCall_Timeout(t *testing.T) {
 			Description: "Slow command",
 			Command:     "sleep",
 			Args:        []string{"5"},
-			Timeout:     100 * 1000 * 1000, // 100ms in nanoseconds
+			Timeout:     "100ms",
 		},
 	}
 

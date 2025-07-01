@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/dgellow/mcp-front/internal"
 )
@@ -92,11 +93,14 @@ func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[s
 	cmd.Env = append(cmd.Env, os.Environ()...)
 
 	// Set timeout if specified
-	if tool.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, tool.Timeout)
-		defer cancel()
-		cmd = exec.CommandContext(ctx, tool.Command, tool.Args...)
+	if tool.Timeout != "" {
+		timeout, _ := time.ParseDuration(tool.Timeout)
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+			cmd = exec.CommandContext(ctx, tool.Command, tool.Args...)
+		}
 	}
 
 	// Capture output

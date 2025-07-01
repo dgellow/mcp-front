@@ -3,6 +3,7 @@ package inline
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/dgellow/mcp-front/internal/config"
 )
@@ -55,6 +56,13 @@ func ResolveConfig(rawConfig json.RawMessage) (Config, []ResolvedToolConfig, err
 				}
 			}
 			resolved.Env = values
+		}
+
+		// Validate timeout format if specified
+		if resolved.Timeout != "" {
+			if _, err := time.ParseDuration(resolved.Timeout); err != nil {
+				return Config{}, nil, fmt.Errorf("invalid timeout format for tool %s: %w (use Go duration format like '30s', '5m', '1h')", tool.Name, err)
+			}
 		}
 
 		resolvedTools[i] = resolved
