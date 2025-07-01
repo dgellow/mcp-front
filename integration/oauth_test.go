@@ -897,7 +897,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		assert.Equal(t, "token_required", errorInfo["code"], "Error code should be token_required")
 
 		errorMessage := errorInfo["message"].(string)
-		assert.Contains(t, errorMessage, "Token Required", "Error should mention token required")
+		assert.Contains(t, errorMessage, "token required", "Error should mention token required")
 		assert.Contains(t, errorMessage, "/my/tokens", "Error should mention token setup URL")
 		assert.Contains(t, errorMessage, "Test Service", "Error should mention service name")
 

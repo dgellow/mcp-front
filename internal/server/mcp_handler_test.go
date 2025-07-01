@@ -289,7 +289,7 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 
 		assert.NotNil(t, response.Error)
 		assert.Equal(t, jsonrpc.InternalError, response.Error.Code)
-		assert.Equal(t, "Backend request failed", response.Error.Message)
+		assert.Equal(t, "backend request failed", response.Error.Message)
 	})
 
 	t.Run("backend returns error status", func(t *testing.T) {
@@ -333,7 +333,7 @@ func TestForwardMessageToBackend_ErrorCases(t *testing.T) {
 
 		assert.NotNil(t, response.Error)
 		assert.Equal(t, jsonrpc.InternalError, response.Error.Code)
-		assert.Equal(t, "Failed to read request", response.Error.Message)
+		assert.Equal(t, "failed to read request", response.Error.Message)
 	})
 }
 
@@ -529,7 +529,7 @@ func TestHandleStreamablePost(t *testing.T) {
 
 		assert.NotNil(t, response.Error)
 		assert.Equal(t, jsonrpc.InternalError, response.Error.Code)
-		assert.Equal(t, "Backend request failed", response.Error.Message)
+		assert.Equal(t, "backend request failed", response.Error.Message)
 	})
 }
 

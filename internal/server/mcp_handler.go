@@ -98,7 +98,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			})
 			h.handleStreamableGet(ctx, w, r, userEmail, serverConfig)
 		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	} else {
 		if h.isMessageRequest(r) {
@@ -162,7 +162,7 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 		internal.LogErrorWithFields("mcp", "No shared SSE server configured for stdio server", map[string]any{
 			"server": h.serverName,
 		})
-		jsonwriter.WriteInternalServerError(w, "Server misconfiguration")
+		jsonwriter.WriteInternalServerError(w, "server misconfiguration")
 		return
 	}
 
@@ -196,7 +196,7 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 	if isStdioServer(config) {
 		sessionID := r.URL.Query().Get("sessionId")
 		if sessionID == "" {
-			jsonrpc.WriteError(w, nil, jsonrpc.InvalidParams, "Missing sessionId")
+			jsonrpc.WriteError(w, nil, jsonrpc.InvalidParams, "missing sessionId")
 			return
 		}
 
@@ -221,14 +221,14 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 			})
 			// Per MCP spec: return HTTP 404 Not Found when session is terminated or not found
 			// The response body MAY comprise a JSON-RPC error response
-			jsonrpc.WriteErrorWithStatus(w, nil, jsonrpc.InvalidParams, "Session not found", http.StatusNotFound)
+			jsonrpc.WriteErrorWithStatus(w, nil, jsonrpc.InvalidParams, "session not found", http.StatusNotFound)
 			return
 		}
 		if h.sharedSSEServer == nil {
 			internal.LogErrorWithFields("mcp", "No shared SSE server configured", map[string]any{
 				"sessionID": sessionID,
 			})
-			jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Server misconfiguration")
+			jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "server misconfiguration")
 			return
 		}
 
@@ -293,7 +293,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 			"error":  err.Error(),
 			"server": h.serverName,
 		})
-		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to read request")
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "failed to read request")
 		return
 	}
 
@@ -304,7 +304,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 			"server": h.serverName,
 			"url":    backendURL,
 		})
-		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to create request")
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "failed to create request")
 		return
 	}
 
@@ -336,7 +336,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 			"server": h.serverName,
 			"url":    backendURL,
 		})
-		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Backend request failed")
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "backend request failed")
 		return
 	}
 	defer resp.Body.Close()

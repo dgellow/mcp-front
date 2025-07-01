@@ -436,7 +436,7 @@ func (c *Client) wrapToolHandler(
 					serverName,
 					setupBaseURL,
 					tokenSetup,
-					"Configuration error: This service requires user tokens but OAuth is not properly configured.",
+					"configuration error: this service requires user tokens but OAuth is not properly configured.",
 				)
 
 				errorJSON, _ := json.Marshal(errorData)
@@ -451,8 +451,8 @@ func (c *Client) wrapToolHandler(
 				var errorMessage string
 				if tokenSetup != nil {
 					errorMessage = fmt.Sprintf(
-						"Token Required: %s requires a user token to access the API. "+
-							"Please visit %s to set up your %s token. %s",
+						"token required: %s requires a user token to access the API. "+
+							"please visit %s to set up your %s token. %s",
 						tokenSetup.DisplayName,
 						tokenSetupURL,
 						tokenSetup.DisplayName,
@@ -460,8 +460,8 @@ func (c *Client) wrapToolHandler(
 					)
 				} else {
 					errorMessage = fmt.Sprintf(
-						"Token Required: This service requires a user token. "+
-							"Please visit %s to configure your token.",
+						"token required: this service requires a user token. "+
+							"please visit %s to configure your token.",
 						tokenSetupURL,
 					)
 				}

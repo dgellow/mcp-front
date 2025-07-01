@@ -37,11 +37,12 @@ func NewHandler(name string, server MCPServer) *Handler {
 
 // ServeHTTP handles HTTP requests for the inline MCP server
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/sse" || r.URL.Path == "/"+h.name+"/sse" {
+	switch r.URL.Path {
+	case "/sse", "/" + h.name + "/sse":
 		h.handleSSE(w, r)
-	} else if r.URL.Path == "/message" || r.URL.Path == "/"+h.name+"/message" {
+	case "/message", "/" + h.name + "/message":
 		h.handleMessage(w, r)
-	} else {
+	default:
 		jsonwriter.WriteNotFound(w, "Endpoint not found")
 	}
 }

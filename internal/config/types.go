@@ -116,6 +116,7 @@ type MCPClientConfig struct {
 type SessionConfig struct {
 	Timeout         time.Duration
 	CleanupInterval time.Duration
+	MaxPerUser      int
 }
 
 // AdminConfig represents admin UI configuration
