@@ -168,14 +168,16 @@ cmd/mcp-front/   # Main application entry point
 ### Documentation Standards
 
 **Write precise, technical language:**
+
 - ❌ "When Claude connects to MCP Front, it includes a bearer token in the Authorization header"
 - ✅ "An MCP client can connect to MCP Front with a bearer token"
-- ❌ "Users log in with their Google account"  
+- ❌ "Users log in with their Google account"
 - ✅ "Claude redirects users to Google for authentication"
 - ❌ "Claude establishes SSE connection"
 - ✅ "Claude connects via SSE"
 
 **Key clarifications:**
+
 - **Claude.ai only supports OAuth** - Bearer tokens are for development/alternative clients only
 - **Avoid redundant implementation details** - "bearer token" implies Authorization header
 - **Use precise actors** - "MCP client" not "user" in technical contexts
@@ -184,11 +186,10 @@ cmd/mcp-front/   # Main application entry point
 ### Refactoring Guidelines
 
 When refactoring for better design:
+
 1. **Identify the core issue** - Don't just patch symptoms
 2. **Use proper dependency injection** - Pass dependencies to constructors
-3. **Extract interfaces to break circular dependencies** - Put in `internal/interfaces`
-4. **Test the refactoring** - Ensure all tests still pass
-5. **Update documentation** - Keep CLAUDE.md current with best practices
+3. **Test the refactoring** - Ensure all tests still pass
 
 ### Security Boundaries
 
@@ -200,23 +201,24 @@ When refactoring for better design:
 ## Quick Reference Commands
 
 ```bash
-# Build
-go build -o mcp-front ./cmd/mcp-front
+# Build everything
+make build
 
-# Test
-go test ./...
+# Format everything
+make format
+
+# Lint everything
+make lint
+
+# Test mcp-front
+go test ./internal/... -v
 go test ./integration -v
 
-# Lint
-staticcheck ./...
-
-# Run locally
+# Run mcp-front locally
 ./mcp-front -config config.json
 
-# Documentation site (from root)
-make doc         # Start dev server
-make format      # Format docs with Prettier
-make build       # Build static site
+# Start docs dev server
+make doc
 ```
 
 ## Documentation Site Guidelines
@@ -224,6 +226,7 @@ make build       # Build static site
 ### Design Philosophy
 
 The documentation site follows terse, to-the-point prose style (like early Stripe or Stainless docs):
+
 - No bullet lists or tables in content
 - Conversational yet technical tone
 - Developer-to-developer communication
@@ -239,6 +242,7 @@ The documentation site follows terse, to-the-point prose style (like early Strip
 ### Technical Implementation
 
 **Structure** (docs-site/):
+
 ```
 src/
 ├── components/
@@ -252,6 +256,7 @@ src/
 ```
 
 **Key Features**:
+
 - Starlight theme with custom components and CSS overrides
 - Proper light/dark mode with automatic logo switching
 - 12-second animation cycle for subtle mascot behavior
@@ -260,26 +265,29 @@ src/
 ### Animation Details
 
 The animated logo creates a face-like character:
+
 - **Eyes**: Left/right translation (1px) with synchronized movement
-- **Nose**: Subtle rotation (-1deg/+1deg) following eye direction  
+- **Nose**: Subtle rotation (-1deg/+1deg) following eye direction
 - **Blinking**: Vertical scale (scaleY 0.1) with step-like timing for natural effect
 - **Timing**: 12-second cycle for easter egg discovery, not attention-grabbing
 
 ### Color Management
 
 **CSS Custom Properties**:
+
 ```css
 :root {
-  --sl-color-accent: #FF6B6B;  /* Light mode */
+  --sl-color-accent: #ff6b6b; /* Light mode */
 }
 
-[data-theme='dark'] {
-  --sl-color-accent: #FF6B6B;  /* Buttons */
-  --sl-color-text-accent: #333333;  /* Text on red backgrounds */
+[data-theme="dark"] {
+  --sl-color-accent: #ff6b6b; /* Buttons */
+  --sl-color-text-accent: #333333; /* Text on red backgrounds */
 }
 ```
 
 **Specific Overrides**:
+
 - GitHub icon: White in dark mode
 - Sidebar selection: Readable contrast
 - Anchor links: Light gray in dark mode
@@ -289,26 +297,30 @@ The animated logo creates a face-like character:
 ### Content Guidelines
 
 **Configuration Examples**:
+
 - Always use `{"$env": "VAR"}` syntax, never bash `$VAR`
 - Match actual Go implementation exactly
 - Use realistic service names (e.g., "linear" not "database")
 - Include all required fields (version, transportType, etc.)
 
 **Writing Style**:
+
 - Flowing prose, not lists
-- Explain the "why" not just "how"  
+- Explain the "why" not just "how"
 - Assume developer audience
 - Keep it concise but complete
 
 ### Pull Request Guidelines
 
 **PR Titles**: Use clear, descriptive titles focused on the change impact, not just restating commit messages. Examples:
+
 - ❌ "feat: add message endpoint support for SSE MCP servers"
 - ✅ "Add SSE message endpoint support"
-- ❌ "fix: implement session-specific tool registration for stdio clients" 
+- ❌ "fix: implement session-specific tool registration for stdio clients"
 - ✅ "Fix stdio session tool handler conflicts"
 
 **PR Descriptions**: Write terse prose for humans, not documentation. Avoid bullet lists unless they add genuine value. Focus on the problem solved and solution approach:
+
 - Explain what was broken and how it's fixed
 - Use conversational, developer-to-developer tone
 - Skip implementation details unless critical for review

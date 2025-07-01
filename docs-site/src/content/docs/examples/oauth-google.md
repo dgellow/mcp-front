@@ -99,7 +99,7 @@ The `allowedDomains` field is your primary security control. Only email addresse
 How it works:
 
 - john@company.com ✓ Allowed
-- jane@subsidiary.com ✓ Allowed  
+- jane@subsidiary.com ✓ Allowed
 - hacker@gmail.com ✗ Rejected
 
 This is perfect for companies using Google Workspace, as it automatically grants access to all employees while blocking external users.
@@ -139,7 +139,7 @@ OAuth 2.1 requires HTTPS in production:
 
 Options for HTTPS:
 
-- **Load Balancer**: Terminate SSL at the load balancer  
+- **Load Balancer**: Terminate SSL at the load balancer
 - **Reverse Proxy**: Use nginx/caddy with Let's Encrypt
 - **Managed hosting**: Deploy to any platform with automatic HTTPS
 
