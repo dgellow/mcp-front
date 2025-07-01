@@ -20,7 +20,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		Env               map[string]json.RawMessage `json:"env,omitempty"`
 		URL               json.RawMessage            `json:"url,omitempty"`
 		Headers           map[string]json.RawMessage `json:"headers,omitempty"`
-		Timeout           time.Duration              `json:"timeout,omitempty"`
+		Timeout           string                     `json:"timeout,omitempty"`
 		Options           *Options                   `json:"options,omitempty"`
 		RequiresUserToken bool                       `json:"requiresUserToken,omitempty"`
 		TokenSetup        *TokenSetupConfig          `json:"tokenSetup,omitempty"`
@@ -33,11 +33,19 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	c.TransportType = raw.TransportType
-	c.Timeout = raw.Timeout
 	c.Options = raw.Options
 	c.RequiresUserToken = raw.RequiresUserToken
 	c.TokenSetup = raw.TokenSetup
 	c.InlineConfig = raw.InlineConfig
+
+	// Parse timeout if present
+	if raw.Timeout != "" {
+		timeout, err := time.ParseDuration(raw.Timeout)
+		if err != nil {
+			return fmt.Errorf("parsing timeout: %w", err)
+		}
+		c.Timeout = timeout
+	}
 
 	if c.TransportType == "" {
 		return fmt.Errorf("transportType is required")
@@ -191,11 +199,12 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 	// Use a raw type to parse references
 	type rawProxy struct {
-		BaseURL json.RawMessage `json:"baseURL"`
-		Addr    json.RawMessage `json:"addr"`
-		Name    string          `json:"name"`
-		Auth    json.RawMessage `json:"auth"`
-		Admin   *AdminConfig    `json:"admin"`
+		BaseURL  json.RawMessage `json:"baseURL"`
+		Addr     json.RawMessage `json:"addr"`
+		Name     string          `json:"name"`
+		Auth     json.RawMessage `json:"auth"`
+		Admin    *AdminConfig    `json:"admin"`
+		Sessions *SessionConfig  `json:"sessions"`
 	}
 
 	var raw rawProxy
@@ -205,6 +214,7 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 
 	p.Name = raw.Name
 	p.Admin = raw.Admin
+	p.Sessions = raw.Sessions
 
 	// Normalize admin emails for consistent comparison
 	if p.Admin != nil && len(p.Admin.AdminEmails) > 0 {
@@ -334,4 +344,36 @@ func (c *MCPClientConfig) ApplyUserToken(userToken string) *MCPClientConfig {
 	result.HeadersNeedToken = nil
 
 	return &result
+}
+
+// UnmarshalJSON implements custom unmarshaling for SessionConfig
+func (s *SessionConfig) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Timeout         string `json:"timeout"`
+		CleanupInterval string `json:"cleanupInterval"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	// Parse timeout if present
+	if raw.Timeout != "" {
+		timeout, err := time.ParseDuration(raw.Timeout)
+		if err != nil {
+			return fmt.Errorf("parsing timeout: %w", err)
+		}
+		s.Timeout = timeout
+	}
+
+	// Parse cleanupInterval if present
+	if raw.CleanupInterval != "" {
+		interval, err := time.ParseDuration(raw.CleanupInterval)
+		if err != nil {
+			return fmt.Errorf("parsing cleanupInterval: %w", err)
+		}
+		s.CleanupInterval = interval
+	}
+
+	return nil
 }

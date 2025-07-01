@@ -112,6 +112,12 @@ type MCPClientConfig struct {
 	InlineConfig json.RawMessage `json:"inline,omitempty"`
 }
 
+// SessionConfig represents session management configuration
+type SessionConfig struct {
+	Timeout         time.Duration
+	CleanupInterval time.Duration
+}
+
 // AdminConfig represents admin UI configuration
 type AdminConfig struct {
 	Enabled     bool     `json:"enabled"`
@@ -138,11 +144,12 @@ type OAuthAuthConfig struct {
 
 // ProxyConfig represents the proxy configuration with resolved values
 type ProxyConfig struct {
-	BaseURL string       `json:"baseURL"`
-	Addr    string       `json:"addr"`
-	Name    string       `json:"name"`
-	Auth    interface{}  `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
-	Admin   *AdminConfig `json:"admin,omitempty"`
+	BaseURL  string         `json:"baseURL"`
+	Addr     string         `json:"addr"`
+	Name     string         `json:"name"`
+	Auth     interface{}    `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
+	Admin    *AdminConfig   `json:"admin,omitempty"`
+	Sessions *SessionConfig `json:"sessions,omitempty"`
 }
 
 // Config represents the config structure with resolved values
