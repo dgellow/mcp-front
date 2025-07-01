@@ -10,7 +10,9 @@ import (
 
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 var (
@@ -215,6 +217,75 @@ func (sm *StdioSessionManager) Shutdown() {
 // GetClient returns the MCP client for this session
 func (s *StdioSession) GetClient() *Client {
 	return s.client
+}
+
+// DiscoverAndRegisterCapabilities discovers and registers capabilities from the stdio process
+func (s *StdioSession) DiscoverAndRegisterCapabilities(
+	ctx context.Context,
+	mcpServer *server.MCPServer,
+	userEmail string,
+	requiresToken bool,
+	tokenStore storage.UserTokenStore,
+	serverName string,
+	setupBaseURL string,
+	tokenSetup *config.TokenSetupConfig,
+	session server.ClientSession,
+) error {
+	// Initialize the client
+	if s.client.needManualStart {
+		if err := s.client.client.Start(ctx); err != nil {
+			return err
+		}
+	}
+
+	initRequest := mcp.InitializeRequest{}
+	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initRequest.Params.ClientInfo = mcp.Implementation{
+		Name:    serverName,
+		Version: "1.0",
+	}
+	initRequest.Params.Capabilities = mcp.ClientCapabilities{
+		Experimental: make(map[string]interface{}),
+		Roots:        nil,
+		Sampling:     nil,
+	}
+
+	_, err := s.client.client.Initialize(ctx, initRequest)
+	if err != nil {
+		return err
+	}
+	internal.Logf("<%s> Successfully initialized MCP client", serverName)
+
+	// Start capability discovery
+	internal.LogInfoWithFields("client", "Starting MCP capability discovery", map[string]interface{}{
+		"server": serverName,
+	})
+
+	// Discover and register tools
+	if err := s.client.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup, session); err != nil {
+		return err
+	}
+
+	// Discover and register prompts
+	_ = s.client.addPromptsToServer(ctx, mcpServer)
+
+	// Discover and register resources
+	_ = s.client.addResourcesToServer(ctx, mcpServer)
+
+	// Discover and register resource templates
+	_ = s.client.addResourceTemplatesToServer(ctx, mcpServer)
+
+	internal.LogInfoWithFields("client", "MCP capability discovery completed", map[string]interface{}{
+		"server":            serverName,
+		"userTokenRequired": requiresToken,
+	})
+
+	// Start ping task if needed
+	if s.client.needPing {
+		go s.client.startPingTask(ctx)
+	}
+
+	return nil
 }
 
 // checkUserLimits verifies user hasn't exceeded session limits
