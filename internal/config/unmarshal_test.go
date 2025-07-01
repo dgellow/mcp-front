@@ -402,8 +402,15 @@ func TestProxyConfig_SessionConfigIntegration(t *testing.T) {
 		"baseURL": "http://localhost:8080",
 		"addr": ":8080",
 		"auth": {
-			"kind": "bearerToken",
-			"tokens": {}
+			"kind": "oauth",
+			"issuer": "https://auth.example.com",
+			"googleClientId": "test-client",
+			"googleClientSecret": "test-secret",
+			"googleRedirectUri": "https://test.example.com/callback",
+			"jwtSecret": "test-jwt-secret-must-be-32-bytes-long",
+			"encryptionKey": "test-encryption-key-32-bytes-ok!",
+			"allowedDomains": ["example.com"],
+			"allowedOrigins": ["https://test.example.com"]
 		},
 		"sessions": {
 			"timeout": "15m",

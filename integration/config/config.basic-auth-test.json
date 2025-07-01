@@ -1,0 +1,26 @@
+{
+  "version": "v0.0.1-DEV_EDITION_EXPECT_CHANGES",
+  "proxy": {
+    "baseURL": "http://localhost:8080",
+    "addr": ":8080",
+    "name": "mcp-front-basic-auth-test"
+  },
+  "mcpServers": {
+    "test-server": {
+      "transportType": "sse",
+      "url": "http://localhost:9999/sse",
+      "serviceAuths": [
+        {
+          "type": "basic",
+          "username": "admin",
+          "password": {"$env": "ADMIN_PASSWORD"}
+        },
+        {
+          "type": "basic",
+          "username": "user",
+          "password": {"$env": "USER_PASSWORD"}
+        }
+      ]
+    }
+  }
+}

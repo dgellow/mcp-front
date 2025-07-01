@@ -208,7 +208,7 @@ func TestMCPAuthConfiguration(t *testing.T) {
 			description: "MCP endpoints with OAuth config should require auth",
 		},
 		{
-			name: "mcp_with_bearer_auth_requires_auth",
+			name: "mcp_with_service_auth_requires_auth",
 			config: &config.Config{
 				Proxy: config.ProxyConfig{
 					BaseURL: "https://test.example.com",
@@ -216,14 +216,17 @@ func TestMCPAuthConfiguration(t *testing.T) {
 				MCPServers: map[string]*config.MCPClientConfig{
 					"test": {
 						URL: "https://test.example.com",
-						Options: &config.Options{
-							AuthTokens: []string{"test-token"},
+						ServiceAuths: []config.ServiceAuth{
+							{
+								Type:   config.ServiceAuthTypeBearer,
+								Tokens: []string{"test-token"},
+							},
 						},
 					},
 				},
 			},
 			expectAuth:  true,
-			description: "MCP endpoints with bearer tokens should require auth",
+			description: "MCP endpoints with service auth should require auth",
 		},
 	}
 
@@ -265,8 +268,11 @@ func TestBearerTokenAuth(t *testing.T) {
 		MCPServers: map[string]*config.MCPClientConfig{
 			"test": {
 				URL: "https://test.example.com",
-				Options: &config.Options{
-					AuthTokens: []string{"valid-token", "another-valid-token"},
+				ServiceAuths: []config.ServiceAuth{
+					{
+						Type:   config.ServiceAuthTypeBearer,
+						Tokens: []string{"valid-token", "another-valid-token"},
+					},
 				},
 			},
 		},

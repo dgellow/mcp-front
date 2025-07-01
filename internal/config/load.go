@@ -44,18 +44,6 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// Process auth tokens for bearer token mode
-	if auth, ok := config.Proxy.Auth.(*BearerTokenAuthConfig); ok {
-		for serverName, tokens := range auth.Tokens {
-			if server, ok := config.MCPServers[serverName]; ok {
-				if server.Options == nil {
-					server.Options = &Options{}
-				}
-				server.Options.AuthTokens = tokens
-			}
-		}
-	}
-
 	return &config, nil
 }
 

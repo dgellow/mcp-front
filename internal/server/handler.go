@@ -170,6 +170,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		oauthMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("oauth"),
+			recoverMiddleware("mcp"),
 		}
 
 		mux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(s.oauthServer.WellKnownHandler), oauthMiddlewares...))
@@ -184,6 +185,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
 			s.oauthServer.SSOMiddleware(),
+			recoverMiddleware("mcp"),
 		}
 
 		// Token management UI endpoints
@@ -204,6 +206,8 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"requires_user_token": serverConfig.RequiresUserToken,
 		})
 
+		var handler http.Handler
+
 		// For inline servers, create a custom handler
 		if serverConfig.TransportType == config.MCPClientTypeInline {
 			// Resolve inline config
@@ -216,145 +220,120 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			inlineServer := inline.NewServer(serverName, inlineConfig, resolvedTools)
 
 			// Create inline handler
-			inlineHandler := inline.NewHandler(serverName, inlineServer)
+			handler = inline.NewHandler(serverName, inlineServer)
 
-			// Register with standard middlewares
-			var middlewares []MiddlewareFunc
-			middlewares = append(middlewares, corsMiddleware(allowedOrigins))
-			middlewares = append(middlewares, loggerMiddleware("mcp"))
-			middlewares = append(middlewares, recoverMiddleware("mcp"))
-
-			// Add auth middleware if configured
-			if s.oauthServer != nil {
-				middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
-			}
-
-			// Register handler for both /name/sse and /name/message
-			mux.Handle("/"+serverName+"/", chainMiddleware(inlineHandler, middlewares...))
-
-			internal.LogInfoWithFields("server", "Registered inline MCP server", map[string]interface{}{
+			internal.LogInfoWithFields("server", "Created inline MCP server", map[string]interface{}{
 				"name":  serverName,
 				"tools": len(resolvedTools),
 			})
+		} else {
 
-			continue // Skip the rest of the loop
-		}
+			// For stdio servers, create a single shared MCP server
+			if isStdioServer(serverConfig) {
+				// Create the shared MCP server for this stdio server
+				// We need to create it first so we can reference it in the hooks
+				var mcpServer *server.MCPServer
 
-		// For stdio servers, create a single shared MCP server
-		if isStdioServer(serverConfig) {
-			// Create the shared MCP server for this stdio server
-			// We need to create it first so we can reference it in the hooks
-			var mcpServer *server.MCPServer
+				// Create hooks for session management
+				hooks := &server.Hooks{}
 
-			// Create hooks for session management
-			hooks := &server.Hooks{}
+				// Store reference to server name for use in hooks
+				currentServerName := serverName
 
-			// Store reference to server name for use in hooks
-			currentServerName := serverName
-
-			// Setup hooks that will be called when sessions are created/destroyed
-			hooks.AddOnRegisterSession(func(sessionCtx context.Context, session server.ClientSession) {
-				// Extract handler from context
-				if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
-					// Pass the MCP server to the handler
-					handler.mcpServer = mcpServer
-					// Handle session registration
-					handleSessionRegistration(sessionCtx, session, handler, s.sessionManager)
-				} else {
-					internal.LogErrorWithFields("server", "No session handler in context", map[string]interface{}{
-						"sessionID": session.SessionID(),
-						"server":    currentServerName,
-					})
-				}
-			})
-
-			hooks.AddOnUnregisterSession(func(sessionCtx context.Context, session server.ClientSession) {
-				// Extract handler from context
-				if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
-					// Handle session cleanup
-					key := client.SessionKey{
-						UserEmail:  handler.userEmail,
-						ServerName: handler.h.serverName,
-						SessionID:  session.SessionID(),
+				// Setup hooks that will be called when sessions are created/destroyed
+				hooks.AddOnRegisterSession(func(sessionCtx context.Context, session server.ClientSession) {
+					// Extract handler from context
+					if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
+						// Pass the MCP server to the handler
+						handler.mcpServer = mcpServer
+						// Handle session registration
+						handleSessionRegistration(sessionCtx, session, handler, s.sessionManager)
+					} else {
+						internal.LogErrorWithFields("server", "No session handler in context", map[string]interface{}{
+							"sessionID": session.SessionID(),
+							"server":    currentServerName,
+						})
 					}
-					s.sessionManager.RemoveSession(key)
+				})
 
-					if handler.h.storage != nil {
-						if err := handler.h.storage.RevokeSession(sessionCtx, session.SessionID()); err != nil {
-							internal.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
-								"error":     err.Error(),
-								"sessionID": session.SessionID(),
-								"user":      handler.userEmail,
-							})
+				hooks.AddOnUnregisterSession(func(sessionCtx context.Context, session server.ClientSession) {
+					// Extract handler from context
+					if handler, ok := sessionCtx.Value(sessionHandlerKey{}).(*sessionRequestHandler); ok {
+						// Handle session cleanup
+						key := client.SessionKey{
+							UserEmail:  handler.userEmail,
+							ServerName: handler.h.serverName,
+							SessionID:  session.SessionID(),
 						}
+						s.sessionManager.RemoveSession(key)
+
+						if handler.h.storage != nil {
+							if err := handler.h.storage.RevokeSession(sessionCtx, session.SessionID()); err != nil {
+								internal.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
+									"error":     err.Error(),
+									"sessionID": session.SessionID(),
+									"user":      handler.userEmail,
+								})
+							}
+						}
+
+						internal.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
+							"sessionID": session.SessionID(),
+							"server":    currentServerName,
+							"user":      handler.userEmail,
+						})
 					}
+				})
 
-					internal.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
-						"sessionID": session.SessionID(),
-						"server":    currentServerName,
-						"user":      handler.userEmail,
-					})
-				}
-			})
+				// Now create the MCP server with the hooks
+				mcpServer = server.NewMCPServer(serverName, "1.0.0",
+					server.WithHooks(hooks),
+					server.WithPromptCapabilities(true),
+					server.WithResourceCapabilities(true, true),
+					server.WithToolCapabilities(true),
+					server.WithLogging(),
+				)
 
-			// Now create the MCP server with the hooks
-			mcpServer = server.NewMCPServer(serverName, "1.0.0",
-				server.WithHooks(hooks),
-				server.WithPromptCapabilities(true),
-				server.WithResourceCapabilities(true, true),
-				server.WithToolCapabilities(true),
-				server.WithLogging(),
+				// Create the SSE server wrapper around the MCP server
+				sseServer := server.NewSSEServer(mcpServer,
+					server.WithStaticBasePath(serverName),
+					server.WithBaseURL(baseURL.String()),
+				)
+
+				s.sseServers[serverName] = sseServer
+			}
+
+			// Create MCP handler for stdio/SSE servers
+			handler = NewMCPHandler(
+				serverName,
+				serverConfig,
+				s.storage,
+				baseURL.String(),
+				info,
+				s.sessionManager,
+				s.sseServers[serverName], // Pass the shared MCP server (nil for non-stdio)
 			)
-
-			// Create the SSE server wrapper around the MCP server
-			sseServer := server.NewSSEServer(mcpServer,
-				server.WithStaticBasePath(serverName),
-				server.WithBaseURL(baseURL.String()),
-			)
-
-			s.sseServers[serverName] = sseServer
 		}
-
-		// Create handler
-		handler := NewMCPHandler(
-			serverName,
-			serverConfig,
-			s.storage,
-			baseURL.String(),
-			info,
-			s.sessionManager,
-			s.sseServers[serverName], // Pass the shared MCP server (nil for non-stdio)
-		)
 
 		// Setup middlewares
 		var middlewares []MiddlewareFunc
-		middlewares = append(middlewares, corsMiddleware(allowedOrigins))
 		middlewares = append(middlewares, loggerMiddleware("mcp"))
-		middlewares = append(middlewares, recoverMiddleware("mcp"))
+		middlewares = append(middlewares, corsMiddleware(allowedOrigins))
 
-		// Add auth middleware based on configuration
-		// Auth models:
-		// 1. OAuth: If OAuth server is configured, ALL MCP endpoints require OAuth authentication
-		// 2. Bearer token: Individual MCP servers can require bearer tokens (per-server auth)
-		// 3. No auth: If neither OAuth nor bearer tokens configured, endpoint is public
 		if s.oauthServer != nil {
-			// OAuth authentication - user must be authenticated via Google OAuth
 			middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
-		} else if serverConfig.Options != nil && len(serverConfig.Options.AuthTokens) > 0 {
-			// Bearer token authentication - request must include valid bearer token
-			middlewares = append(middlewares, newAuthMiddleware(serverConfig.Options.AuthTokens))
 		}
-		// else: no auth required for this endpoint
+
+		if len(serverConfig.ServiceAuths) > 0 {
+			middlewares = append(middlewares, newServiceAuthMiddleware(serverConfig.ServiceAuths))
+		}
+
+		// important to be last, making it the outermost middleware, so it can recover from any middleware panic
+		middlewares = append(middlewares, recoverMiddleware("mcp"))
 
 		// Register handler - SSE server needs to handle all paths under the server name
 		// It handles both /postgres/sse and /postgres/message endpoints
 		mux.Handle("/"+serverName+"/", chainMiddleware(handler, middlewares...))
-
-		// For backward compatibility, also register without /sse suffix for SSE servers
-		if serverConfig.URL != "" {
-			ssePath := "/" + serverName
-			mux.Handle(ssePath, chainMiddleware(handler, middlewares...))
-		}
 	}
 
 	// Admin routes - only if admin is enabled
@@ -375,6 +354,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			loggerMiddleware("admin"),
 			s.oauthServer.SSOMiddleware(),               // Browser SSO
 			adminMiddleware(cfg.Proxy.Admin, s.storage), // Admin check
+			recoverMiddleware("mcp"),
 		}
 
 		// Admin routes - all protected by admin middleware

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
@@ -62,8 +63,13 @@ func NewMCPHandler(
 func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user from context if OAuth middleware set it
+	// Get user from context - could be OAuth email or basic auth username
 	userEmail, _ := oauth.GetUserFromContext(ctx)
+	if userEmail == "" {
+		// Check for basic auth username
+		username, _ := auth.GetUser(ctx)
+		userEmail = username
+	}
 
 	// Get user token if available for applying to config
 	// Don't block connection if missing - will check at tool invocation
@@ -263,6 +269,14 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		return "", fmt.Errorf("authentication required")
 	}
 
+	// Check for service auth first - services provide their own user tokens
+	if serviceAuth, ok := auth.GetServiceAuth(ctx); ok {
+		if serviceAuth.UserToken != "" {
+			return serviceAuth.UserToken, nil
+		}
+	}
+
+	// Fall back to OAuth user token lookup in storage
 	if h.storage == nil {
 		return "", fmt.Errorf("storage not configured")
 	}

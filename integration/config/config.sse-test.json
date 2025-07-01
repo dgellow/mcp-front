@@ -3,20 +3,18 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-sse-test",
-    "auth": {
-      "kind": "bearerToken",
-      "tokens": {
-        "test-sse": [
-          "sse-test-token"
-        ]
-      }
-    }
+    "name": "mcp-front-sse-test"
   },
   "mcpServers": {
     "test-sse": {
       "transportType": "sse",
-      "url": "http://localhost:3001/sse"
+      "url": "http://localhost:3001/sse",
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["sse-test-token"]
+        }
+      ]
     }
   }
 }

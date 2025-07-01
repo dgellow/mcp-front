@@ -170,17 +170,10 @@ func validateAuthStructure(auth map[string]interface{}, result *ValidationResult
 				Message: "at least one allowed origin is required for OAuth (CORS configuration)",
 			})
 		}
-	case "bearerToken":
-		if _, ok := auth["tokens"].(map[string]interface{}); !ok {
-			result.Errors = append(result.Errors, ValidationError{
-				Path:    "proxy.auth.tokens",
-				Message: "tokens map is required for bearer token auth",
-			})
-		}
 	default:
 		result.Errors = append(result.Errors, ValidationError{
 			Path:    "proxy.auth.kind",
-			Message: fmt.Sprintf("unknown auth kind: %s", kind),
+			Message: fmt.Sprintf("unknown auth kind: %s (only 'oauth' is supported for proxy auth)", kind),
 		})
 	}
 }
@@ -311,6 +304,133 @@ func validateServersStructure(rawConfig map[string]interface{}, result *Validati
 				})
 			}
 		}
+
+		// Check service auth configuration
+		if serviceAuths, ok := srv["serviceAuths"].([]interface{}); ok {
+			requiresUserToken := false
+			if requiresToken, ok := srv["requiresUserToken"].(bool); ok {
+				requiresUserToken = requiresToken
+			}
+			validateServiceAuths(serviceAuths, name, requiresUserToken, result)
+		}
+	}
+}
+
+// validateServiceAuths validates service authentication configuration
+func validateServiceAuths(serviceAuths []interface{}, serverName string, requiresUserToken bool, result *ValidationResult) {
+	for i, authInterface := range serviceAuths {
+		auth, ok := authInterface.(map[string]interface{})
+		if !ok {
+			result.Errors = append(result.Errors, ValidationError{
+				Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d]", serverName, i),
+				Message: "service auth must be an object",
+			})
+			continue
+		}
+
+		authType, ok := auth["type"].(string)
+		if !ok {
+			result.Errors = append(result.Errors, ValidationError{
+				Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].type", serverName, i),
+				Message: "service auth type is required",
+			})
+			continue
+		}
+
+		switch authType {
+		case "basic":
+			if _, ok := auth["username"]; !ok {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].username", serverName, i),
+					Message: "username is required for basic auth",
+				})
+			}
+			if _, ok := auth["password"]; !ok {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].password", serverName, i),
+					Message: "password is required for basic auth",
+				})
+			} else {
+				// Validate password uses env var reference
+				validatePasswordReference(auth["password"], fmt.Sprintf("mcpServers.%s.serviceAuths[%d].password", serverName, i), result)
+			}
+		case "bearer":
+			tokens, ok := auth["tokens"].([]interface{})
+			if !ok {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].tokens", serverName, i),
+					Message: "tokens array is required for bearer auth",
+				})
+			} else if len(tokens) == 0 {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].tokens", serverName, i),
+					Message: "at least one token is required for bearer auth",
+				})
+			}
+		default:
+			result.Errors = append(result.Errors, ValidationError{
+				Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].type", serverName, i),
+				Message: fmt.Sprintf("unknown service auth type: %s (supported: basic, bearer)", authType),
+			})
+		}
+
+		// If server requires user token, validate that service auth provides one
+		if requiresUserToken {
+			if _, ok := auth["userToken"]; !ok {
+				result.Errors = append(result.Errors, ValidationError{
+					Path:    fmt.Sprintf("mcpServers.%s.serviceAuths[%d].userToken", serverName, i),
+					Message: "userToken is required when server has requiresUserToken: true",
+				})
+			} else {
+				validateUserTokenReference(auth["userToken"], fmt.Sprintf("mcpServers.%s.serviceAuths[%d].userToken", serverName, i), result)
+			}
+		}
+	}
+}
+
+// validatePasswordReference validates that password uses env var reference
+func validatePasswordReference(password interface{}, path string, result *ValidationResult) {
+	switch p := password.(type) {
+	case string:
+		result.Errors = append(result.Errors, ValidationError{
+			Path:    path,
+			Message: "password must use environment variable reference {\"$env\": \"VAR_NAME\"} for security",
+		})
+	case map[string]interface{}:
+		if _, hasEnv := p["$env"]; !hasEnv {
+			result.Errors = append(result.Errors, ValidationError{
+				Path:    path,
+				Message: "password must use {\"$env\": \"VAR_NAME\"} format",
+			})
+		}
+	default:
+		result.Errors = append(result.Errors, ValidationError{
+			Path:    path,
+			Message: "password must be an environment variable reference",
+		})
+	}
+}
+
+// validateUserTokenReference validates that userToken uses env var reference
+func validateUserTokenReference(userToken interface{}, path string, result *ValidationResult) {
+	switch t := userToken.(type) {
+	case string:
+		result.Errors = append(result.Errors, ValidationError{
+			Path:    path,
+			Message: "userToken must use environment variable reference {\"$env\": \"VAR_NAME\"} for security",
+		})
+	case map[string]interface{}:
+		if _, hasEnv := t["$env"]; !hasEnv {
+			result.Errors = append(result.Errors, ValidationError{
+				Path:    path,
+				Message: "userToken must use {\"$env\": \"VAR_NAME\"} format",
+			})
+		}
+	default:
+		result.Errors = append(result.Errors, ValidationError{
+			Path:    path,
+			Message: "userToken must be an environment variable reference",
+		})
 	}
 }
 

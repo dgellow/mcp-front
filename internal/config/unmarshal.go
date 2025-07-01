@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/utils"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // UnmarshalJSON implements custom unmarshaling for MCPClientConfig
@@ -24,6 +25,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 		Options           *Options                   `json:"options,omitempty"`
 		RequiresUserToken bool                       `json:"requiresUserToken,omitempty"`
 		TokenSetup        *TokenSetupConfig          `json:"tokenSetup,omitempty"`
+		ServiceAuths      []ServiceAuth              `json:"serviceAuths,omitempty"`
 		InlineConfig      json.RawMessage            `json:"inline,omitempty"`
 	}
 
@@ -36,6 +38,7 @@ func (c *MCPClientConfig) UnmarshalJSON(data []byte) error {
 	c.Options = raw.Options
 	c.RequiresUserToken = raw.RequiresUserToken
 	c.TokenSetup = raw.TokenSetup
+	c.ServiceAuths = raw.ServiceAuths
 	c.InlineConfig = raw.InlineConfig
 
 	// Parse timeout if present
@@ -274,14 +277,8 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 				}
 			}
 			p.Auth = &oauth
-		case AuthKindBearerToken:
-			var bearer BearerTokenAuthConfig
-			if err := json.Unmarshal(raw.Auth, &bearer); err != nil {
-				return fmt.Errorf("parsing bearer token config: %w", err)
-			}
-			p.Auth = &bearer
 		default:
-			return fmt.Errorf("unknown auth kind: %s", authKind.Kind)
+			return fmt.Errorf("unknown auth kind: %s (only 'oauth' is supported for proxy auth)", authKind.Kind)
 		}
 	}
 
@@ -344,6 +341,76 @@ func (c *MCPClientConfig) ApplyUserToken(userToken string) *MCPClientConfig {
 	result.HeadersNeedToken = nil
 
 	return &result
+}
+
+// UnmarshalJSON implements custom unmarshaling for ServiceAuth
+func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
+	// First unmarshal without custom processing
+	type rawServiceAuth struct {
+		Type      ServiceAuthType `json:"type"`
+		Username  string          `json:"username,omitempty"`
+		Password  json.RawMessage `json:"password,omitempty"`
+		Tokens    []string        `json:"tokens,omitempty"`
+		UserToken json.RawMessage `json:"userToken,omitempty"`
+	}
+
+	var raw rawServiceAuth
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	s.Type = raw.Type
+	s.Username = raw.Username
+	s.Tokens = raw.Tokens
+
+	// Parse password if provided (for basic auth)
+	if raw.Password != nil {
+		parsed, err := ParseConfigValue(raw.Password)
+		if err != nil {
+			return fmt.Errorf("parsing password: %w", err)
+		}
+		if parsed.needsUserToken {
+			return fmt.Errorf("password cannot be a user token reference")
+		}
+
+		// Hash the password using bcrypt
+		hashed, err := bcrypt.GenerateFromPassword([]byte(parsed.value), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hashing password: %w", err)
+		}
+		s.HashedPassword = string(hashed)
+	}
+
+	// Parse user token if provided
+	if raw.UserToken != nil {
+		parsed, err := ParseConfigValue(raw.UserToken)
+		if err != nil {
+			return fmt.Errorf("parsing userToken: %w", err)
+		}
+		if parsed.needsUserToken {
+			return fmt.Errorf("userToken cannot be a user token reference")
+		}
+		s.ResolvedUserToken = parsed.value
+	}
+
+	// Validate required fields based on type
+	switch s.Type {
+	case ServiceAuthTypeBasic:
+		if s.Username == "" {
+			return fmt.Errorf("username is required for basic auth")
+		}
+		if raw.Password == nil {
+			return fmt.Errorf("password is required for basic auth")
+		}
+	case ServiceAuthTypeBearer:
+		if len(s.Tokens) == 0 {
+			return fmt.Errorf("at least one token is required for bearer auth")
+		}
+	default:
+		return fmt.Errorf("unknown service auth type: %s", s.Type)
+	}
+
+	return nil
 }
 
 // UnmarshalJSON implements custom unmarshaling for SessionConfig

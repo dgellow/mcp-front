@@ -3,16 +3,7 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-test",
-    "auth": {
-      "kind": "bearerToken",
-      "tokens": {
-        "postgres": [
-          "test-token",
-          "alt-test-token"
-        ]
-      }
-    }
+    "name": "mcp-front-test"
   },
   "mcpServers": {
     "postgres": {
@@ -28,7 +19,13 @@
       ],
       "options": {
         "logEnabled": true
-      }
+      },
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["test-token", "alt-test-token"]
+        }
+      ]
     }
   }
 }
