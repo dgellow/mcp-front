@@ -40,6 +40,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Create session manager for stdio servers with configurable timeouts
 	sessionTimeout := 5 * time.Minute
 	cleanupInterval := 1 * time.Minute
+	maxPerUser := 10
 
 	// Use config values if available
 	if cfg.Proxy.Sessions != nil {
@@ -55,11 +56,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 				"interval": cleanupInterval,
 			})
 		}
+		maxPerUser = cfg.Proxy.Sessions.MaxPerUser
 	}
 
 	sessionManager := client.NewStdioSessionManager(
 		client.WithTimeout(sessionTimeout),
-		client.WithMaxPerUser(10),
+		client.WithMaxPerUser(maxPerUser),
 		client.WithCleanupInterval(cleanupInterval),
 	)
 
@@ -444,6 +446,15 @@ func handleSessionRegistration(
 		"user":      handler.userEmail,
 	})
 
+	internal.LogTraceWithFields("server", "Session registration started", map[string]interface{}{
+		"sessionID":         session.SessionID(),
+		"server":            handler.h.serverName,
+		"user":              handler.userEmail,
+		"requiresUserToken": handler.config.RequiresUserToken,
+		"transportType":     handler.config.TransportType,
+		"command":           handler.config.Command,
+	})
+
 	stdioSession, err := sessionManager.GetOrCreateSession(
 		sessionCtx,
 		key,
@@ -483,11 +494,6 @@ func handleSessionRegistration(
 		return
 	}
 
-	// Note: We don't need to store anything in the session anymore
-	// The stdio client is connected directly to the shared MCP server
-	// Capabilities are automatically registered on the shared MCP server
-
-	// Track session in storage
 	if handler.userEmail != "" {
 		if store, ok := handler.h.tokenStore.(storage.Storage); ok {
 			activeSession := storage.ActiveSession{

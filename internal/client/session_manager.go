@@ -136,11 +136,25 @@ func (sm *StdioSessionManager) GetSession(key SessionKey) (*StdioSession, bool) 
 
 	if ok {
 		now := time.Now()
+		lastAccessed := session.lastAccessed.Load()
 		session.lastAccessed.Store(&now)
+
+		internal.LogTraceWithFields("session_manager", "Session accessed", map[string]interface{}{
+			"sessionID":       key.SessionID,
+			"server":          key.ServerName,
+			"user":            key.UserEmail,
+			"lastAccessed":    lastAccessed,
+			"timeSinceAccess": now.Sub(*lastAccessed).String(),
+		})
 
 		select {
 		case <-session.ctx.Done():
 			// Process died, remove it
+			internal.LogTraceWithFields("session_manager", "Session context cancelled, removing", map[string]interface{}{
+				"sessionID": key.SessionID,
+				"server":    key.ServerName,
+				"user":      key.UserEmail,
+			})
 			sm.RemoveSession(key)
 			return nil, false
 		default:
@@ -148,18 +162,11 @@ func (sm *StdioSessionManager) GetSession(key SessionKey) (*StdioSession, bool) 
 		}
 	}
 
-	// Debug: log all sessions when not found
-	sm.mu.RLock()
-	internal.LogWarnWithFields("session_manager", "Session not found", map[string]interface{}{
-		"looking_for":    key,
-		"total_sessions": len(sm.sessions),
+	internal.LogTraceWithFields("session_manager", "Session not found", map[string]interface{}{
+		"sessionID": key.SessionID,
+		"server":    key.ServerName,
+		"user":      key.UserEmail,
 	})
-	for k := range sm.sessions {
-		internal.LogWarnWithFields("session_manager", "Existing session", map[string]interface{}{
-			"key": k,
-		})
-	}
-	sm.mu.RUnlock()
 
 	return nil, false
 }
@@ -170,7 +177,13 @@ func (sm *StdioSessionManager) RemoveSession(key SessionKey) {
 	session, ok := sm.sessions[key]
 	if ok {
 		delete(sm.sessions, key)
+		internal.LogTraceWithFields("session_manager", "Removing session from map", map[string]interface{}{
+			"sessionID": key.SessionID,
+			"server":    key.ServerName,
+			"user":      key.UserEmail,
+		})
 	}
+	sessionCount := len(sm.sessions)
 	sm.mu.Unlock()
 
 	if ok {
@@ -191,6 +204,16 @@ func (sm *StdioSessionManager) RemoveSession(key SessionKey) {
 			"sessionID": key.SessionID,
 			"server":    key.ServerName,
 			"user":      key.UserEmail,
+		})
+
+		internal.LogTraceWithFields("session_manager", "Session removed with details", map[string]interface{}{
+			"sessionID":         key.SessionID,
+			"server":            key.ServerName,
+			"user":              key.UserEmail,
+			"created":           session.created,
+			"duration":          time.Since(session.created).String(),
+			"lastAccessed":      session.lastAccessed.Load(),
+			"remainingSessions": sessionCount,
 		})
 	}
 }
@@ -261,6 +284,14 @@ func (s *StdioSession) DiscoverAndRegisterCapabilities(
 		"server": serverName,
 	})
 
+	internal.LogTraceWithFields("client", "Starting capability discovery", map[string]interface{}{
+		"server":            serverName,
+		"sessionID":         session.SessionID(),
+		"userEmail":         userEmail,
+		"requiresUserToken": requiresToken,
+		"hasTokenSetup":     tokenSetup != nil,
+	})
+
 	// Discover and register tools
 	if err := s.client.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup, session); err != nil {
 		return err
@@ -280,6 +311,16 @@ func (s *StdioSession) DiscoverAndRegisterCapabilities(
 		"userTokenRequired": requiresToken,
 	})
 
+	internal.LogTraceWithFields("client", "Capability discovery completed", map[string]interface{}{
+		"server":              serverName,
+		"sessionID":           session.SessionID(),
+		"userEmail":           userEmail,
+		"requiresUserToken":   requiresToken,
+		"toolsRegistered":     true,
+		"promptsRegistered":   true,
+		"resourcesRegistered": true,
+	})
+
 	// Start ping task if needed
 	if s.client.needPing {
 		go s.client.startPingTask(ctx)
@@ -295,6 +336,11 @@ func (sm *StdioSessionManager) checkUserLimits(userEmail string) error {
 		return nil
 	}
 
+	if sm.maxPerUser == 0 {
+		// 0 means unlimited
+		return nil
+	}
+
 	count := sm.getUserSessionCount(userEmail)
 	if count >= sm.maxPerUser {
 		internal.LogWarnWithFields("session_manager", "User session limit exceeded", map[string]interface{}{
@@ -305,6 +351,13 @@ func (sm *StdioSessionManager) checkUserLimits(userEmail string) error {
 		return fmt.Errorf("%w: user %s has %d sessions (limit: %d)",
 			ErrUserLimitExceeded, userEmail, count, sm.maxPerUser)
 	}
+
+	internal.LogTraceWithFields("session_manager", "User session limit check passed", map[string]interface{}{
+		"user":            userEmail,
+		"currentSessions": count,
+		"maxPerUser":      sm.maxPerUser,
+		"remaining":       sm.maxPerUser - count,
+	})
 
 	return nil
 }
@@ -362,6 +415,16 @@ func (sm *StdioSessionManager) createSession(
 		"user":      key.UserEmail,
 	})
 
+	internal.LogTraceWithFields("session_manager", "Session created with details", map[string]interface{}{
+		"sessionID":       key.SessionID,
+		"server":          key.ServerName,
+		"user":            key.UserEmail,
+		"timeout":         sm.defaultTimeout.String(),
+		"maxPerUser":      sm.maxPerUser,
+		"cleanupInterval": sm.cleanupInterval.String(),
+		"totalSessions":   len(sm.sessions),
+	})
+
 	return session, nil
 }
 
@@ -389,13 +452,26 @@ func (sm *StdioSessionManager) cleanupTimedOutSessions() {
 	// Find timed out sessions
 	sm.mu.RLock()
 	timedOut := make([]SessionKey, 0)
+	totalSessions := len(sm.sessions)
+	activeSessions := 0
 	for key, session := range sm.sessions {
 		lastAccessed := session.lastAccessed.Load()
 		if lastAccessed != nil && now.Sub(*lastAccessed) > sm.defaultTimeout {
 			timedOut = append(timedOut, key)
+		} else {
+			activeSessions++
 		}
 	}
 	sm.mu.RUnlock()
+
+	if totalSessions > 0 || len(timedOut) > 0 {
+		internal.LogTraceWithFields("session_manager", "Session cleanup cycle", map[string]interface{}{
+			"totalSessions":    totalSessions,
+			"activeSessions":   activeSessions,
+			"timedOutSessions": len(timedOut),
+			"timeout":          sm.defaultTimeout.String(),
+		})
+	}
 
 	for _, key := range timedOut {
 		internal.LogInfoWithFields("session_manager", "Removing timed out session", map[string]interface{}{

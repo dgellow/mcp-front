@@ -48,7 +48,7 @@ func TestStdioSession_DiscoverAndRegisterCapabilities(t *testing.T) {
 		mockClient.On("ListTools", ctx, mock.AnythingOfType("mcp.ListToolsRequest")).
 			Return(listToolsResult, nil).Once()
 
-		mockSession.On("SessionID").Return("test-session-123").Twice()
+		mockSession.On("SessionID").Return("test-session-123").Times(4)
 
 		mockSession.On("SetSessionTools", mock.MatchedBy(func(tools map[string]server.ServerTool) bool {
 			return len(tools) == 2 &&
@@ -101,6 +101,8 @@ func TestStdioSession_DiscoverAndRegisterCapabilities(t *testing.T) {
 				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
 				ServerInfo:      mcp.Implementation{Name: "test-server", Version: "1.0"},
 			}, nil)
+
+		mockSession.On("SessionID").Return("test-session-123")
 
 		err := stdioSession.DiscoverAndRegisterCapabilities(
 			ctx,
@@ -156,7 +158,7 @@ func TestStdioSession_DiscoverAndRegisterCapabilities(t *testing.T) {
 		mockClient.On("ListTools", ctx, mock.AnythingOfType("mcp.ListToolsRequest")).
 			Return(listToolsResult, nil).Once()
 
-		mockSession.On("SessionID").Return("test-session-456").Twice()
+		mockSession.On("SessionID").Return("test-session-456").Times(4)
 
 		mockSession.On("SetSessionTools", mock.MatchedBy(func(tools map[string]server.ServerTool) bool {
 			return len(tools) == 1 && tools["tool1"].Tool.Name == "tool1"
@@ -244,7 +246,7 @@ func TestStdioSession_DiscoverAndRegisterCapabilities(t *testing.T) {
 		mockClient.On("ListTools", ctx, mock.AnythingOfType("mcp.ListToolsRequest")).
 			Return(nil, errors.New("failed to list tools"))
 
-		mockSession.On("SessionID").Return("test-session").Once()
+		mockSession.On("SessionID").Return("test-session")
 
 		err := stdioSession.DiscoverAndRegisterCapabilities(
 			ctx,
