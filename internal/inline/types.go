@@ -2,7 +2,6 @@ package inline
 
 import (
 	"encoding/json"
-	"time"
 )
 
 // Config represents an inline MCP server configuration
@@ -19,7 +18,7 @@ type ToolConfig struct {
 	Command     string                     `json:"command"`           // Command to run (e.g., "docker", "gcloud", etc.)
 	Args        []json.RawMessage          `json:"args,omitempty"`    // Arguments with {"$env": "..."} support
 	Env         map[string]json.RawMessage `json:"env,omitempty"`     // Environment variables with {"$env": "..."} support
-	Timeout     time.Duration              `json:"timeout,omitempty"` // Timeout for command execution
+	Timeout     string                     `json:"timeout,omitempty"` // Timeout for command execution (e.g. "30s")
 }
 
 // ResolvedToolConfig represents a tool config with all values resolved
@@ -30,5 +29,5 @@ type ResolvedToolConfig struct {
 	Command     string            `json:"command"`
 	Args        []string          `json:"args,omitempty"` // Resolved arguments
 	Env         map[string]string `json:"env,omitempty"`  // Resolved environment variables
-	Timeout     time.Duration     `json:"timeout,omitempty"`
+	Timeout     string            `json:"timeout,omitempty"`
 }

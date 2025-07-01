@@ -111,7 +111,7 @@ func TestResolveConfig(t *testing.T) {
 						"inputSchema": {"type": "object"},
 						"command": "echo",
 						"args": ["two"],
-						"timeout": 30000000000
+						"timeout": "30s"
 					}
 				]
 			}`,
@@ -120,7 +120,7 @@ func TestResolveConfig(t *testing.T) {
 				assert.Len(t, tools, 2)
 				assert.Equal(t, "tool1", tools[0].Name)
 				assert.Equal(t, "tool2", tools[1].Name)
-				assert.Equal(t, 30*1000*1000*1000, int(tools[1].Timeout)) // 30s in nanoseconds
+				assert.Equal(t, "30s", tools[1].Timeout)
 			},
 		},
 	}
