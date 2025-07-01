@@ -142,6 +142,12 @@ func ValidateConfig(config *Config) error {
 		if config.Proxy.Sessions.Timeout > 0 && config.Proxy.Sessions.CleanupInterval > config.Proxy.Sessions.Timeout {
 			internal.LogWarn("Session cleanup interval is greater than session timeout")
 		}
+		if config.Proxy.Sessions.MaxPerUser < 0 {
+			return fmt.Errorf("proxy.sessions.maxPerUser cannot be negative")
+		}
+		if config.Proxy.Sessions.MaxPerUser == 0 {
+			internal.LogWarn("Session maxPerUser is 0 (unlimited) - this may allow resource exhaustion")
+		}
 	}
 
 	return nil

@@ -289,7 +289,7 @@ func TestOAuthAuthConfig_ValidationErrors(t *testing.T) {
 				"jwtSecret": {"$env": "SHORT_SECRET"}
 			}`,
 			envVars:       map[string]string{"SHORT_SECRET": "too-short"},
-			expectedError: "JWT secret must be at least 32 bytes",
+			expectedError: "jwt secret must be at least 32 bytes",
 		},
 		{
 			name: "user token in oauth field",

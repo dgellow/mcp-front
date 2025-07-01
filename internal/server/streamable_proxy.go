@@ -55,7 +55,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 			"error": err.Error(),
 			"url":   config.URL,
 		})
-		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Backend request failed")
+		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "backend request failed")
 		return
 	}
 	defer resp.Body.Close()

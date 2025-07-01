@@ -181,7 +181,7 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 
 	// Validate JWT secret length
 	if len(o.JWTSecret) < 32 {
-		return fmt.Errorf("JWT secret must be at least 32 bytes, got %d", len(o.JWTSecret))
+		return fmt.Errorf("jwt secret must be at least 32 bytes, got %d", len(o.JWTSecret))
 	}
 
 	// Validate encryption key if storage requires it
@@ -351,6 +351,7 @@ func (s *SessionConfig) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Timeout         string `json:"timeout"`
 		CleanupInterval string `json:"cleanupInterval"`
+		MaxPerUser      *int   `json:"maxPerUser"` // Pointer to detect explicit 0
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -373,6 +374,11 @@ func (s *SessionConfig) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("parsing cleanupInterval: %w", err)
 		}
 		s.CleanupInterval = interval
+	}
+
+	// Set MaxPerUser if present (0 is a valid value, means no upper bound)
+	if raw.MaxPerUser != nil {
+		s.MaxPerUser = *raw.MaxPerUser
 	}
 
 	return nil
