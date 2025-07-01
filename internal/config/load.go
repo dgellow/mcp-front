@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/dgellow/mcp-front/internal"
 )
 
 // Load loads and processes the config with immediate env var resolution
@@ -126,6 +128,19 @@ func ValidateConfig(config *Config) error {
 		// Validate that user tokens require OAuth
 		if server.RequiresUserToken && !hasOAuth {
 			return fmt.Errorf("server %s requires user tokens but OAuth is not configured - user tokens require OAuth authentication", name)
+		}
+	}
+
+	// Validate proxy session configuration
+	if config.Proxy.Sessions != nil {
+		if config.Proxy.Sessions.Timeout < 0 {
+			return fmt.Errorf("proxy.sessions.timeout cannot be negative")
+		}
+		if config.Proxy.Sessions.CleanupInterval < 0 {
+			return fmt.Errorf("proxy.sessions.cleanupInterval cannot be negative")
+		}
+		if config.Proxy.Sessions.Timeout > 0 && config.Proxy.Sessions.CleanupInterval > config.Proxy.Sessions.Timeout {
+			internal.LogWarn("Session cleanup interval is greater than session timeout")
 		}
 	}
 
