@@ -909,7 +909,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		// Verify instructions
 		instructions := errData["instructions"].(map[string]interface{})
 		assert.Contains(t, instructions["ai"].(string), "CRITICAL", "Should have AI instructions")
-		assert.Contains(t, instructions["human"].(string), "Token Required", "Should have human instructions")
+		assert.Contains(t, instructions["human"].(string), "token required", "Should have human instructions")
 	})
 
 	t.Run("ToolInvocationSucceedsWithUserToken", func(t *testing.T) {
