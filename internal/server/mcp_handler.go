@@ -31,7 +31,7 @@ type SessionManager interface {
 type MCPHandler struct {
 	serverName      string
 	serverConfig    *config.MCPClientConfig
-	tokenStore      storage.UserTokenStore
+	storage         storage.Storage
 	setupBaseURL    string
 	info            mcp.Implementation
 	sessionManager  SessionManager
@@ -42,7 +42,7 @@ type MCPHandler struct {
 func NewMCPHandler(
 	serverName string,
 	serverConfig *config.MCPClientConfig,
-	tokenStore storage.UserTokenStore,
+	storage storage.Storage,
 	setupBaseURL string,
 	info mcp.Implementation,
 	sessionManager SessionManager,
@@ -51,7 +51,7 @@ func NewMCPHandler(
 	return &MCPHandler{
 		serverName:      serverName,
 		serverConfig:    serverConfig,
-		tokenStore:      tokenStore,
+		storage:         storage,
 		setupBaseURL:    setupBaseURL,
 		info:            info,
 		sessionManager:  sessionManager,
@@ -136,8 +136,8 @@ func (h *MCPHandler) isMessageRequest(r *http.Request) bool {
 // trackUserAccess tracks user access if user email is provided
 func (h *MCPHandler) trackUserAccess(ctx context.Context, userEmail string) {
 	if userEmail != "" {
-		if store, ok := h.tokenStore.(storage.Storage); ok {
-			if err := store.UpsertUser(ctx, userEmail); err != nil {
+		if h.storage != nil {
+			if err := h.storage.UpsertUser(ctx, userEmail); err != nil {
 				internal.LogWarnWithFields("mcp", "Failed to track user", map[string]any{
 					"error": err.Error(),
 					"user":  userEmail,
@@ -263,7 +263,11 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		return "", fmt.Errorf("authentication required")
 	}
 
-	token, err := h.tokenStore.GetUserToken(ctx, userEmail, h.serverName)
+	if h.storage == nil {
+		return "", fmt.Errorf("storage not configured")
+	}
+
+	token, err := h.storage.GetUserToken(ctx, userEmail, h.serverName)
 	if err != nil {
 		return "", err
 	}
