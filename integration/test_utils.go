@@ -341,8 +341,8 @@ func (c *MCPStreamableClient) readSSEMessages() {
 		default:
 			if c.sseScanner.Scan() {
 				line := c.sseScanner.Text()
-				if strings.HasPrefix(line, "data: ") {
-					data := strings.TrimPrefix(line, "data: ")
+				if after, ok := strings.CutPrefix(line, "data: "); ok {
+					data := after
 					// In a real implementation, we'd process server-initiated messages here
 					tracef("StreamableClient: received SSE message: %s", data)
 				}

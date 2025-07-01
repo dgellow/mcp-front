@@ -3,15 +3,7 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-dev",
-    "auth": {
-      "kind": "bearerToken",
-      "tokens": {
-        "postgres": ["dev-token-postgres-1", "dev-token-postgres-2"],
-        "notion": ["dev-token-notion-1"],
-        "git": ["dev-token-git-1", "dev-token-git-2", "dev-token-git-3"]
-      }
-    }
+    "name": "mcp-front-dev"
   },
   "mcpServers": {
     "postgres": {
@@ -21,6 +13,12 @@
         "run", "--rm", "-i", "--network", "host",
         "mcp/postgres",
         "postgresql://testuser:testpass@localhost:5432/testdb"
+      ],
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["dev-token-postgres-1", "dev-token-postgres-2"]
+        }
       ]
     },
     "notion": {
@@ -29,7 +27,13 @@
       "args": ["run", "--rm", "-i", "-e", "NOTION_TOKEN", "mcp/notion"],
       "env": {
         "NOTION_TOKEN": "test-notion-token"
-      }
+      },
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["dev-token-notion-1"]
+        }
+      ]
     },
     "git": {
       "transportType": "stdio",
@@ -38,6 +42,12 @@
         "run", "--rm", "-i",
         "-v", "/tmp/test-repos:/repos:ro",
         "mcp/git"
+      ],
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["dev-token-git-1", "dev-token-git-2", "dev-token-git-3"]
+        }
       ]
     }
   }
