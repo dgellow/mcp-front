@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
@@ -215,7 +216,7 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 			Value:    encryptedData,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   true,
+			Secure:   !internal.IsDevelopmentMode(),
 			SameSite: http.SameSiteStrictMode,
 			MaxAge:   int(h.authServer.GetConfig().SessionDuration.Seconds()),
 		})

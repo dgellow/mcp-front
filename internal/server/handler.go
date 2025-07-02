@@ -127,6 +127,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		authConfig := auth.Config{
 			Issuer:              oauthAuth.Issuer,
 			TokenTTL:            ttl,
+			SessionDuration:     24 * time.Hour, // Default session duration for browser SSO
 			AllowedDomains:      oauthAuth.AllowedDomains,
 			AllowedOrigins:      oauthAuth.AllowedOrigins,
 			GoogleClientID:      oauthAuth.GoogleClientID,

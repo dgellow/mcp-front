@@ -467,14 +467,14 @@ func (c *MCPStreamableClient) close() {
 	c.serverName = ""
 }
 
-// MockGCPServer provides a mock GCP IAM server for testing
-type MockGCPServer struct {
+// FakeGCPServer provides a fake GCP OAuth server for testing
+type FakeGCPServer struct {
 	server *http.Server
 	port   string
 }
 
-// NewMockGCPServer creates a new mock GCP server
-func NewMockGCPServer(port string) *MockGCPServer {
+// NewFakeGCPServer creates a new fake GCP server
+func NewFakeGCPServer(port string) *FakeGCPServer {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
@@ -523,14 +523,14 @@ func NewMockGCPServer(port string) *MockGCPServer {
 		Handler: mux,
 	}
 
-	return &MockGCPServer{
+	return &FakeGCPServer{
 		server: server,
 		port:   port,
 	}
 }
 
-// Start starts the mock GCP server
-func (m *MockGCPServer) Start() error {
+// Start starts the fake GCP server
+func (m *FakeGCPServer) Start() error {
 	go func() {
 		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			panic(err)
@@ -541,8 +541,8 @@ func (m *MockGCPServer) Start() error {
 	return nil
 }
 
-// Stop stops the mock GCP server
-func (m *MockGCPServer) Stop() error {
+// Stop stops the fake GCP server
+func (m *FakeGCPServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return m.server.Shutdown(ctx)
@@ -552,7 +552,7 @@ func (m *MockGCPServer) Stop() error {
 type TestEnvironment struct {
 	dbCmd   *exec.Cmd
 	mcpCmd  *exec.Cmd
-	mockGCP *MockGCPServer
+	fakeGCP *FakeGCPServer
 	client  *MCPSSEClient
 }
 
@@ -571,8 +571,8 @@ func SetupTestEnvironment(t *testing.T) *TestEnvironment {
 
 	// Start mock GCP server
 	t.Log("🚀 Starting mock GCP server...")
-	env.mockGCP = NewMockGCPServer("9090")
-	if err := env.mockGCP.Start(); err != nil {
+	env.fakeGCP = NewFakeGCPServer("9090")
+	if err := env.fakeGCP.Start(); err != nil {
 		t.Fatalf("Failed to start mock GCP server: %v", err)
 	}
 
@@ -611,8 +611,8 @@ func (env *TestEnvironment) Cleanup() {
 		_ = env.mcpCmd.Process.Kill()
 	}
 
-	if env.mockGCP != nil {
-		_ = env.mockGCP.Stop()
+	if env.fakeGCP != nil {
+		_ = env.fakeGCP.Stop()
 	}
 
 	if env.dbCmd != nil {

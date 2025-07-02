@@ -53,16 +53,16 @@ func TestMain(m *testing.M) {
 		os.Exit(exitCode)
 	}()
 
-	// Start mock GCP server for OAuth
-	mockGCP := NewMockGCPServer("9090")
-	err := mockGCP.Start()
+	// Start fake GCP server for OAuth
+	fakeGCP := NewFakeGCPServer("9090")
+	err := fakeGCP.Start()
 	if err != nil {
-		fmt.Printf("Failed to start mock GCP server: %v\n", err)
+		fmt.Printf("Failed to start fake GCP server: %v\n", err)
 		exitCode = 1
 		return
 	}
 	defer func() {
-		_ = mockGCP.Stop()
+		_ = fakeGCP.Stop()
 	}()
 
 	// Wait for database to be ready
