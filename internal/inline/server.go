@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
+	log "github.com/dgellow/mcp-front/internal/log"
 )
 
 // Server implements an MCP server from inline configuration
@@ -54,7 +54,7 @@ func (s *Server) GetCapabilities() ServerCapabilities {
 		var inputSchema map[string]interface{}
 		if len(tool.InputSchema) > 0 {
 			if err := json.Unmarshal(tool.InputSchema, &inputSchema); err != nil {
-				internal.LogError("Failed to unmarshal input schema for tool %s: %v", name, err)
+				log.LogError("Failed to unmarshal input schema for tool %s: %v", name, err)
 			}
 		}
 
@@ -109,12 +109,12 @@ func (s *Server) HandleToolCall(ctx context.Context, toolName string, args map[s
 	cmd.Stderr = &stderr
 
 	// Log execution
-	internal.LogDebug("Executing inline tool: %s %s", tool.Command, strings.Join(tool.Args, " "))
+	log.LogDebug("Executing inline tool: %s %s", tool.Command, strings.Join(tool.Args, " "))
 
 	// Execute
 	err := cmd.Run()
 	if err != nil {
-		internal.LogErrorWithFields("inline", "Tool execution failed", map[string]interface{}{
+		log.LogErrorWithFields("inline", "Tool execution failed", map[string]interface{}{
 			"tool":   toolName,
 			"error":  err.Error(),
 			"stderr": stderr.String(),

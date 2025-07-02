@@ -7,11 +7,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/inline"
+	log "github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -46,13 +46,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if cfg.Proxy.Sessions != nil {
 		if cfg.Proxy.Sessions.Timeout > 0 {
 			sessionTimeout = cfg.Proxy.Sessions.Timeout
-			internal.LogInfoWithFields("server", "Using configured session timeout", map[string]interface{}{
+			log.LogInfoWithFields("server", "Using configured session timeout", map[string]interface{}{
 				"timeout": sessionTimeout,
 			})
 		}
 		if cfg.Proxy.Sessions.CleanupInterval > 0 {
 			cleanupInterval = cfg.Proxy.Sessions.CleanupInterval
-			internal.LogInfoWithFields("server", "Using configured cleanup interval", map[string]interface{}{
+			log.LogInfoWithFields("server", "Using configured cleanup interval", map[string]interface{}{
 				"interval": cleanupInterval,
 			})
 		}
@@ -85,7 +85,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize OAuth server if OAuth config is provided
 	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
-		internal.LogDebug("initializing OAuth 2.1 server")
+		log.LogDebug("initializing OAuth 2.1 server")
 
 		// Parse TTL duration
 		ttl, err := time.ParseDuration(oauthAuth.TokenTTL)
@@ -96,7 +96,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Create storage based on configuration
 		var store storage.Storage
 		if oauthAuth.Storage == "firestore" {
-			internal.LogInfoWithFields("oauth", "Using Firestore storage", map[string]interface{}{
+			log.LogInfoWithFields("oauth", "Using Firestore storage", map[string]interface{}{
 				"project":    oauthAuth.GCPProject,
 				"database":   oauthAuth.FirestoreDatabase,
 				"collection": oauthAuth.FirestoreCollection,
@@ -118,7 +118,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			}
 			store = firestoreStorage
 		} else {
-			internal.LogInfoWithFields("oauth", "Using in-memory storage", map[string]interface{}{})
+			log.LogInfoWithFields("oauth", "Using in-memory storage", map[string]interface{}{})
 			store = storage.NewMemoryStorage()
 		}
 
@@ -150,7 +150,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			for _, adminEmail := range cfg.Proxy.Admin.AdminEmails {
 				// Upsert admin user
 				if err := store.UpsertUser(ctx, adminEmail); err != nil {
-					internal.LogWarnWithFields("server", "Failed to initialize admin user", map[string]interface{}{
+					log.LogWarnWithFields("server", "Failed to initialize admin user", map[string]interface{}{
 						"email": adminEmail,
 						"error": err.Error(),
 					})
@@ -158,7 +158,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 				}
 				// Set as admin
 				if err := store.SetUserAdmin(ctx, adminEmail, true); err != nil {
-					internal.LogWarnWithFields("server", "Failed to set user as admin", map[string]interface{}{
+					log.LogWarnWithFields("server", "Failed to set user as admin", map[string]interface{}{
 						"email": adminEmail,
 						"error": err.Error(),
 					})
@@ -199,7 +199,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Build path like /notion/sse
 		ssePathPrefix := "/" + serverName + "/sse"
 
-		internal.LogInfoWithFields("server", "Registering MCP server", map[string]interface{}{
+		log.LogInfoWithFields("server", "Registering MCP server", map[string]interface{}{
 			"name":                serverName,
 			"sse_path":            ssePathPrefix,
 			"transport_type":      serverConfig.TransportType,
@@ -222,7 +222,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			// Create inline handler
 			handler = inline.NewHandler(serverName, inlineServer)
 
-			internal.LogInfoWithFields("server", "Created inline MCP server", map[string]interface{}{
+			log.LogInfoWithFields("server", "Created inline MCP server", map[string]interface{}{
 				"name":  serverName,
 				"tools": len(resolvedTools),
 			})
@@ -249,7 +249,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 						// Handle session registration
 						handleSessionRegistration(sessionCtx, session, handler, s.sessionManager)
 					} else {
-						internal.LogErrorWithFields("server", "No session handler in context", map[string]interface{}{
+						log.LogErrorWithFields("server", "No session handler in context", map[string]interface{}{
 							"sessionID": session.SessionID(),
 							"server":    currentServerName,
 						})
@@ -269,7 +269,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 						if handler.h.storage != nil {
 							if err := handler.h.storage.RevokeSession(sessionCtx, session.SessionID()); err != nil {
-								internal.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
+								log.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
 									"error":     err.Error(),
 									"sessionID": session.SessionID(),
 									"user":      handler.userEmail,
@@ -277,7 +277,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 							}
 						}
 
-						internal.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
+						log.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
 							"sessionID": session.SessionID(),
 							"server":    currentServerName,
 							"user":      handler.userEmail,
@@ -321,10 +321,17 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		middlewares = append(middlewares, corsMiddleware(allowedOrigins))
 
 		if s.oauthServer != nil {
+			log.LogTraceWithFields("server", "Adding OAuth middleware", map[string]interface{}{
+				"server_name": serverName,
+			})
 			middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
 		}
 
 		if len(serverConfig.ServiceAuths) > 0 {
+			log.LogTraceWithFields("server", "Adding service auth middleware", map[string]interface{}{
+				"server_name": serverName,
+				"auth_count":  len(serverConfig.ServiceAuths),
+			})
 			middlewares = append(middlewares, newServiceAuthMiddleware(serverConfig.ServiceAuths))
 		}
 
@@ -338,7 +345,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Admin routes - only if admin is enabled
 	if cfg.Proxy.Admin != nil && cfg.Proxy.Admin.Enabled {
-		internal.LogInfoWithFields("server", "Admin UI enabled", map[string]interface{}{
+		log.LogInfoWithFields("server", "Admin UI enabled", map[string]interface{}{
 			"admin_emails": cfg.Proxy.Admin.AdminEmails,
 		})
 
@@ -371,7 +378,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	internal.LogInfoWithFields("server", "MCP proxy server initialized", nil)
+	log.LogInfoWithFields("server", "MCP proxy server initialized", nil)
 	return s, nil
 }
 
@@ -418,13 +425,13 @@ func handleSessionRegistration(
 		SessionID:  session.SessionID(),
 	}
 
-	internal.LogDebugWithFields("server", "Registering session", map[string]interface{}{
+	log.LogDebugWithFields("server", "Registering session", map[string]interface{}{
 		"sessionID": session.SessionID(),
 		"server":    handler.h.serverName,
 		"user":      handler.userEmail,
 	})
 
-	internal.LogTraceWithFields("server", "Session registration started", map[string]interface{}{
+	log.LogTraceWithFields("server", "Session registration started", map[string]interface{}{
 		"sessionID":         session.SessionID(),
 		"server":            handler.h.serverName,
 		"user":              handler.userEmail,
@@ -441,7 +448,7 @@ func handleSessionRegistration(
 		handler.h.setupBaseURL,
 	)
 	if err != nil {
-		internal.LogErrorWithFields("server", "Failed to create stdio session", map[string]interface{}{
+		log.LogErrorWithFields("server", "Failed to create stdio session", map[string]interface{}{
 			"error":     err.Error(),
 			"sessionID": session.SessionID(),
 			"server":    handler.h.serverName,
@@ -462,7 +469,7 @@ func handleSessionRegistration(
 		handler.config.TokenSetup,
 		session,
 	); err != nil {
-		internal.LogErrorWithFields("server", "Failed to discover and register capabilities", map[string]interface{}{
+		log.LogErrorWithFields("server", "Failed to discover and register capabilities", map[string]interface{}{
 			"error":     err.Error(),
 			"sessionID": session.SessionID(),
 			"server":    handler.h.serverName,
@@ -482,7 +489,7 @@ func handleSessionRegistration(
 				LastActive: time.Now(),
 			}
 			if err := handler.h.storage.TrackSession(sessionCtx, activeSession); err != nil {
-				internal.LogWarnWithFields("server", "Failed to track session", map[string]interface{}{
+				log.LogWarnWithFields("server", "Failed to track session", map[string]interface{}{
 					"error":     err.Error(),
 					"sessionID": session.SessionID(),
 					"user":      handler.userEmail,
@@ -491,7 +498,7 @@ func handleSessionRegistration(
 		}
 	}
 
-	internal.LogInfoWithFields("server", "Session successfully created and connected", map[string]interface{}{
+	log.LogInfoWithFields("server", "Session successfully created and connected", map[string]interface{}{
 		"sessionID": session.SessionID(),
 		"server":    handler.h.serverName,
 		"user":      handler.userEmail,

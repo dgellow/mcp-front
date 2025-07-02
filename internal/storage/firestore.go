@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
+	log "github.com/dgellow/mcp-front/internal/log"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/storage"
 	"google.golang.org/api/iterator"
@@ -141,7 +141,7 @@ func NewFirestoreStorage(ctx context.Context, projectID, database, collection st
 
 	// Load existing clients from Firestore into memory for fast access
 	if err := storage.loadClientsFromFirestore(ctx); err != nil {
-		internal.LogError("Failed to load clients from Firestore: %v", err)
+		log.LogError("Failed to load clients from Firestore: %v", err)
 		// Don't fail startup, just log the error
 	}
 
@@ -168,21 +168,21 @@ func (s *FirestoreStorage) loadClientsFromFirestore(ctx context.Context) error {
 
 		var entity OAuthClientEntity
 		if err := doc.DataTo(&entity); err != nil {
-			internal.LogError("Failed to unmarshal client from Firestore (client_id: %s): %v", doc.Ref.ID, err)
+			log.LogError("Failed to unmarshal client from Firestore (client_id: %s): %v", doc.Ref.ID, err)
 			continue
 		}
 
 		// Store in memory for fast access
 		client, err := entity.ToFositeClient(s.encryptor)
 		if err != nil {
-			internal.LogError("Failed to decrypt client secret (client_id: %s): %v", entity.ID, err)
+			log.LogError("Failed to decrypt client secret (client_id: %s): %v", entity.ID, err)
 			continue
 		}
 		s.MemoryStore.Clients[entity.ID] = client
 		loadedCount++
 	}
 
-	internal.Logf("Loaded %d OAuth clients from Firestore", loadedCount)
+	log.Logf("Loaded %d OAuth clients from Firestore", loadedCount)
 	return nil
 }
 
@@ -266,15 +266,15 @@ func (s *FirestoreStorage) CreateClient(clientID string, redirectURIs []string, 
 	ctx := context.Background()
 	entity, err := FromFositeClient(client, s.encryptor, time.Now().Unix())
 	if err != nil {
-		internal.LogError("Failed to encrypt client for Firestore (client_id: %s): %v", clientID, err)
+		log.LogError("Failed to encrypt client for Firestore (client_id: %s): %v", clientID, err)
 		// Continue with in-memory storage even if encryption fails
 	} else {
 		_, err := s.client.Collection(s.collection).Doc(clientID).Set(ctx, entity)
 		if err != nil {
-			internal.LogError("Failed to store client in Firestore (client_id: %s): %v", clientID, err)
+			log.LogError("Failed to store client in Firestore (client_id: %s): %v", clientID, err)
 			// Continue with in-memory storage even if Firestore fails
 		} else {
-			internal.Logf("Stored client %s in Firestore", clientID)
+			log.Logf("Stored client %s in Firestore", clientID)
 		}
 	}
 
@@ -284,8 +284,8 @@ func (s *FirestoreStorage) CreateClient(clientID string, redirectURIs []string, 
 	clientCount := len(s.MemoryStore.Clients)
 	s.clientsMutex.Unlock()
 
-	internal.Logf("Created client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
-	internal.Logf("Total clients in storage: %d", clientCount)
+	log.Logf("Created client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
+	log.Logf("Total clients in storage: %d", clientCount)
 	return client
 }
 
@@ -307,15 +307,15 @@ func (s *FirestoreStorage) CreateConfidentialClient(clientID string, hashedSecre
 	ctx := context.Background()
 	entity, err := FromFositeClient(client, s.encryptor, time.Now().Unix())
 	if err != nil {
-		internal.LogError("Failed to encrypt client for Firestore (client_id: %s): %v", clientID, err)
+		log.LogError("Failed to encrypt client for Firestore (client_id: %s): %v", clientID, err)
 		// Continue with in-memory storage even if encryption fails
 	} else {
 		_, err := s.client.Collection(s.collection).Doc(clientID).Set(ctx, entity)
 		if err != nil {
-			internal.LogError("Failed to store client in Firestore (client_id: %s): %v", clientID, err)
+			log.LogError("Failed to store client in Firestore (client_id: %s): %v", clientID, err)
 			// Continue with in-memory storage even if Firestore fails
 		} else {
-			internal.Logf("Stored confidential client %s in Firestore", clientID)
+			log.Logf("Stored confidential client %s in Firestore", clientID)
 		}
 	}
 
@@ -325,8 +325,8 @@ func (s *FirestoreStorage) CreateConfidentialClient(clientID string, hashedSecre
 	clientCount := len(s.MemoryStore.Clients)
 	s.clientsMutex.Unlock()
 
-	internal.Logf("Created confidential client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
-	internal.Logf("Total clients in storage: %d", clientCount)
+	log.Logf("Created confidential client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
+	log.Logf("Total clients in storage: %d", clientCount)
 	return client
 }
 
@@ -437,7 +437,7 @@ func (s *FirestoreStorage) ListUserServices(ctx context.Context, userEmail strin
 		var tokenDoc UserTokenDoc
 		if err := doc.DataTo(&tokenDoc); err != nil {
 			// Log error but continue with other tokens
-			internal.LogError("Failed to unmarshal user token: %v", err)
+			log.LogError("Failed to unmarshal user token: %v", err)
 			continue
 		}
 
@@ -511,7 +511,7 @@ func (s *FirestoreStorage) GetAllUsers(ctx context.Context) ([]UserInfo, error) 
 
 		var userDoc UserDoc
 		if err := doc.DataTo(&userDoc); err != nil {
-			internal.LogError("Failed to unmarshal user: %v", err)
+			log.LogError("Failed to unmarshal user: %v", err)
 			continue
 		}
 
@@ -550,13 +550,13 @@ func (s *FirestoreStorage) DeleteUser(ctx context.Context, email string) error {
 			break
 		}
 		if err != nil {
-			internal.LogError("Failed to iterate user tokens for deletion: %v", err)
+			log.LogError("Failed to iterate user tokens for deletion: %v", err)
 			continue
 		}
 
 		_, err = doc.Ref.Delete(ctx)
 		if err != nil {
-			internal.LogError("Failed to delete user token: %v", err)
+			log.LogError("Failed to delete user token: %v", err)
 		}
 	}
 
@@ -621,7 +621,7 @@ func (s *FirestoreStorage) GetActiveSessions(ctx context.Context) ([]ActiveSessi
 
 		var sessionDoc SessionDoc
 		if err := doc.DataTo(&sessionDoc); err != nil {
-			internal.LogError("Failed to unmarshal session: %v", err)
+			log.LogError("Failed to unmarshal session: %v", err)
 			continue
 		}
 

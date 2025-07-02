@@ -6,9 +6,17 @@
     "name": "mcp-front-basic-auth-test"
   },
   "mcpServers": {
-    "test-server": {
-      "transportType": "sse",
-      "url": "http://localhost:9999/sse",
+    "postgres": {
+      "transportType": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--network",
+        "host",
+        "mcp/postgres",
+        "postgresql://testuser:testpass@localhost:15432/testdb"
+      ],
       "serviceAuths": [
         {
           "type": "basic",

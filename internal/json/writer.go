@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/dgellow/mcp-front/internal"
+	log "github.com/dgellow/mcp-front/internal/log"
 )
 
 // ErrorResponse represents a standard JSON error response
@@ -19,7 +19,7 @@ func WriteResponse(w http.ResponseWriter, statusCode int, data any) error {
 	w.WriteHeader(statusCode)
 
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		internal.LogError("Failed to encode JSON response: %v", err)
+		log.LogError("Failed to encode JSON response: %v", err)
 		return err
 	}
 	return nil

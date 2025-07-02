@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	log "github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -139,7 +139,7 @@ func (sm *StdioSessionManager) GetSession(key SessionKey) (*StdioSession, bool) 
 		lastAccessed := session.lastAccessed.Load()
 		session.lastAccessed.Store(&now)
 
-		internal.LogTraceWithFields("session_manager", "Session accessed", map[string]interface{}{
+		log.LogTraceWithFields("session_manager", "Session accessed", map[string]interface{}{
 			"sessionID":       key.SessionID,
 			"server":          key.ServerName,
 			"user":            key.UserEmail,
@@ -150,7 +150,7 @@ func (sm *StdioSessionManager) GetSession(key SessionKey) (*StdioSession, bool) 
 		select {
 		case <-session.ctx.Done():
 			// Process died, remove it
-			internal.LogTraceWithFields("session_manager", "Session context cancelled, removing", map[string]interface{}{
+			log.LogTraceWithFields("session_manager", "Session context cancelled, removing", map[string]interface{}{
 				"sessionID": key.SessionID,
 				"server":    key.ServerName,
 				"user":      key.UserEmail,
@@ -162,7 +162,7 @@ func (sm *StdioSessionManager) GetSession(key SessionKey) (*StdioSession, bool) 
 		}
 	}
 
-	internal.LogTraceWithFields("session_manager", "Session not found", map[string]interface{}{
+	log.LogTraceWithFields("session_manager", "Session not found", map[string]interface{}{
 		"sessionID": key.SessionID,
 		"server":    key.ServerName,
 		"user":      key.UserEmail,
@@ -177,7 +177,7 @@ func (sm *StdioSessionManager) RemoveSession(key SessionKey) {
 	session, ok := sm.sessions[key]
 	if ok {
 		delete(sm.sessions, key)
-		internal.LogTraceWithFields("session_manager", "Removing session from map", map[string]interface{}{
+		log.LogTraceWithFields("session_manager", "Removing session from map", map[string]interface{}{
 			"sessionID": key.SessionID,
 			"server":    key.ServerName,
 			"user":      key.UserEmail,
@@ -192,7 +192,7 @@ func (sm *StdioSessionManager) RemoveSession(key SessionKey) {
 
 		// Close the client
 		if err := session.client.Close(); err != nil {
-			internal.LogErrorWithFields("session_manager", "Failed to close client", map[string]interface{}{
+			log.LogErrorWithFields("session_manager", "Failed to close client", map[string]interface{}{
 				"error":     err.Error(),
 				"sessionID": key.SessionID,
 				"server":    key.ServerName,
@@ -200,13 +200,13 @@ func (sm *StdioSessionManager) RemoveSession(key SessionKey) {
 			})
 		}
 
-		internal.LogInfoWithFields("session_manager", "Removed session", map[string]interface{}{
+		log.LogInfoWithFields("session_manager", "Removed session", map[string]interface{}{
 			"sessionID": key.SessionID,
 			"server":    key.ServerName,
 			"user":      key.UserEmail,
 		})
 
-		internal.LogTraceWithFields("session_manager", "Session removed with details", map[string]interface{}{
+		log.LogTraceWithFields("session_manager", "Session removed with details", map[string]interface{}{
 			"sessionID":         key.SessionID,
 			"server":            key.ServerName,
 			"user":              key.UserEmail,
@@ -277,14 +277,14 @@ func (s *StdioSession) DiscoverAndRegisterCapabilities(
 	if err != nil {
 		return err
 	}
-	internal.Logf("<%s> Successfully initialized MCP client", serverName)
+	log.Logf("<%s> Successfully initialized MCP client", serverName)
 
 	// Start capability discovery
-	internal.LogInfoWithFields("client", "Starting MCP capability discovery", map[string]interface{}{
+	log.LogInfoWithFields("client", "Starting MCP capability discovery", map[string]interface{}{
 		"server": serverName,
 	})
 
-	internal.LogTraceWithFields("client", "Starting capability discovery", map[string]interface{}{
+	log.LogTraceWithFields("client", "Starting capability discovery", map[string]interface{}{
 		"server":            serverName,
 		"sessionID":         session.SessionID(),
 		"userEmail":         userEmail,
@@ -306,12 +306,12 @@ func (s *StdioSession) DiscoverAndRegisterCapabilities(
 	// Discover and register resource templates
 	_ = s.client.addResourceTemplatesToServer(ctx, mcpServer)
 
-	internal.LogInfoWithFields("client", "MCP capability discovery completed", map[string]interface{}{
+	log.LogInfoWithFields("client", "MCP capability discovery completed", map[string]interface{}{
 		"server":            serverName,
 		"userTokenRequired": requiresToken,
 	})
 
-	internal.LogTraceWithFields("client", "Capability discovery completed", map[string]interface{}{
+	log.LogTraceWithFields("client", "Capability discovery completed", map[string]interface{}{
 		"server":              serverName,
 		"sessionID":           session.SessionID(),
 		"userEmail":           userEmail,
@@ -343,7 +343,7 @@ func (sm *StdioSessionManager) checkUserLimits(userEmail string) error {
 
 	count := sm.getUserSessionCount(userEmail)
 	if count >= sm.maxPerUser {
-		internal.LogWarnWithFields("session_manager", "User session limit exceeded", map[string]interface{}{
+		log.LogWarnWithFields("session_manager", "User session limit exceeded", map[string]interface{}{
 			"user":  userEmail,
 			"count": count,
 			"limit": sm.maxPerUser,
@@ -352,7 +352,7 @@ func (sm *StdioSessionManager) checkUserLimits(userEmail string) error {
 			ErrUserLimitExceeded, userEmail, count, sm.maxPerUser)
 	}
 
-	internal.LogTraceWithFields("session_manager", "User session limit check passed", map[string]interface{}{
+	log.LogTraceWithFields("session_manager", "User session limit check passed", map[string]interface{}{
 		"user":            userEmail,
 		"currentSessions": count,
 		"maxPerUser":      sm.maxPerUser,
@@ -409,13 +409,13 @@ func (sm *StdioSessionManager) createSession(
 	sm.sessions[key] = session
 	sm.mu.Unlock()
 
-	internal.LogInfoWithFields("session_manager", "Created new session", map[string]interface{}{
+	log.LogInfoWithFields("session_manager", "Created new session", map[string]interface{}{
 		"sessionID": key.SessionID,
 		"server":    key.ServerName,
 		"user":      key.UserEmail,
 	})
 
-	internal.LogTraceWithFields("session_manager", "Session created with details", map[string]interface{}{
+	log.LogTraceWithFields("session_manager", "Session created with details", map[string]interface{}{
 		"sessionID":       key.SessionID,
 		"server":          key.ServerName,
 		"user":            key.UserEmail,
@@ -465,7 +465,7 @@ func (sm *StdioSessionManager) cleanupTimedOutSessions() {
 	sm.mu.RUnlock()
 
 	if totalSessions > 0 || len(timedOut) > 0 {
-		internal.LogTraceWithFields("session_manager", "Session cleanup cycle", map[string]interface{}{
+		log.LogTraceWithFields("session_manager", "Session cleanup cycle", map[string]interface{}{
 			"totalSessions":    totalSessions,
 			"activeSessions":   activeSessions,
 			"timedOutSessions": len(timedOut),
@@ -474,7 +474,7 @@ func (sm *StdioSessionManager) cleanupTimedOutSessions() {
 	}
 
 	for _, key := range timedOut {
-		internal.LogInfoWithFields("session_manager", "Removing timed out session", map[string]interface{}{
+		log.LogInfoWithFields("session_manager", "Removing timed out session", map[string]interface{}{
 			"sessionID": key.SessionID,
 			"server":    key.ServerName,
 			"user":      key.UserEmail,

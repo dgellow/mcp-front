@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/dgellow/mcp-front/internal"
+	log "github.com/dgellow/mcp-front/internal/log"
 )
 
 // WriteResponse writes a JSON-RPC response to the http.ResponseWriter
 func WriteResponse(w http.ResponseWriter, response *Response) error {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		internal.LogError("Failed to encode JSON-RPC response: %v", err)
+		log.LogError("Failed to encode JSON-RPC response: %v", err)
 		return err
 	}
 	return nil
@@ -35,7 +35,7 @@ func WriteErrorWithStatus(w http.ResponseWriter, id any, code int, message strin
 	w.WriteHeader(httpStatus)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		internal.LogError("Failed to encode JSON-RPC error response: %v", err)
+		log.LogError("Failed to encode JSON-RPC error response: %v", err)
 	}
 }
 

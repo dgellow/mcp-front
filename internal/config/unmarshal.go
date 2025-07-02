@@ -9,6 +9,8 @@ import (
 
 	"github.com/dgellow/mcp-front/internal/utils"
 	"golang.org/x/crypto/bcrypt"
+
+	log "github.com/dgellow/mcp-front/internal/log"
 )
 
 // UnmarshalJSON implements custom unmarshaling for MCPClientConfig
@@ -359,12 +361,19 @@ func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	log.LogTraceWithFields("config", "Unmarshaling service auth", map[string]interface{}{
+		"type": raw.Type,
+	})
+
 	s.Type = raw.Type
 	s.Username = raw.Username
 	s.Tokens = raw.Tokens
 
 	// Parse password if provided (for basic auth)
 	if raw.Password != nil {
+		log.LogTraceWithFields("config", "Parsing password for basic auth", map[string]interface{}{
+			"username": s.Username,
+		})
 		parsed, err := ParseConfigValue(raw.Password)
 		if err != nil {
 			return fmt.Errorf("parsing password: %w", err)
@@ -374,6 +383,9 @@ func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
 		}
 
 		// Hash the password using bcrypt
+		log.LogTraceWithFields("config", "Hashing password for basic auth", map[string]interface{}{
+			"username": s.Username,
+		})
 		hashed, err := bcrypt.GenerateFromPassword([]byte(parsed.value), bcrypt.DefaultCost)
 		if err != nil {
 			return fmt.Errorf("hashing password: %w", err)
@@ -383,6 +395,9 @@ func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
 
 	// Parse user token if provided
 	if raw.UserToken != nil {
+		log.LogTraceWithFields("config", "Parsing user token for service auth", map[string]interface{}{
+			"type": s.Type,
+		})
 		parsed, err := ParseConfigValue(raw.UserToken)
 		if err != nil {
 			return fmt.Errorf("parsing userToken: %w", err)

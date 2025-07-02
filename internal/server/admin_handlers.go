@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
+	log "github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
@@ -62,7 +62,7 @@ func (h *AdminHandlers) validateCSRFToken(token string) bool {
 	// Parse token format: nonce:timestamp:signature
 	parts := strings.SplitN(token, ":", 3)
 	if len(parts) != 3 {
-		internal.LogDebug("Invalid CSRF token format")
+		log.LogDebug("Invalid CSRF token format")
 		return false
 	}
 
@@ -73,20 +73,20 @@ func (h *AdminHandlers) validateCSRFToken(token string) bool {
 	// Verify timestamp (15 minute expiry)
 	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
 	if err != nil {
-		internal.LogDebug("Invalid CSRF token timestamp: %v", err)
+		log.LogDebug("Invalid CSRF token timestamp: %v", err)
 		return false
 	}
 
 	now := time.Now().Unix()
 	if now-timestamp > 900 { // 15 minutes
-		internal.LogDebug("CSRF token expired")
+		log.LogDebug("CSRF token expired")
 		return false
 	}
 
 	// Verify HMAC signature
 	data := nonce + ":" + timestampStr
 	if !crypto.ValidateSignedData(data, signature, h.encryptionKey) {
-		internal.LogDebug("Invalid CSRF token signature")
+		log.LogDebug("Invalid CSRF token signature")
 		return false
 	}
 
@@ -126,7 +126,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 	// Load all data
 	rawUsers, err := h.storage.GetAllUsers(r.Context())
 	if err != nil {
-		internal.LogErrorWithFields("admin", "Failed to get users", map[string]interface{}{
+		log.LogErrorWithFields("admin", "Failed to get users", map[string]interface{}{
 			"error": err.Error(),
 		})
 		rawUsers = []storage.UserInfo{} // Empty list on error
@@ -143,18 +143,18 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 
 	sessions, err := h.storage.GetActiveSessions(r.Context())
 	if err != nil {
-		internal.LogErrorWithFields("admin", "Failed to get sessions", map[string]interface{}{
+		log.LogErrorWithFields("admin", "Failed to get sessions", map[string]interface{}{
 			"error": err.Error(),
 		})
 		sessions = []storage.ActiveSession{} // Empty list on error
 	}
 
-	currentLogLevel := internal.GetLogLevel()
+	currentLogLevel := log.GetLogLevel()
 
 	// Generate CSRF token
 	csrfToken, err := h.generateCSRFToken()
 	if err != nil {
-		internal.LogErrorWithFields("admin", "Failed to generate CSRF token", map[string]interface{}{
+		log.LogErrorWithFields("admin", "Failed to generate CSRF token", map[string]interface{}{
 			"error": err.Error(),
 		})
 		jsonwriter.WriteInternalServerError(w, "Internal server error")
@@ -175,7 +175,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := adminPageTemplate.Execute(w, data); err != nil {
-		internal.LogErrorWithFields("admin", "Failed to render admin page", map[string]interface{}{
+		log.LogErrorWithFields("admin", "Failed to render admin page", map[string]interface{}{
 			"error": err.Error(),
 		})
 		jsonwriter.WriteInternalServerError(w, "Internal server error")
@@ -248,7 +248,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 				if currentEnabled {
 					message = fmt.Sprintf("User %s disabled", targetEmail)
 					// Audit log
-					internal.LogInfoWithFields("admin", "User disabled", map[string]interface{}{
+					log.LogInfoWithFields("admin", "User disabled", map[string]interface{}{
 						"admin_email":  userEmail,
 						"target_email": targetEmail,
 						"action":       "disable",
@@ -256,7 +256,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 				} else {
 					message = fmt.Sprintf("User %s enabled", targetEmail)
 					// Audit log
-					internal.LogInfoWithFields("admin", "User enabled", map[string]interface{}{
+					log.LogInfoWithFields("admin", "User enabled", map[string]interface{}{
 						"admin_email":  userEmail,
 						"target_email": targetEmail,
 						"action":       "enable",
@@ -272,7 +272,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 		} else {
 			message = fmt.Sprintf("User %s deleted", targetEmail)
 			// Audit log
-			internal.LogInfoWithFields("admin", "User deleted", map[string]interface{}{
+			log.LogInfoWithFields("admin", "User deleted", map[string]interface{}{
 				"admin_email":  userEmail,
 				"target_email": targetEmail,
 				"action":       "delete",
@@ -309,7 +309,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 				} else {
 					message = fmt.Sprintf("User %s promoted to admin", targetEmail)
 					// Audit log
-					internal.LogInfoWithFields("admin", "User promoted to admin", map[string]interface{}{
+					log.LogInfoWithFields("admin", "User promoted to admin", map[string]interface{}{
 						"admin_email":  userEmail,
 						"target_email": targetEmail,
 						"action":       "promote",
@@ -334,7 +334,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 			} else {
 				message = fmt.Sprintf("User %s demoted from admin", targetEmail)
 				// Audit log
-				internal.LogInfoWithFields("admin", "User demoted from admin", map[string]interface{}{
+				log.LogInfoWithFields("admin", "User demoted from admin", map[string]interface{}{
 					"admin_email":  userEmail,
 					"target_email": targetEmail,
 					"action":       "demote",
@@ -421,7 +421,7 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 		} else {
 			message = "Session revoked"
 			// Audit log
-			internal.LogInfoWithFields("admin", "Session revoked", map[string]interface{}{
+			log.LogInfoWithFields("admin", "Session revoked", map[string]interface{}{
 				"admin_email": userEmail,
 				"session_id":  sessionID,
 				"action":      "revoke_session",
@@ -480,14 +480,14 @@ func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Requ
 	var messageType string = "success"
 
 	// Update log level
-	if err := internal.SetLogLevel(logLevel); err != nil {
+	if err := log.SetLogLevel(logLevel); err != nil {
 		message = fmt.Sprintf("Failed to set log level: %v", err)
 		messageType = "error"
 	} else {
 		message = fmt.Sprintf("Log level changed to %s", logLevel)
 
 		// Log the change at INFO level
-		internal.LogInfoWithFields("admin", "Log level changed by admin", map[string]interface{}{
+		log.LogInfoWithFields("admin", "Log level changed by admin", map[string]interface{}{
 			"new_level": logLevel,
 			"admin":     userEmail,
 		})

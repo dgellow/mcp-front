@@ -7,16 +7,16 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
+	log "github.com/dgellow/mcp-front/internal/log"
 )
 
 // forwardStreamablePostToBackend handles POST requests for streamable-http transport
 func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, r *http.Request, config *config.MCPClientConfig) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		internal.LogErrorWithFields("streamable_proxy", "Failed to read request body", map[string]any{
+		log.LogErrorWithFields("streamable_proxy", "Failed to read request body", map[string]any{
 			"error": err.Error(),
 		})
 		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to read request")
@@ -25,7 +25,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.URL, bytes.NewReader(body))
 	if err != nil {
-		internal.LogErrorWithFields("streamable_proxy", "Failed to create backend request", map[string]any{
+		log.LogErrorWithFields("streamable_proxy", "Failed to create backend request", map[string]any{
 			"error": err.Error(),
 		})
 		jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "Failed to create request")
@@ -40,7 +40,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 
 	req.Header.Set("Accept", "application/json, text/event-stream")
 
-	internal.LogDebugWithFields("streamable_proxy", "Forwarding POST to backend", map[string]any{
+	log.LogDebugWithFields("streamable_proxy", "Forwarding POST to backend", map[string]any{
 		"backendURL": config.URL,
 		"method":     r.Method,
 		"headers":    config.Headers,
@@ -51,7 +51,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		internal.LogErrorWithFields("streamable_proxy", "Backend request failed", map[string]any{
+		log.LogErrorWithFields("streamable_proxy", "Backend request failed", map[string]any{
 			"error": err.Error(),
 			"url":   config.URL,
 		})
@@ -63,7 +63,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 	contentType := resp.Header.Get("Content-Type")
 
 	if strings.HasPrefix(contentType, "text/event-stream") {
-		internal.LogInfoWithFields("streamable_proxy", "Backend returned SSE stream", map[string]any{
+		log.LogInfoWithFields("streamable_proxy", "Backend returned SSE stream", map[string]any{
 			"status": resp.StatusCode,
 		})
 
@@ -77,7 +77,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			internal.LogError("Response writer doesn't support flushing")
+			log.LogError("Response writer doesn't support flushing")
 			return
 		}
 
@@ -86,7 +86,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 			n, err := resp.Body.Read(buf)
 			if n > 0 {
 				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-					internal.LogDebugWithFields("streamable_proxy", "Client disconnected", map[string]any{
+					log.LogDebugWithFields("streamable_proxy", "Client disconnected", map[string]any{
 						"error": writeErr.Error(),
 					})
 					return
@@ -97,7 +97,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 				break
 			}
 			if err != nil {
-				internal.LogErrorWithFields("streamable_proxy", "Error reading SSE stream", map[string]any{
+				log.LogErrorWithFields("streamable_proxy", "Error reading SSE stream", map[string]any{
 					"error": err.Error(),
 				})
 				return
@@ -111,7 +111,7 @@ func forwardStreamablePostToBackend(ctx context.Context, w http.ResponseWriter, 
 		}
 
 		if _, err := io.Copy(w, resp.Body); err != nil {
-			internal.LogErrorWithFields("streamable_proxy", "Failed to copy response body", map[string]any{
+			log.LogErrorWithFields("streamable_proxy", "Failed to copy response body", map[string]any{
 				"error": err.Error(),
 			})
 		}

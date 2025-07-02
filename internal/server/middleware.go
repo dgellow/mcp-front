@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
+	log "github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"golang.org/x/crypto/bcrypt"
@@ -147,7 +147,7 @@ func loggerMiddleware(prefix string) MiddlewareFunc {
 				fields["query"] = r.URL.RawQuery
 			}
 
-			internal.LogInfoWithFields(prefix, "request", fields)
+			log.LogInfoWithFields(prefix, "request", fields)
 		})
 	}
 }
@@ -158,7 +158,7 @@ func recoverMiddleware(prefix string) MiddlewareFunc {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if err := recover(); err != nil {
-					internal.Logf("<%s> Recovered from panic: %v", prefix, err)
+					log.Logf("<%s> Recovered from panic: %v", prefix, err)
 					jsonwriter.WriteInternalServerError(w, "Internal Server Error")
 				}
 			}()
@@ -175,18 +175,23 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 
 			// Check if user context is already set — OAuth succeeded, no need for further auth
 			if userEmail, ok := oauth.GetUserFromContext(ctx); ok && userEmail != "" {
+				log.LogTraceWithFields("service_auth", "Skipping service auth, user already authenticated via OAuth", map[string]interface{}{
+					"user": userEmail,
+				})
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				log.LogTraceWithFields("service_auth", "Service auth failed: missing Authorization header", nil)
 				jsonwriter.WriteUnauthorized(w, "Unauthorized")
 				return
 			}
 
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				token := authHeader[7:]
+				log.LogTraceWithFields("service_auth", "Attempting bearer token service auth", nil)
 				for _, serviceAuth := range serviceAuths {
 					if serviceAuth.Type != config.ServiceAuthTypeBearer {
 						continue
@@ -195,18 +200,26 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 					for _, allowedToken := range serviceAuth.Tokens {
 						if token == allowedToken {
 							// Auth succeeded
+							log.LogTraceWithFields("service_auth", "Bearer token service auth successful", map[string]interface{}{
+								"service_name": "service",
+							})
 							ctx := auth.WithServiceAuth(r.Context(), "service", serviceAuth.ResolvedUserToken)
 							next.ServeHTTP(w, r.WithContext(ctx))
 							return
 						}
 					}
 				}
+				log.LogTraceWithFields("service_auth", "Bearer token service auth failed: invalid token", nil)
 			}
 
 			if strings.HasPrefix(authHeader, "Basic ") {
 				encoded := authHeader[6:]
+				log.LogTraceWithFields("service_auth", "Attempting basic service auth", nil)
 				decoded, err := base64.StdEncoding.DecodeString(encoded)
 				if err != nil {
+					log.LogTraceWithFields("service_auth", "Basic service auth failed: invalid base64 encoding", map[string]interface{}{
+						"error": err.Error(),
+					})
 					w.Header().Set("WWW-Authenticate", `Basic realm="mcp-front"`)
 					jsonwriter.WriteUnauthorized(w, "Unauthorized")
 					return
@@ -215,6 +228,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 				credentials := string(decoded)
 				colonIdx := strings.IndexByte(credentials, ':')
 				if colonIdx == -1 {
+					log.LogTraceWithFields("service_auth", "Basic service auth failed: malformed credentials", nil)
 					w.Header().Set("WWW-Authenticate", `Basic realm="mcp-front"`)
 					jsonwriter.WriteUnauthorized(w, "Unauthorized")
 					return
@@ -231,12 +245,16 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 					if username == serviceAuth.Username {
 						if err := bcrypt.CompareHashAndPassword([]byte(serviceAuth.HashedPassword), []byte(password)); err == nil {
 							// Auth succeeded
+							log.LogTraceWithFields("service_auth", "Basic service auth successful", map[string]interface{}{
+								"username": username,
+							})
 							ctx := auth.WithServiceAuth(r.Context(), serviceAuth.Username, serviceAuth.ResolvedUserToken)
 							next.ServeHTTP(w, r.WithContext(ctx))
 							return
 						}
 					}
 				}
+				log.LogTraceWithFields("service_auth", "Basic service auth failed: invalid username or password", nil)
 			}
 
 			jsonwriter.WriteUnauthorized(w, "Unauthorized")
