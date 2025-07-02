@@ -128,10 +128,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			AllowedDomains:      oauthAuth.AllowedDomains,
 			AllowedOrigins:      oauthAuth.AllowedOrigins,
 			GoogleClientID:      oauthAuth.GoogleClientID,
-			GoogleClientSecret:  oauthAuth.GoogleClientSecret,
+			GoogleClientSecret:  string(oauthAuth.GoogleClientSecret),
 			GoogleRedirectURI:   oauthAuth.GoogleRedirectURI,
-			JWTSecret:           oauthAuth.JWTSecret,
-			EncryptionKey:       oauthAuth.EncryptionKey,
+			JWTSecret:           string(oauthAuth.JWTSecret),
+			EncryptionKey:       string(oauthAuth.EncryptionKey),
 			StorageType:         oauthAuth.Storage,
 			GCPProjectID:        oauthAuth.GCPProject,
 			FirestoreDatabase:   oauthAuth.FirestoreDatabase,
@@ -352,7 +352,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Get encryption key from OAuth config
 		var encryptionKey string
 		if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
-			encryptionKey = oauthAuth.EncryptionKey
+			encryptionKey = string(oauthAuth.EncryptionKey)
 		}
 
 		adminHandlers := NewAdminHandlers(s.storage, cfg, s.sessionManager, encryptionKey)
@@ -466,7 +466,7 @@ func handleSessionRegistration(
 		handler.h.storage,
 		handler.h.serverName,
 		handler.h.setupBaseURL,
-		handler.config.TokenSetup,
+		handler.config.UserAuthentication,
 		session,
 	); err != nil {
 		log.LogErrorWithFields("server", "Failed to discover and register capabilities", map[string]interface{}{

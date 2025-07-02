@@ -129,10 +129,11 @@ func TestMCPClientConfig_UnmarshalJSON(t *testing.T) {
 			"AUTH_HEADER": {"$userToken": "Bearer {{token}}"}
 		},
 		"requiresUserToken": true,
-		"tokenSetup": {
+		"userAuthentication": {
+			"type": "manual",
 			"displayName": "Test Token",
 			"instructions": "Enter your test token",
-			"tokenFormat": "^test_[a-z]+$"
+			"validation": "^test_[a-z]+$"
 		}
 	}`
 
@@ -155,13 +156,14 @@ func TestMCPClientConfig_UnmarshalJSON(t *testing.T) {
 		"AUTH_HEADER":  true,
 	}, config.EnvNeedsToken)
 
-	// Check token setup
+	// Check user authentication
 	assert.True(t, config.RequiresUserToken)
-	assert.NotNil(t, config.TokenSetup)
-	assert.Equal(t, "Test Token", config.TokenSetup.DisplayName)
-	assert.NotNil(t, config.TokenSetup.CompiledRegex)
-	assert.True(t, config.TokenSetup.CompiledRegex.MatchString("test_abc"))
-	assert.False(t, config.TokenSetup.CompiledRegex.MatchString("test_123"))
+	assert.NotNil(t, config.UserAuthentication)
+	assert.Equal(t, UserAuthTypeManual, config.UserAuthentication.Type)
+	assert.Equal(t, "Test Token", config.UserAuthentication.DisplayName)
+	assert.NotNil(t, config.UserAuthentication.ValidationRegex)
+	assert.True(t, config.UserAuthentication.ValidationRegex.MatchString("test_abc"))
+	assert.False(t, config.UserAuthentication.ValidationRegex.MatchString("test_123"))
 }
 
 func TestMCPClientConfig_ApplyUserToken(t *testing.T) {

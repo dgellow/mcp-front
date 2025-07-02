@@ -251,7 +251,7 @@ func (s *StdioSession) DiscoverAndRegisterCapabilities(
 	tokenStore storage.UserTokenStore,
 	serverName string,
 	setupBaseURL string,
-	tokenSetup *config.TokenSetupConfig,
+	userAuth *config.UserAuthentication,
 	session server.ClientSession,
 ) error {
 	// Initialize the client
@@ -289,11 +289,11 @@ func (s *StdioSession) DiscoverAndRegisterCapabilities(
 		"sessionID":         session.SessionID(),
 		"userEmail":         userEmail,
 		"requiresUserToken": requiresToken,
-		"hasTokenSetup":     tokenSetup != nil,
+		"hasTokenSetup":     userAuth != nil,
 	})
 
 	// Discover and register tools
-	if err := s.client.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, tokenSetup, session); err != nil {
+	if err := s.client.addToolsToServer(ctx, mcpServer, userEmail, requiresToken, tokenStore, serverName, setupBaseURL, userAuth, session); err != nil {
 		return err
 	}
 

@@ -301,8 +301,10 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	}
 
 	// Validate token format if configured
-	if h.serverConfig.TokenSetup != nil && h.serverConfig.TokenSetup.CompiledRegex != nil {
-		if !h.serverConfig.TokenSetup.CompiledRegex.MatchString(token) {
+	if h.serverConfig.UserAuthentication != nil &&
+		h.serverConfig.UserAuthentication.Type == config.UserAuthTypeManual &&
+		h.serverConfig.UserAuthentication.ValidationRegex != nil {
+		if !h.serverConfig.UserAuthentication.ValidationRegex.MatchString(token) {
 			log.LogWarnWithFields("mcp", "User token doesn't match expected format", map[string]any{
 				"user":    userEmail,
 				"service": h.serverName,

@@ -204,9 +204,9 @@ func validateMCPServer(name string, server *MCPClientConfig) error {
 		return fmt.Errorf("server %s has invalid transportType: %s", name, server.TransportType)
 	}
 
-	// Validate token setup if required
-	if server.RequiresUserToken && server.TokenSetup == nil {
-		return fmt.Errorf("server %s requires user token but has no tokenSetup", name)
+	// Validate user authentication if required
+	if server.RequiresUserToken && server.UserAuthentication == nil {
+		return fmt.Errorf("server %s requires user token but has no userAuthentication", name)
 	}
 
 	return nil

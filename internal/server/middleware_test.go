@@ -179,7 +179,7 @@ func TestServiceAuthMiddleware(t *testing.T) {
 		{
 			Type:           config.ServiceAuthTypeBasic,
 			Username:       "user",
-			HashedPassword: string(hashedPassword),
+			HashedPassword: config.Secret(hashedPassword),
 		},
 	}
 
@@ -268,15 +268,15 @@ func TestServiceAuthMiddleware_Context(t *testing.T) {
 
 	serviceAuths := []config.ServiceAuth{
 		{
-			Type:              config.ServiceAuthTypeBearer,
-			Tokens:            []string{"valid-token"},
-			ResolvedUserToken: "bearer-user-token",
+			Type:      config.ServiceAuthTypeBearer,
+			Tokens:    []string{"valid-token"},
+			UserToken: config.Secret("bearer-user-token"),
 		},
 		{
-			Type:              config.ServiceAuthTypeBasic,
-			Username:          "user",
-			HashedPassword:    string(hashedPassword),
-			ResolvedUserToken: "basic-user-token",
+			Type:           config.ServiceAuthTypeBasic,
+			Username:       "user",
+			HashedPassword: config.Secret(hashedPassword),
+			UserToken:      config.Secret("basic-user-token"),
 		},
 	}
 

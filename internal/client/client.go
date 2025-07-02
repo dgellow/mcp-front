@@ -162,7 +162,7 @@ func (c *Client) addToolsToServer(
 	tokenStore storage.UserTokenStore,
 	serverName string,
 	setupBaseURL string,
-	tokenSetup *config.TokenSetupConfig,
+	userAuth *config.UserAuthentication,
 	session server.ClientSession,
 ) error {
 	toolsRequest := mcp.ListToolsRequest{}
@@ -251,7 +251,7 @@ func (c *Client) addToolsToServer(
 						userEmail,
 						serverName,
 						setupBaseURL,
-						tokenSetup,
+						userAuth,
 					)
 				} else {
 					handler = c.client.CallTool
@@ -412,7 +412,7 @@ func (c *Client) wrapToolHandler(
 	userEmail string,
 	serverName string,
 	setupBaseURL string,
-	tokenSetup *config.TokenSetupConfig,
+	userAuth *config.UserAuthentication,
 ) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(toolCtx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Log tool invocation
@@ -435,7 +435,7 @@ func (c *Client) wrapToolHandler(
 				errorData := createTokenRequiredError(
 					serverName,
 					setupBaseURL,
-					tokenSetup,
+					userAuth,
 					"configuration error: this service requires user tokens but OAuth is not properly configured.",
 				)
 
@@ -449,14 +449,14 @@ func (c *Client) wrapToolHandler(
 				tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
 
 				var errorMessage string
-				if tokenSetup != nil {
+				if userAuth != nil {
 					errorMessage = fmt.Sprintf(
 						"token required: %s requires a user token to access the API. "+
 							"please visit %s to set up your %s token. %s",
-						tokenSetup.DisplayName,
+						userAuth.DisplayName,
 						tokenSetupURL,
-						tokenSetup.DisplayName,
-						tokenSetup.Instructions,
+						userAuth.DisplayName,
+						userAuth.Instructions,
 					)
 				} else {
 					errorMessage = fmt.Sprintf(
@@ -469,7 +469,7 @@ func (c *Client) wrapToolHandler(
 				errorData := createTokenRequiredError(
 					serverName,
 					setupBaseURL,
-					tokenSetup,
+					userAuth,
 					errorMessage,
 				)
 
@@ -509,7 +509,7 @@ func (c *Client) Close() error {
 }
 
 // createTokenRequiredError creates the structured error for missing user tokens
-func createTokenRequiredError(serverName, setupBaseURL string, tokenSetup *config.TokenSetupConfig, message string) map[string]interface{} {
+func createTokenRequiredError(serverName, setupBaseURL string, userAuth *config.UserAuthentication, message string) map[string]interface{} {
 	tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
 
 	return map[string]interface{}{

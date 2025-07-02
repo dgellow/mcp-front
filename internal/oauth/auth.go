@@ -41,7 +41,7 @@ func newAuthService(config Config) (*authService, error) {
 
 	googleConfig := &oauth2.Config{
 		ClientID:     config.GoogleClientID,
-		ClientSecret: config.GoogleClientSecret,
+		ClientSecret: string(config.GoogleClientSecret),
 		RedirectURL:  config.GoogleRedirectURI,
 		Scopes: []string{
 			"openid",

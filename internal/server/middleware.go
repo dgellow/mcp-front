@@ -203,7 +203,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 							log.LogTraceWithFields("service_auth", "Bearer token service auth successful", map[string]interface{}{
 								"service_name": "service",
 							})
-							ctx := auth.WithServiceAuth(r.Context(), "service", serviceAuth.ResolvedUserToken)
+							ctx := auth.WithServiceAuth(r.Context(), "service", string(serviceAuth.UserToken))
 							next.ServeHTTP(w, r.WithContext(ctx))
 							return
 						}
@@ -243,12 +243,12 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 					}
 
 					if username == serviceAuth.Username {
-						if err := bcrypt.CompareHashAndPassword([]byte(serviceAuth.HashedPassword), []byte(password)); err == nil {
+						if err := bcrypt.CompareHashAndPassword([]byte(string(serviceAuth.HashedPassword)), []byte(password)); err == nil {
 							// Auth succeeded
 							log.LogTraceWithFields("service_auth", "Basic service auth successful", map[string]interface{}{
 								"username": username,
 							})
-							ctx := auth.WithServiceAuth(r.Context(), serviceAuth.Username, serviceAuth.ResolvedUserToken)
+							ctx := auth.WithServiceAuth(r.Context(), serviceAuth.Username, string(serviceAuth.UserToken))
 							next.ServeHTTP(w, r.WithContext(ctx))
 							return
 						}

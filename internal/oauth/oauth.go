@@ -66,7 +66,7 @@ type Config struct {
 // NewServer creates a new OAuth 2.1 server
 func NewServer(config Config, store storage.Storage) (*Server, error) {
 	// Create session encryptor for browser SSO
-	key := []byte(config.EncryptionKey)
+	key := []byte(string(config.EncryptionKey))
 	sessionEncryptor, err := crypto.NewEncryptor(key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session encryptor: %w", err)
@@ -82,7 +82,7 @@ func NewServer(config Config, store storage.Storage) (*Server, error) {
 	// Use provided JWT secret or generate a secure one
 	var secret []byte
 	if config.JWTSecret != "" {
-		secret = []byte(config.JWTSecret)
+		secret = []byte(string(config.JWTSecret))
 		// Validate JWT secret length for HMAC-SHA512/256
 		if len(secret) < 32 {
 			return nil, fmt.Errorf("JWT secret must be at least 32 bytes long for security, got %d bytes", len(secret))
@@ -302,7 +302,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Validate HMAC signature
 		data := nonce + ":" + returnURL
-		if !crypto.ValidateSignedData(data, signature, []byte(s.config.EncryptionKey)) {
+		if !crypto.ValidateSignedData(data, signature, []byte(string(s.config.EncryptionKey))) {
 			log.LogError("Invalid CSRF signature in browser flow")
 			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
 			return
