@@ -22,7 +22,7 @@ import (
 // SessionManager defines the interface for managing stdio sessions
 type SessionManager interface {
 	GetSession(key client.SessionKey) (*client.StdioSession, bool)
-	GetOrCreateSession(ctx context.Context, key client.SessionKey, config *config.MCPClientConfig, info mcp.Implementation, setupBaseURL string) (*client.StdioSession, error)
+	GetOrCreateSession(ctx context.Context, key client.SessionKey, config *config.MCPClientConfig, info mcp.Implementation, setupBaseURL string, userToken string) (*client.StdioSession, error)
 	RemoveSession(key client.SessionKey)
 	Shutdown()
 }
@@ -84,7 +84,8 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if serverConfig.TransportType == config.MCPClientTypeStreamable {
-		if r.Method == http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
 			log.LogInfoWithFields("mcp", "Handling streamable POST request", map[string]any{
 				"path":          r.URL.Path,
 				"server":        h.serverName,
@@ -93,7 +94,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"contentLength": r.ContentLength,
 			})
 			h.handleStreamablePost(ctx, w, r, userEmail, serverConfig)
-		} else if r.Method == http.MethodGet {
+		case http.MethodGet:
 			log.LogInfoWithFields("mcp", "Handling streamable GET request", map[string]any{
 				"path":       r.URL.Path,
 				"server":     h.serverName,
@@ -102,7 +103,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"userAgent":  r.UserAgent(),
 			})
 			h.handleStreamableGet(ctx, w, r, userEmail, serverConfig)
-		} else {
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	} else {

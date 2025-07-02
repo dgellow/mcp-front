@@ -105,10 +105,10 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 
 			switch endpoint.path {
 			case "/.well-known/oauth-authorization-server":
-				authHandlers := NewAuthHandlers(authServer)
+				authHandlers := NewAuthHandlers(authServer, nil)
 				handler = corsHandler(http.HandlerFunc(authHandlers.WellKnownHandler))
 			case "/register":
-				authHandlers := NewAuthHandlers(authServer)
+				authHandlers := NewAuthHandlers(authServer, nil)
 				handler = corsHandler(http.HandlerFunc(authHandlers.RegisterHandler))
 			default:
 				t.Fatalf("Unknown endpoint: %s", endpoint.path)

@@ -115,6 +115,7 @@ func (sm *StdioSessionManager) GetOrCreateSession(
 	config *config.MCPClientConfig,
 	info mcp.Implementation,
 	baseURL string,
+	userToken string,
 ) (*StdioSession, error) {
 	// Try to get existing session first
 	if session, ok := sm.GetSession(key); ok {
@@ -125,7 +126,7 @@ func (sm *StdioSessionManager) GetOrCreateSession(
 		return nil, err
 	}
 
-	return sm.createSession(ctx, key, config, info, baseURL)
+	return sm.createSession(key, config, userToken)
 }
 
 // GetSession retrieves an existing session
@@ -379,13 +380,20 @@ func (sm *StdioSessionManager) getUserSessionCount(userEmail string) int {
 
 // createSession creates a new stdio session
 func (sm *StdioSessionManager) createSession(
-	ctx context.Context,
 	key SessionKey,
 	config *config.MCPClientConfig,
-	info mcp.Implementation,
-	baseURL string,
+	userToken string,
 ) (*StdioSession, error) {
+	// Create an independent context for the stdio session. We intentionally use
+	// context.Background() instead of the HTTP request context because stdio
+	// sessions are long-lived processes that must persist across multiple HTTP
+	// requests. The session will be cleaned up by the timeout-based cleanup
+	// routine, not by HTTP request cancellation.
 	sessionCtx, cancel := context.WithCancel(context.Background())
+
+	if userToken != "" && config.RequiresUserToken {
+		config = config.ApplyUserToken(userToken)
+	}
 
 	client, err := sm.createClient(key.ServerName, config)
 	if err != nil {

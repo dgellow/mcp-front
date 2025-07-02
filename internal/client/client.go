@@ -435,7 +435,6 @@ func (c *Client) wrapToolHandler(
 				errorData := createTokenRequiredError(
 					serverName,
 					setupBaseURL,
-					userAuth,
 					"configuration error: this service requires user tokens but OAuth is not properly configured.",
 				)
 
@@ -469,7 +468,6 @@ func (c *Client) wrapToolHandler(
 				errorData := createTokenRequiredError(
 					serverName,
 					setupBaseURL,
-					userAuth,
 					errorMessage,
 				)
 
@@ -509,7 +507,7 @@ func (c *Client) Close() error {
 }
 
 // createTokenRequiredError creates the structured error for missing user tokens
-func createTokenRequiredError(serverName, setupBaseURL string, userAuth *config.UserAuthentication, message string) map[string]interface{} {
+func createTokenRequiredError(serverName, setupBaseURL string, message string) map[string]interface{} {
 	tokenSetupURL := fmt.Sprintf("%s/my/tokens", setupBaseURL)
 
 	return map[string]interface{}{

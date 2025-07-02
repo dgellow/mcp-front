@@ -221,10 +221,11 @@ func TestSecurityScenarios(t *testing.T) {
 			}
 			resp.Body.Close()
 
-			if resp.StatusCode == 200 {
+			switch resp.StatusCode {
+			case 200:
 				t.Errorf("CRITICAL: Auth bypass! 'test-token' without Bearer returned 200")
-			} else if resp.StatusCode == 401 {
-			} else {
+			case 401:
+			default:
 				t.Logf("Unexpected status %d for malformed auth", resp.StatusCode)
 			}
 		})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/auth"
@@ -174,7 +175,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			recoverMiddleware("mcp"),
 		}
 
-		authHandlers := NewAuthHandlers(s.authServer)
+		authHandlers := NewAuthHandlers(s.authServer, cfg.MCPServers)
 		mux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(authHandlers.WellKnownHandler), oauthMiddlewares...))
 		mux.Handle("/authorize", chainMiddleware(http.HandlerFunc(authHandlers.AuthorizeHandler), oauthMiddlewares...))
 		mux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(authHandlers.GoogleCallbackHandler), oauthMiddlewares...))
@@ -415,6 +416,27 @@ func isStdioServer(config *config.MCPClientConfig) bool {
 	return config.Command != ""
 }
 
+// formatUserToken formats a stored token according to the user authentication configuration
+func formatUserToken(storedToken *storage.StoredToken, auth *config.UserAuthentication) string {
+	if storedToken == nil {
+		return ""
+	}
+
+	if storedToken.Type == storage.TokenTypeOAuth && storedToken.OAuthData != nil {
+		token := storedToken.OAuthData.AccessToken
+		if auth.TokenFormat != "" && auth.TokenFormat != "{{token}}" {
+			return strings.ReplaceAll(auth.TokenFormat, "{{token}}", token)
+		}
+		return token
+	}
+
+	token := storedToken.Value
+	if auth != nil && auth.TokenFormat != "" && auth.TokenFormat != "{{token}}" {
+		return strings.ReplaceAll(auth.TokenFormat, "{{token}}", token)
+	}
+	return token
+}
+
 // sessionHandlerKey is the context key for session handlers
 type sessionHandlerKey struct{}
 
@@ -455,12 +477,30 @@ func handleSessionRegistration(
 		"command":           handler.config.Command,
 	})
 
+	var userToken string
+	if handler.config.RequiresUserToken && handler.userEmail != "" && handler.h.storage != nil {
+		storedToken, err := handler.h.storage.GetUserToken(sessionCtx, handler.userEmail, handler.h.serverName)
+		if err != nil {
+			log.LogDebugWithFields("server", "No user token found", map[string]interface{}{
+				"server": handler.h.serverName,
+				"user":   handler.userEmail,
+			})
+		} else if storedToken != nil {
+			if handler.config.UserAuthentication != nil {
+				userToken = formatUserToken(storedToken, handler.config.UserAuthentication)
+			} else {
+				userToken = storedToken.Value
+			}
+		}
+	}
+
 	stdioSession, err := sessionManager.GetOrCreateSession(
 		sessionCtx,
 		key,
 		handler.config,
 		handler.h.info,
 		handler.h.setupBaseURL,
+		userToken,
 	)
 	if err != nil {
 		log.LogErrorWithFields("server", "Failed to create stdio session", map[string]interface{}{

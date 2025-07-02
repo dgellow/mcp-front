@@ -157,7 +157,7 @@ func TestClientRegistration(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(30) {
 		t.Fatal("OAuth server failed to start")
 	}
 
@@ -358,7 +358,7 @@ func TestUserTokenFlow(t *testing.T) {
 	mcpCmd := startOAuthServerWithTokenConfig(t)
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(30) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -532,7 +532,7 @@ func TestStateParameterHandling(t *testing.T) {
 			})
 			defer stopServer(mcpCmd)
 
-			if !waitForHealthCheck(t, 10) {
+			if !waitForHealthCheck(10) {
 				t.Fatal("Server failed to start")
 			}
 
@@ -602,7 +602,7 @@ func TestEnvironmentModes(t *testing.T) {
 		})
 		defer stopServer(mcpCmd)
 
-		if !waitForHealthCheck(t, 30) {
+		if !waitForHealthCheck(30) {
 			t.Fatal("Server failed to start")
 		}
 
@@ -643,7 +643,7 @@ func TestEnvironmentModes(t *testing.T) {
 		})
 		defer stopServer(mcpCmd)
 
-		if !waitForHealthCheck(t, 30) {
+		if !waitForHealthCheck(30) {
 			t.Fatal("Server failed to start")
 		}
 
@@ -693,7 +693,7 @@ func TestOAuthEndpoints(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 10) {
+	if !waitForHealthCheck(10) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -761,7 +761,7 @@ func TestCORSHeaders(t *testing.T) {
 	})
 	defer stopServer(mcpCmd)
 
-	if !waitForHealthCheck(t, 10) {
+	if !waitForHealthCheck(10) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -813,7 +813,7 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		"LOG_LEVEL=debug",
 	)
 
-	if !waitForHealthCheck(t, 30) {
+	if !waitForHealthCheck(30) {
 		t.Fatal("Server failed to start")
 	}
 
@@ -980,13 +980,14 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		defer resp.Body.Close()
 
 		// Check the response - it might be 200 if following redirects
-		if resp.StatusCode == 200 {
+		switch resp.StatusCode {
+		case 200:
 			// That's fine, it means the token was set and we got the page back
 			t.Log("Token set successfully, got page response")
-		} else if resp.StatusCode == 302 || resp.StatusCode == 303 {
+		case 302, 303:
 			// Also fine, redirect means success
 			t.Log("Token set successfully, got redirect")
-		} else {
+		default:
 			body, _ := io.ReadAll(resp.Body)
 			t.Fatalf("Unexpected response setting token: status=%d, body=%s", resp.StatusCode, string(body))
 		}
@@ -1119,7 +1120,7 @@ func stopServer(cmd *exec.Cmd) {
 	}
 }
 
-func waitForHealthCheck(t *testing.T, seconds int) bool {
+func waitForHealthCheck(seconds int) bool {
 	for i := 0; i < seconds; i++ {
 		if checkHealth() {
 			return true

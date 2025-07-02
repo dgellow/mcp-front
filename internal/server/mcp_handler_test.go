@@ -59,8 +59,8 @@ func (m *mockSessionManager) GetSession(key client.SessionKey) (*client.StdioSes
 	return args.Get(0).(*client.StdioSession), args.Bool(1)
 }
 
-func (m *mockSessionManager) GetOrCreateSession(ctx context.Context, key client.SessionKey, config *config.MCPClientConfig, info mcp.Implementation, setupBaseURL string) (*client.StdioSession, error) {
-	args := m.Called(ctx, key, config, info, setupBaseURL)
+func (m *mockSessionManager) GetOrCreateSession(ctx context.Context, key client.SessionKey, config *config.MCPClientConfig, info mcp.Implementation, setupBaseURL string, userToken string) (*client.StdioSession, error) {
+	args := m.Called(ctx, key, config, info, setupBaseURL, userToken)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}

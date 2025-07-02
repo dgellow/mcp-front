@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/auth"
+	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/log"
@@ -18,12 +20,14 @@ import (
 // AuthHandlers wraps the auth.Server to provide HTTP handlers
 type AuthHandlers struct {
 	authServer *auth.Server
+	mcpServers map[string]*config.MCPClientConfig
 }
 
 // NewAuthHandlers creates new auth handlers
-func NewAuthHandlers(authServer *auth.Server) *AuthHandlers {
+func NewAuthHandlers(authServer *auth.Server, mcpServers map[string]*config.MCPClientConfig) *AuthHandlers {
 	return &AuthHandlers{
 		authServer: authServer,
+		mcpServers: mcpServers,
 	}
 }
 
@@ -222,7 +226,30 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 			"returnURL": returnURL,
 		})
 
-		// Redirect to return URL
+		// Check if the return URL contains a server parameter for OAuth chaining
+		parsedURL, err := url.Parse(returnURL)
+		if err == nil {
+			serverName := parsedURL.Query().Get("server")
+			if serverName != "" {
+				// Check if this server requires OAuth authentication
+				if serverConfig, exists := h.mcpServers[serverName]; exists {
+					if serverConfig.RequiresUserToken &&
+						serverConfig.UserAuthentication != nil &&
+						serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
+						encodedReturnURL := url.QueryEscape(returnURL)
+						oauthURL := fmt.Sprintf("/oauth/connect?service=%s&return=%s", serverName, encodedReturnURL)
+						log.LogInfoWithFields("auth", "Chaining to server OAuth", map[string]interface{}{
+							"server": serverName,
+							"user":   userInfo.Email,
+						})
+						http.Redirect(w, r, oauthURL, http.StatusFound)
+						return
+					}
+				}
+			}
+		}
+
+		// Otherwise, redirect to return URL as normal
 		http.Redirect(w, r, returnURL, http.StatusFound)
 		return
 	}
