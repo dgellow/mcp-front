@@ -14,7 +14,6 @@ import (
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
 	"github.com/dgellow/mcp-front/internal/log"
-	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -64,7 +63,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get user from context - could be OAuth email or basic auth username
-	userEmail, _ := oauth.GetUserFromContext(ctx)
+	userEmail, _ := auth.GetUserFromContext(ctx)
 	if userEmail == "" {
 		// Check for basic auth username
 		username, _ := auth.GetUser(ctx)

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
-	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -130,7 +130,7 @@ func TestAuthenticationBoundaries(t *testing.T) {
 				// Create a valid session cookie using the encryptor
 				if oauthConfig, ok := tt.config.Proxy.Auth.(*config.OAuthAuthConfig); ok {
 					// Create session data
-					sessionData := oauth.SessionData{
+					sessionData := auth.SessionData{
 						Email:   "test@example.com",
 						Expires: time.Now().Add(24 * time.Hour),
 					}

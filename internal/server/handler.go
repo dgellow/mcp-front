@@ -7,12 +7,13 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/inline"
 	"github.com/dgellow/mcp-front/internal/log"
-	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/services"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -22,7 +23,7 @@ import (
 type Server struct {
 	mux            *http.ServeMux
 	config         *config.Config
-	oauthServer    *oauth.Server
+	authServer     *auth.Server
 	storage        storage.Storage
 	sessionManager *client.StdioSessionManager
 	sseServers     map[string]*server.SSEServer // serverName -> SSE server for stdio servers
@@ -122,7 +123,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			store = storage.NewMemoryStorage()
 		}
 
-		oauthConfig := oauth.Config{
+		authConfig := auth.Config{
 			Issuer:              oauthAuth.Issuer,
 			TokenTTL:            ttl,
 			AllowedDomains:      oauthAuth.AllowedDomains,
@@ -138,7 +139,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			FirestoreCollection: oauthAuth.FirestoreCollection,
 		}
 
-		s.oauthServer, err = oauth.NewServer(oauthConfig, store)
+		s.authServer, err = auth.NewServer(authConfig, store)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create OAuth server: %w", err)
 		}
@@ -173,18 +174,19 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			recoverMiddleware("mcp"),
 		}
 
-		mux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(s.oauthServer.WellKnownHandler), oauthMiddlewares...))
-		mux.Handle("/authorize", chainMiddleware(http.HandlerFunc(s.oauthServer.AuthorizeHandler), oauthMiddlewares...))
-		mux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(s.oauthServer.GoogleCallbackHandler), oauthMiddlewares...))
-		mux.Handle("/token", chainMiddleware(http.HandlerFunc(s.oauthServer.TokenHandler), oauthMiddlewares...))
-		mux.Handle("/register", chainMiddleware(http.HandlerFunc(s.oauthServer.RegisterHandler), oauthMiddlewares...))
+		authHandlers := NewAuthHandlers(s.authServer)
+		mux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(authHandlers.WellKnownHandler), oauthMiddlewares...))
+		mux.Handle("/authorize", chainMiddleware(http.HandlerFunc(authHandlers.AuthorizeHandler), oauthMiddlewares...))
+		mux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(authHandlers.GoogleCallbackHandler), oauthMiddlewares...))
+		mux.Handle("/token", chainMiddleware(http.HandlerFunc(authHandlers.TokenHandler), oauthMiddlewares...))
+		mux.Handle("/register", chainMiddleware(http.HandlerFunc(authHandlers.RegisterHandler), oauthMiddlewares...))
 
 		// Protected endpoints - require authentication
-		tokenHandlers := NewTokenHandlers(s.storage, cfg.MCPServers, s.oauthServer != nil)
+		tokenHandlers := NewTokenHandlers(s.storage, cfg.MCPServers, s.authServer != nil)
 		tokenMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
-			s.oauthServer.SSOMiddleware(),
+			s.authServer.SSOMiddleware(),
 			recoverMiddleware("mcp"),
 		}
 
@@ -192,6 +194,19 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/set", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/delete", chainMiddleware(http.HandlerFunc(tokenHandlers.DeleteTokenHandler), tokenMiddlewares...))
+
+		// OAuth service endpoints
+		serviceOAuthClient := services.NewServiceOAuthClient(s.storage, cfg.Proxy.BaseURL)
+		oauthHandlers := NewServiceAuthHandlers(serviceOAuthClient, cfg.MCPServers, s.storage)
+
+		// OAuth connect endpoint - requires Google authentication
+		mux.Handle("/oauth/connect", chainMiddleware(http.HandlerFunc(oauthHandlers.ConnectHandler), tokenMiddlewares...))
+
+		// OAuth callback endpoints - must be publicly accessible for external OAuth providers
+		mux.HandleFunc("/oauth/callback/", oauthHandlers.CallbackHandler)
+
+		// OAuth disconnect endpoint - requires Google authentication
+		mux.Handle("/oauth/disconnect", chainMiddleware(http.HandlerFunc(oauthHandlers.DisconnectHandler), tokenMiddlewares...))
 	}
 
 	// Setup MCP server endpoints
@@ -320,11 +335,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		middlewares = append(middlewares, loggerMiddleware("mcp"))
 		middlewares = append(middlewares, corsMiddleware(allowedOrigins))
 
-		if s.oauthServer != nil {
+		if s.authServer != nil {
 			log.LogTraceWithFields("server", "Adding OAuth middleware", map[string]interface{}{
 				"server_name": serverName,
 			})
-			middlewares = append(middlewares, s.oauthServer.ValidateTokenMiddleware())
+			middlewares = append(middlewares, s.authServer.ValidateTokenMiddleware())
 		}
 
 		if len(serverConfig.ServiceAuths) > 0 {
@@ -359,7 +374,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		adminMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("admin"),
-			s.oauthServer.SSOMiddleware(),               // Browser SSO
+			s.authServer.SSOMiddleware(),                // Browser SSO
 			adminMiddleware(cfg.Proxy.Admin, s.storage), // Admin check
 			recoverMiddleware("mcp"),
 		}

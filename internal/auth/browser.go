@@ -1,4 +1,4 @@
-package oauth
+package auth
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			if err != nil {
 				// No cookie, redirect directly to Google OAuth
 				state := s.generateBrowserState(r.URL.String())
-				googleURL := s.authService.googleAuthURL(state)
+				googleURL := s.authService.GoogleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
 			}
@@ -40,7 +40,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 				log.LogDebug("Invalid session cookie: %v", err)
 				cookie.ClearSession(w) // Clear bad cookie
 				state := s.generateBrowserState(r.URL.String())
-				googleURL := s.authService.googleAuthURL(state)
+				googleURL := s.authService.GoogleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
 			}
@@ -61,7 +61,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 				cookie.ClearSession(w)
 				// Redirect directly to Google OAuth
 				state := s.generateBrowserState(r.URL.String())
-				googleURL := s.authService.googleAuthURL(state)
+				googleURL := s.authService.GoogleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
 			}
@@ -85,26 +85,4 @@ func (s *Server) generateBrowserState(returnURL string) string {
 
 	// Format: "browser:nonce:signature:returnURL"
 	return fmt.Sprintf("browser:%s:%s:%s", nonce, signature, returnURL)
-}
-
-// setBrowserSessionCookie sets an encrypted session cookie for browser-based authentication
-func (s *Server) setBrowserSessionCookie(w http.ResponseWriter, userEmail string) error {
-	sessionData := SessionData{
-		Email:   userEmail,
-		Expires: time.Now().Add(s.config.SessionDuration),
-	}
-
-	jsonData, err := json.Marshal(sessionData)
-	if err != nil {
-		return fmt.Errorf("failed to marshal session data: %w", err)
-	}
-
-	encrypted, err := s.sessionEncryptor.Encrypt(string(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to encrypt session: %w", err)
-	}
-
-	cookie.SetSession(w, encrypted, 24*time.Hour)
-
-	return nil
 }

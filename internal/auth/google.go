@@ -1,4 +1,4 @@
-package oauth
+package auth
 
 import (
 	"context"
@@ -58,21 +58,21 @@ func newAuthService(config Config) (*authService, error) {
 	}, nil
 }
 
-// googleAuthURL returns the Google OAuth authorization URL
-func (s *authService) googleAuthURL(state string) string {
+// GoogleAuthURL returns the Google OAuth authorization URL
+func (s *authService) GoogleAuthURL(state string) string {
 	return s.googleOAuth.AuthCodeURL(state,
 		oauth2.AccessTypeOffline,
 		oauth2.ApprovalForce,
 	)
 }
 
-// exchangeCodeForToken exchanges the authorization code for a token
-func (s *authService) exchangeCodeForToken(ctx context.Context, code string) (*oauth2.Token, error) {
+// ExchangeCodeForToken exchanges the authorization code for a token
+func (s *authService) ExchangeCodeForToken(ctx context.Context, code string) (*oauth2.Token, error) {
 	return s.googleOAuth.Exchange(ctx, code)
 }
 
-// validateUser validates the Google OAuth token and checks domain membership
-func (s *authService) validateUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
+// ValidateUser validates the Google OAuth token and checks domain membership
+func (s *authService) ValidateUser(ctx context.Context, token *oauth2.Token) (*UserInfo, error) {
 	client := s.googleOAuth.Client(ctx, token)
 	userInfoURL := "https://www.googleapis.com/oauth2/v2/userinfo"
 	if customURL := os.Getenv("GOOGLE_USERINFO_URL"); customURL != "" {
@@ -115,8 +115,8 @@ func (s *authService) validateUser(ctx context.Context, token *oauth2.Token) (*U
 	return &userInfo, nil
 }
 
-// parseClientRequest parses and validates a client registration request
-func (s *authService) parseClientRequest(metadata map[string]interface{}) ([]string, []string, error) {
+// ParseClientRequest parses and validates a client registration request
+func (s *authService) ParseClientRequest(metadata map[string]interface{}) ([]string, []string, error) {
 	// Extract redirect URIs
 	redirectURIs := []string{}
 	if uris, ok := metadata["redirect_uris"].([]interface{}); ok {

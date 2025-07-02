@@ -10,7 +10,6 @@ import (
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/log"
-	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -174,7 +173,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 			ctx := r.Context()
 
 			// Check if user context is already set — OAuth succeeded, no need for further auth
-			if userEmail, ok := oauth.GetUserFromContext(ctx); ok && userEmail != "" {
+			if userEmail, ok := auth.GetUserFromContext(ctx); ok && userEmail != "" {
 				log.LogTraceWithFields("service_auth", "Skipping service auth, user already authenticated via OAuth", map[string]interface{}{
 					"user": userEmail,
 				})
@@ -266,7 +265,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 func adminMiddleware(adminConfig *config.AdminConfig, store storage.Storage) MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userEmail, ok := oauth.GetUserFromContext(r.Context())
+			userEmail, ok := auth.GetUserFromContext(r.Context())
 			if !ok {
 				jsonwriter.WriteUnauthorized(w, "Unauthorized")
 				return
