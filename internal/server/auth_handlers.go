@@ -75,6 +75,22 @@ func (h *AuthHandlers) AuthorizeHandler(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 	log.Logf("Authorize handler called: %s %s", r.Method, r.URL.Path)
 
+	// In development mode, generate a secure state parameter if missing
+	// This works around bugs in OAuth clients that don't send state
+	stateParam := r.URL.Query().Get("state")
+	if internal.IsDevelopmentMode() && len(stateParam) == 0 {
+		generatedState := crypto.GenerateSecureToken()
+		log.LogWarn("Development mode: generating state parameter '%s' for buggy client", generatedState)
+		q := r.URL.Query()
+		q.Set("state", generatedState)
+		r.URL.RawQuery = q.Encode()
+		// Also update the form values
+		if r.Form == nil {
+			_ = r.ParseForm()
+		}
+		r.Form.Set("state", generatedState)
+	}
+
 	// Parse the authorize request
 	ar, err := h.authServer.GetProvider().NewAuthorizeRequest(ctx, r)
 	if err != nil {

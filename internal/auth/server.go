@@ -100,23 +100,36 @@ func NewServer(config Config, store storage.Storage) (*Server, error) {
 
 	// Configure fosite
 	oauthConfig := &compose.Config{
-		AccessTokenLifespan:      config.TokenTTL,
-		RefreshTokenLifespan:     config.TokenTTL * 2,
-		AuthorizeCodeLifespan:    10 * time.Minute,
-		MinParameterEntropy:      minEntropy,
-		EnforcePKCE:              true,
-		ScopeStrategy:            fosite.HierarchicScopeStrategy,
-		AudienceMatchingStrategy: fosite.DefaultAudienceMatchingStrategy,
-		HashCost:                 12,
+		AccessTokenLifespan:            config.TokenTTL,
+		RefreshTokenLifespan:           config.TokenTTL * 2,
+		AuthorizeCodeLifespan:          10 * time.Minute,
+		TokenURL:                       config.Issuer + "/token",
+		ScopeStrategy:                  fosite.HierarchicScopeStrategy,
+		AudienceMatchingStrategy:       fosite.DefaultAudienceMatchingStrategy,
+		EnforcePKCEForPublicClients:    true,
+		EnablePKCEPlainChallengeMethod: false,
+		MinParameterEntropy:            minEntropy,
 	}
 
-	// Create provider using compose
-	provider := compose.ComposeAllEnabled(
+	// Create provider using compose with specific factories
+	provider := compose.Compose(
 		oauthConfig,
 		store,
-		secret,
-		nil, // RSA key not needed for our use case
+		&compose.CommonStrategy{
+			CoreStrategy: compose.NewOAuth2HMACStrategy(oauthConfig, secret, nil),
+		},
+		nil, // hasher
+		compose.OAuth2AuthorizeExplicitFactory,
+		compose.OAuth2ClientCredentialsGrantFactory,
+		compose.OAuth2PKCEFactory,
+		compose.OAuth2RefreshTokenGrantFactory,
+		compose.OAuth2TokenIntrospectionFactory,
 	)
+
+	// Set default session duration if not configured
+	if config.SessionDuration == 0 {
+		config.SessionDuration = 24 * time.Hour
+	}
 
 	return &Server{
 		provider:         provider,
