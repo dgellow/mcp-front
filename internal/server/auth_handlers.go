@@ -35,7 +35,7 @@ func NewAuthHandlers(authServer *auth.Server, mcpServers map[string]*config.MCPC
 func (h *AuthHandlers) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	log.Logf("Well-known handler called: %s %s", r.Method, r.URL.Path)
 
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"issuer":                 h.authServer.GetConfig().Issuer,
 		"authorization_endpoint": fmt.Sprintf("%s/authorize", h.authServer.GetConfig().Issuer),
 		"token_endpoint":         fmt.Sprintf("%s/token", h.authServer.GetConfig().Issuer),
@@ -180,7 +180,7 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 
 	// Store user in database
 	if err := h.authServer.GetStorage().UpsertUser(ctx, userInfo.Email); err != nil {
-		log.LogWarnWithFields("auth", "Failed to track user", map[string]interface{}{
+		log.LogWarnWithFields("auth", "Failed to track user", map[string]any{
 			"email": userInfo.Email,
 			"error": err.Error(),
 		})
@@ -220,7 +220,7 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 			MaxAge:   int(h.authServer.GetConfig().SessionDuration.Seconds()),
 		})
 
-		log.LogInfoWithFields("auth", "Browser SSO session created", map[string]interface{}{
+		log.LogInfoWithFields("auth", "Browser SSO session created", map[string]any{
 			"user":      userInfo.Email,
 			"duration":  h.authServer.GetConfig().SessionDuration,
 			"returnURL": returnURL,
@@ -238,7 +238,7 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 						serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
 						encodedReturnURL := url.QueryEscape(returnURL)
 						oauthURL := fmt.Sprintf("/oauth/connect?service=%s&return=%s", serverName, encodedReturnURL)
-						log.LogInfoWithFields("auth", "Chaining to server OAuth", map[string]interface{}{
+						log.LogInfoWithFields("auth", "Chaining to server OAuth", map[string]any{
 							"server": serverName,
 							"user":   userInfo.Email,
 						})
@@ -313,8 +313,8 @@ func (h *AuthHandlers) TokenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // buildClientRegistrationResponse creates the registration response for a client
-func (h *AuthHandlers) buildClientRegistrationResponse(client *fosite.DefaultClient, tokenEndpointAuthMethod string, clientSecret string) map[string]interface{} {
-	response := map[string]interface{}{
+func (h *AuthHandlers) buildClientRegistrationResponse(client *fosite.DefaultClient, tokenEndpointAuthMethod string, clientSecret string) map[string]any {
+	response := map[string]any{
 		"client_id":                  client.GetID(),
 		"client_id_issued_at":        time.Now().Unix(),
 		"redirect_uris":              client.GetRedirectURIs(),
@@ -342,7 +342,7 @@ func (h *AuthHandlers) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse client metadata
-	var metadata map[string]interface{}
+	var metadata map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
 		jsonwriter.WriteBadRequest(w, "Invalid request body")
 		return

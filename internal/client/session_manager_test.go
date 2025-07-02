@@ -192,7 +192,7 @@ func TestStdioSessionManager_ConcurrentAccess(t *testing.T) {
 
 	// Run concurrent operations
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -236,7 +236,7 @@ func TestStdioSessionManager_NoLimitsForAnonymous(t *testing.T) {
 	info := mcp.Implementation{Name: "test", Version: "1.0"}
 
 	// Create multiple anonymous sessions (empty userEmail)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		key := SessionKey{
 			UserEmail:  "", // Anonymous
 			ServerName: "server",

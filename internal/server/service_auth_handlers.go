@@ -79,7 +79,7 @@ func (h *ServiceAuthHandlers) ConnectHandler(w http.ResponseWriter, r *http.Requ
 		returnURL,
 	)
 	if err != nil {
-		log.LogErrorWithFields("oauth_handlers", "Failed to start OAuth flow", map[string]interface{}{
+		log.LogErrorWithFields("oauth_handlers", "Failed to start OAuth flow", map[string]any{
 			"service": serviceName,
 			"user":    userEmail,
 			"error":   err.Error(),
@@ -119,7 +119,7 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 	// Handle OAuth errors
 	if errorParam != "" {
 		errorDesc := r.URL.Query().Get("error_description")
-		log.LogWarnWithFields("oauth_handlers", "OAuth error from provider", map[string]interface{}{
+		log.LogWarnWithFields("oauth_handlers", "OAuth error from provider", map[string]any{
 			"service":     serviceName,
 			"error":       errorParam,
 			"description": errorDesc,
@@ -154,7 +154,7 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 		serviceConfig,
 	)
 	if err != nil {
-		log.LogErrorWithFields("oauth_handlers", "Failed to handle OAuth callback", map[string]interface{}{
+		log.LogErrorWithFields("oauth_handlers", "Failed to handle OAuth callback", map[string]any{
 			"service": serviceName,
 			"error":   err.Error(),
 		})
@@ -169,7 +169,7 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	// Log successful connection
-	log.LogInfoWithFields("oauth_handlers", "OAuth connection successful", map[string]interface{}{
+	log.LogInfoWithFields("oauth_handlers", "OAuth connection successful", map[string]any{
 		"service": serviceName,
 		"user":    userEmail,
 	})
@@ -219,7 +219,7 @@ func (h *ServiceAuthHandlers) DisconnectHandler(w http.ResponseWriter, r *http.R
 
 	// Delete the token
 	if err := h.storage.DeleteUserToken(r.Context(), userEmail, serviceName); err != nil {
-		log.LogErrorWithFields("oauth_handlers", "Failed to delete OAuth token", map[string]interface{}{
+		log.LogErrorWithFields("oauth_handlers", "Failed to delete OAuth token", map[string]any{
 			"service": serviceName,
 			"user":    userEmail,
 			"error":   err.Error(),
@@ -228,7 +228,7 @@ func (h *ServiceAuthHandlers) DisconnectHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	log.LogInfoWithFields("oauth_handlers", "OAuth disconnection successful", map[string]interface{}{
+	log.LogInfoWithFields("oauth_handlers", "OAuth disconnection successful", map[string]any{
 		"service": serviceName,
 		"user":    userEmail,
 	})

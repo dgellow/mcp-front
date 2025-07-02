@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -269,7 +270,7 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		return "", fmt.Errorf("authentication required")
 	}
 
-	log.LogTraceWithFields("mcp_handler", "Attempting to resolve user token", map[string]interface{}{
+	log.LogTraceWithFields("mcp_handler", "Attempting to resolve user token", map[string]any{
 		"server_name": h.serverName,
 		"user":        userEmail,
 	})
@@ -277,7 +278,7 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	// Check for service auth first - services provide their own user tokens
 	if serviceAuth, ok := auth.GetServiceAuth(ctx); ok {
 		if serviceAuth.UserToken != "" {
-			log.LogTraceWithFields("mcp_handler", "Found user token in service auth context", map[string]interface{}{
+			log.LogTraceWithFields("mcp_handler", "Found user token in service auth context", map[string]any{
 				"server_name": h.serverName,
 				"user":        userEmail,
 			})
@@ -285,7 +286,7 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		}
 	}
 
-	log.LogTraceWithFields("mcp_handler", "No user token in service auth context, falling back to storage lookup", map[string]interface{}{
+	log.LogTraceWithFields("mcp_handler", "No user token in service auth context, falling back to storage lookup", map[string]any{
 		"server_name": h.serverName,
 		"user":        userEmail,
 	})
@@ -389,9 +390,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 
 	w.WriteHeader(resp.StatusCode)
 
-	for k, v := range resp.Header {
-		w.Header()[k] = v
-	}
+	maps.Copy(w.Header(), resp.Header)
 
 	if _, err := io.Copy(w, resp.Body); err != nil {
 		log.LogErrorWithFields("mcp", "Failed to copy response body", map[string]any{

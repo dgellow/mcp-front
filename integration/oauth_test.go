@@ -48,7 +48,7 @@ func TestBasicOAuthFlow(t *testing.T) {
 
 	assert.Equal(t, 200, resp.StatusCode, "OAuth discovery failed")
 
-	var discovery map[string]interface{}
+	var discovery map[string]any
 	err = json.NewDecoder(resp.Body).Decode(&discovery)
 	require.NoError(t, err, "Failed to decode discovery")
 
@@ -66,7 +66,7 @@ func TestBasicOAuthFlow(t *testing.T) {
 	}
 
 	// Verify client_secret_post is advertised
-	authMethods, ok := discovery["token_endpoint_auth_methods_supported"].([]interface{})
+	authMethods, ok := discovery["token_endpoint_auth_methods_supported"].([]any)
 	assert.True(t, ok, "token_endpoint_auth_methods_supported should be present")
 
 	var hasNone, hasClientSecretPost bool
@@ -163,7 +163,7 @@ func TestClientRegistration(t *testing.T) {
 
 	t.Run("PublicClientRegistration", func(t *testing.T) {
 		// Register a public client (no secret)
-		clientReq := map[string]interface{}{
+		clientReq := map[string]any{
 			"redirect_uris": []string{"http://127.0.0.1:6274/oauth/callback/debug"},
 			"scope":         "read write",
 		}
@@ -184,7 +184,7 @@ func TestClientRegistration(t *testing.T) {
 			t.Fatalf("Client registration failed with status %d: %s", resp.StatusCode, string(body))
 		}
 
-		var clientResp map[string]interface{}
+		var clientResp map[string]any
 		if err := json.NewDecoder(resp.Body).Decode(&clientResp); err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
 		}
@@ -205,8 +205,8 @@ func TestClientRegistration(t *testing.T) {
 		// Register multiple clients and verify they get different IDs
 		var clientIDs []string
 
-		for i := 0; i < 3; i++ {
-			clientReq := map[string]interface{}{
+		for i := range 3 {
+			clientReq := map[string]any{
 				"redirect_uris": []string{fmt.Sprintf("http://example.com/callback%d", i)},
 				"scope":         "read",
 			}
@@ -222,7 +222,7 @@ func TestClientRegistration(t *testing.T) {
 			}
 			defer resp.Body.Close()
 
-			var clientResp map[string]interface{}
+			var clientResp map[string]any
 			_ = json.NewDecoder(resp.Body).Decode(&clientResp)
 			clientIDs = append(clientIDs, clientResp["client_id"].(string))
 		}
@@ -240,7 +240,7 @@ func TestClientRegistration(t *testing.T) {
 
 	t.Run("ConfidentialClientRegistration", func(t *testing.T) {
 		// Register a confidential client with client_secret_post
-		clientReq := map[string]interface{}{
+		clientReq := map[string]any{
 			"redirect_uris":              []string{"https://example.com/callback"},
 			"scope":                      "read write",
 			"token_endpoint_auth_method": "client_secret_post",
@@ -262,7 +262,7 @@ func TestClientRegistration(t *testing.T) {
 			t.Fatalf("Confidential client registration failed with status %d: %s", resp.StatusCode, string(body))
 		}
 
-		var clientResp map[string]interface{}
+		var clientResp map[string]any
 		if err := json.NewDecoder(resp.Body).Decode(&clientResp); err != nil {
 			t.Fatalf("Failed to decode response: %v", err)
 		}
@@ -295,7 +295,7 @@ func TestClientRegistration(t *testing.T) {
 		// Test that public clients don't get secrets and confidential ones do
 
 		// First, create a public client
-		publicReq := map[string]interface{}{
+		publicReq := map[string]any{
 			"redirect_uris": []string{"https://public.example.com/callback"},
 			"scope":         "read",
 			// No token_endpoint_auth_method specified - defaults to "none"
@@ -310,7 +310,7 @@ func TestClientRegistration(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		var publicResp map[string]interface{}
+		var publicResp map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&publicResp)
 
 		// Verify public client has no secret
@@ -322,7 +322,7 @@ func TestClientRegistration(t *testing.T) {
 		}
 
 		// Now create a confidential client
-		confidentialReq := map[string]interface{}{
+		confidentialReq := map[string]any{
 			"redirect_uris":              []string{"https://confidential.example.com/callback"},
 			"scope":                      "read write",
 			"token_endpoint_auth_method": "client_secret_post",
@@ -337,7 +337,7 @@ func TestClientRegistration(t *testing.T) {
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
-		var confResp map[string]interface{}
+		var confResp map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&confResp)
 
 		// Verify confidential client has a secret
@@ -524,7 +524,7 @@ func TestStateParameterHandling(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // capture range variable
+		// capture range variable
 		t.Run(tt.name, func(t *testing.T) {
 			// Start server with specific environment
 			mcpCmd := startOAuthServer(t, map[string]string{
@@ -708,7 +708,7 @@ func TestOAuthEndpoints(t *testing.T) {
 			t.Fatalf("Discovery failed with status %d", resp.StatusCode)
 		}
 
-		var discovery map[string]interface{}
+		var discovery map[string]any
 		if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
 			t.Fatalf("Failed to decode discovery response: %v", err)
 		}
@@ -831,21 +831,21 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		defer mcpClient.Close()
 
 		// Request tools list
-		toolsResp, err := mcpClient.SendMCPRequest("tools/list", map[string]interface{}{})
+		toolsResp, err := mcpClient.SendMCPRequest("tools/list", map[string]any{})
 		require.NoError(t, err, "Should list tools without user token")
 
 		// Verify we got tools
-		resultMap, ok := toolsResp["result"].(map[string]interface{})
+		resultMap, ok := toolsResp["result"].(map[string]any)
 		require.True(t, ok, "Expected result in tools response")
 
-		tools, ok := resultMap["tools"].([]interface{})
+		tools, ok := resultMap["tools"].([]any)
 		require.True(t, ok, "Expected tools array in result")
 		assert.NotEmpty(t, tools, "Should have tools advertised")
 
 		// Check for common postgres tools
 		var toolNames []string
 		for _, tool := range tools {
-			if toolMap, ok := tool.(map[string]interface{}); ok {
+			if toolMap, ok := tool.(map[string]any); ok {
 				if name, ok := toolMap["name"].(string); ok {
 					toolNames = append(toolNames, name)
 				}
@@ -867,9 +867,9 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		defer mcpClient.Close()
 
 		// Try to invoke a tool without user token
-		queryParams := map[string]interface{}{
+		queryParams := map[string]any{
 			"name": "query",
-			"arguments": map[string]interface{}{
+			"arguments": map[string]any{
 				"sql": "SELECT 1",
 			},
 		}
@@ -880,20 +880,20 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		// MCP protocol returns errors as successful responses with error content
 		require.NotNil(t, result["result"], "Should have result in response")
 
-		resultMap := result["result"].(map[string]interface{})
-		content := resultMap["content"].([]interface{})
+		resultMap := result["result"].(map[string]any)
+		content := resultMap["content"].([]any)
 		require.NotEmpty(t, content, "Should have content in result")
 
-		contentItem := content[0].(map[string]interface{})
+		contentItem := content[0].(map[string]any)
 		errorJSON := contentItem["text"].(string)
 
 		// Parse the error JSON
-		var errorData map[string]interface{}
+		var errorData map[string]any
 		err = json.Unmarshal([]byte(errorJSON), &errorData)
 		require.NoError(t, err, "Error should be valid JSON")
 
 		// Verify error structure
-		errorInfo := errorData["error"].(map[string]interface{})
+		errorInfo := errorData["error"].(map[string]any)
 		assert.Equal(t, "token_required", errorInfo["code"], "Error code should be token_required")
 
 		errorMessage := errorInfo["message"].(string)
@@ -902,12 +902,12 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		assert.Contains(t, errorMessage, "Test Service", "Error should mention service name")
 
 		// Verify error data
-		errData := errorInfo["data"].(map[string]interface{})
+		errData := errorInfo["data"].(map[string]any)
 		assert.Equal(t, "postgres", errData["service"], "Should identify the service")
 		assert.Contains(t, errData["tokenSetupUrl"].(string), "/my/tokens", "Should include token setup URL")
 
 		// Verify instructions
-		instructions := errData["instructions"].(map[string]interface{})
+		instructions := errData["instructions"].(map[string]any)
 		assert.Contains(t, instructions["ai"].(string), "CRITICAL", "Should have AI instructions")
 		assert.Contains(t, instructions["human"].(string), "token required", "Should have human instructions")
 	})
@@ -1001,9 +1001,9 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		defer mcpClient.Close()
 
 		// Call the query tool with a simple query
-		queryParams := map[string]interface{}{
+		queryParams := map[string]any{
 			"name": "query",
-			"arguments": map[string]interface{}{
+			"arguments": map[string]any{
 				"sql": "SELECT 1 as test",
 			},
 		}
@@ -1014,11 +1014,11 @@ func TestToolAdvertisementWithUserTokens(t *testing.T) {
 		// Verify we got a successful result, not an error
 		require.NotNil(t, result["result"], "Should have result in response")
 
-		resultMap := result["result"].(map[string]interface{})
-		content := resultMap["content"].([]interface{})
+		resultMap := result["result"].(map[string]any)
+		content := resultMap["content"].([]any)
 		require.NotEmpty(t, content, "Should have content in result")
 
-		contentItem := content[0].(map[string]interface{})
+		contentItem := content[0].(map[string]any)
 		resultText := contentItem["text"].(string)
 
 		// The result should contain actual query results, not an error
@@ -1121,7 +1121,7 @@ func stopServer(cmd *exec.Cmd) {
 }
 
 func waitForHealthCheck(seconds int) bool {
-	for i := 0; i < seconds; i++ {
+	for range seconds {
 		if checkHealth() {
 			return true
 		}
@@ -1143,7 +1143,7 @@ func checkHealth() bool {
 }
 
 func registerTestClient(t *testing.T) string {
-	clientReq := map[string]interface{}{
+	clientReq := map[string]any{
 		"redirect_uris": []string{"http://127.0.0.1:6274/oauth/callback"},
 		"scope":         "openid email profile read write",
 	}
@@ -1164,7 +1164,7 @@ func registerTestClient(t *testing.T) string {
 		t.Fatalf("Client registration failed: %d - %s", resp.StatusCode, string(body))
 	}
 
-	var clientResp map[string]interface{}
+	var clientResp map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&clientResp)
 	return clientResp["client_id"].(string)
 }
@@ -1270,7 +1270,7 @@ func getOAuthAccessToken(t *testing.T) string {
 
 	require.Equal(t, 200, tokenResp.StatusCode, "Token exchange should succeed")
 
-	var tokenData map[string]interface{}
+	var tokenData map[string]any
 	err = json.NewDecoder(tokenResp.Body).Decode(&tokenData)
 	require.NoError(t, err)
 

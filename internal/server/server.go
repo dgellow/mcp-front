@@ -16,7 +16,7 @@ import (
 
 // Run starts and runs the MCP proxy server
 func Run(cfg *config.Config) error {
-	log.LogInfoWithFields("server", "Starting MCP proxy server", map[string]interface{}{
+	log.LogInfoWithFields("server", "Starting MCP proxy server", map[string]any{
 		"addr":       cfg.Proxy.Addr,
 		"baseURL":    cfg.Proxy.BaseURL,
 		"mcpServers": len(cfg.MCPServers),
@@ -41,7 +41,7 @@ func Run(cfg *config.Config) error {
 
 	// Start HTTP server
 	go func() {
-		log.LogInfoWithFields("server", "HTTP server starting", map[string]interface{}{
+		log.LogInfoWithFields("server", "HTTP server starting", map[string]any{
 			"addr": cfg.Proxy.Addr,
 		})
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -57,12 +57,12 @@ func Run(cfg *config.Config) error {
 	select {
 	case sig := <-sigChan:
 		shutdownReason = fmt.Sprintf("signal %v", sig)
-		log.LogInfoWithFields("server", "Received shutdown signal", map[string]interface{}{
+		log.LogInfoWithFields("server", "Received shutdown signal", map[string]any{
 			"signal": sig.String(),
 		})
 	case err := <-errChan:
 		shutdownReason = fmt.Sprintf("error: %v", err)
-		log.LogErrorWithFields("server", "Shutting down due to error", map[string]interface{}{
+		log.LogErrorWithFields("server", "Shutting down due to error", map[string]any{
 			"error": err.Error(),
 		})
 	case <-ctx.Done():
@@ -71,7 +71,7 @@ func Run(cfg *config.Config) error {
 	}
 
 	// Graceful shutdown
-	log.LogInfoWithFields("server", "Starting graceful shutdown", map[string]interface{}{
+	log.LogInfoWithFields("server", "Starting graceful shutdown", map[string]any{
 		"reason":  shutdownReason,
 		"timeout": "30s",
 	})
@@ -79,7 +79,7 @@ func Run(cfg *config.Config) error {
 	defer shutdownCancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.LogErrorWithFields("server", "HTTP server shutdown error", map[string]interface{}{
+		log.LogErrorWithFields("server", "HTTP server shutdown error", map[string]any{
 			"error": err.Error(),
 		})
 		return err
@@ -87,12 +87,12 @@ func Run(cfg *config.Config) error {
 
 	// Shutdown the handler (which includes session manager)
 	if err := handler.Shutdown(); err != nil {
-		log.LogErrorWithFields("server", "Handler shutdown error", map[string]interface{}{
+		log.LogErrorWithFields("server", "Handler shutdown error", map[string]any{
 			"error": err.Error(),
 		})
 	}
 
-	log.LogInfoWithFields("server", "Server shutdown complete", map[string]interface{}{
+	log.LogInfoWithFields("server", "Server shutdown complete", map[string]any{
 		"reason": shutdownReason,
 	})
 	return nil

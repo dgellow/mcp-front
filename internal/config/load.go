@@ -16,7 +16,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	var rawConfig map[string]interface{}
+	var rawConfig map[string]any
 	if err := json.Unmarshal(data, &rawConfig); err != nil {
 		return nil, fmt.Errorf("parsing config JSON: %w", err)
 	}
@@ -48,9 +48,9 @@ func Load(path string) (*Config, error) {
 }
 
 // validateRawConfig validates the config structure before environment resolution
-func validateRawConfig(rawConfig map[string]interface{}) error {
-	if proxy, ok := rawConfig["proxy"].(map[string]interface{}); ok {
-		if auth, ok := proxy["auth"].(map[string]interface{}); ok {
+func validateRawConfig(rawConfig map[string]any) error {
+	if proxy, ok := rawConfig["proxy"].(map[string]any); ok {
+		if auth, ok := proxy["auth"].(map[string]any); ok {
 			if kind, ok := auth["kind"].(string); ok && kind == "oauth" {
 				secrets := []struct {
 					name     string
@@ -68,7 +68,7 @@ func validateRawConfig(rawConfig map[string]interface{}) error {
 							return fmt.Errorf("%s must use environment variable reference for security", secret.name)
 						}
 						// Verify it's an env ref
-						if refMap, isMap := value.(map[string]interface{}); isMap {
+						if refMap, isMap := value.(map[string]any); isMap {
 							if _, hasEnv := refMap["$env"]; !hasEnv {
 								return fmt.Errorf("%s must use {\"$env\": \"VAR_NAME\"} format", secret.name)
 							}

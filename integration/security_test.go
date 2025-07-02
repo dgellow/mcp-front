@@ -100,9 +100,9 @@ func TestSecurityScenarios(t *testing.T) {
 			// Testing SQL injection payload
 
 			// Try to inject via the query parameter
-			_, err := client.SendMCPRequest("tools/call", map[string]interface{}{
+			_, err := client.SendMCPRequest("tools/call", map[string]any{
 				"name": "query",
-				"arguments": map[string]interface{}{
+				"arguments": map[string]any{
 					"query": payload,
 				},
 			})
@@ -276,7 +276,7 @@ func TestSecurityScenarios(t *testing.T) {
 		errorCount := 0
 
 		// Make rapid requests to see if there's any rate limiting
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			err := client.ValidateBackendConnectivity()
 			if err != nil {
 				errorCount++

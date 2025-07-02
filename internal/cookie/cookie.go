@@ -27,7 +27,7 @@ func SetSession(w http.ResponseWriter, value string, maxAge time.Duration) {
 		MaxAge:   int(maxAge.Seconds()),
 	})
 
-	log.LogTraceWithFields("cookie", "Session cookie set", map[string]interface{}{
+	log.LogTraceWithFields("cookie", "Session cookie set", map[string]any{
 		"maxAge":   maxAge.String(),
 		"secure":   secure,
 		"sameSite": "Lax",

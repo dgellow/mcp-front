@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/dgellow/mcp-front/internal/log"
@@ -99,13 +100,7 @@ func (s *authService) ValidateUser(ctx context.Context, token *oauth2.Token) (*U
 			return nil, fmt.Errorf("user %s does not belong to a hosted domain", userInfo.Email)
 		}
 
-		domainAllowed := false
-		for _, domain := range s.allowedDomains {
-			if userInfo.HostedDomain == domain {
-				domainAllowed = true
-				break
-			}
-		}
+		domainAllowed := slices.Contains(s.allowedDomains, userInfo.HostedDomain)
 
 		if !domainAllowed {
 			return nil, fmt.Errorf("user %s domain %s is not in allowed domains", userInfo.Email, userInfo.HostedDomain)
@@ -116,10 +111,10 @@ func (s *authService) ValidateUser(ctx context.Context, token *oauth2.Token) (*U
 }
 
 // ParseClientRequest parses and validates a client registration request
-func (s *authService) ParseClientRequest(metadata map[string]interface{}) ([]string, []string, error) {
+func (s *authService) ParseClientRequest(metadata map[string]any) ([]string, []string, error) {
 	// Extract redirect URIs
 	redirectURIs := []string{}
-	if uris, ok := metadata["redirect_uris"].([]interface{}); ok {
+	if uris, ok := metadata["redirect_uris"].([]any); ok {
 		for _, uri := range uris {
 			if uriStr, ok := uri.(string); ok {
 				redirectURIs = append(redirectURIs, uriStr)

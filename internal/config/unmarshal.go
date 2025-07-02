@@ -398,13 +398,13 @@ func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
 	// Copy all fields
 	*s = ServiceAuth(raw)
 
-	log.LogTraceWithFields("config", "Unmarshaling service auth", map[string]interface{}{
+	log.LogTraceWithFields("config", "Unmarshaling service auth", map[string]any{
 		"type": s.Type,
 	})
 
 	// Parse password if provided (for basic auth)
 	if s.PasswordRaw != nil {
-		log.LogTraceWithFields("config", "Parsing password for basic auth", map[string]interface{}{
+		log.LogTraceWithFields("config", "Parsing password for basic auth", map[string]any{
 			"username": s.Username,
 		})
 		parsed, err := ParseConfigValue(s.PasswordRaw)
@@ -416,7 +416,7 @@ func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
 		}
 
 		// Hash the password using bcrypt
-		log.LogTraceWithFields("config", "Hashing password for basic auth", map[string]interface{}{
+		log.LogTraceWithFields("config", "Hashing password for basic auth", map[string]any{
 			"username": s.Username,
 		})
 		hashed, err := bcrypt.GenerateFromPassword([]byte(parsed.value), bcrypt.DefaultCost)
@@ -428,7 +428,7 @@ func (s *ServiceAuth) UnmarshalJSON(data []byte) error {
 
 	// Parse user token if provided
 	if s.UserTokenRaw != nil {
-		log.LogTraceWithFields("config", "Parsing user token for service auth", map[string]interface{}{
+		log.LogTraceWithFields("config", "Parsing user token for service auth", map[string]any{
 			"type": s.Type,
 		})
 		parsed, err := ParseConfigValue(s.UserTokenRaw)

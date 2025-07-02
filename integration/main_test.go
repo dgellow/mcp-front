@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 
 	// Wait for database to be ready
 	fmt.Println("Waiting for database to be ready...")
-	for i := 0; i < 30; i++ { // Wait up to 30 seconds
+	for i := range 30 { // Wait up to 30 seconds
 		checkCmd := exec.Command("docker", "compose", "exec", "-T", "test-postgres", "pg_isready", "-U", "testuser", "-d", "testdb")
 		if err := checkCmd.Run(); err == nil {
 			fmt.Println("Database is ready!")
@@ -83,7 +83,7 @@ func TestMain(m *testing.M) {
 
 	// Wait for SSE server to be ready
 	fmt.Println("Waiting for SSE server to be ready...")
-	for i := 0; i < 30; i++ { // Wait up to 30 seconds
+	for i := range 30 { // Wait up to 30 seconds
 		resp, err := http.Get("http://localhost:3001")
 		if err == nil {
 			resp.Body.Close()
@@ -102,7 +102,7 @@ func TestMain(m *testing.M) {
 
 	// Wait for Streamable server to be ready
 	fmt.Println("Waiting for Streamable server to be ready...")
-	for i := 0; i < 30; i++ { // Wait up to 30 seconds
+	for i := range 30 { // Wait up to 30 seconds
 		resp, err := http.Get("http://localhost:3002")
 		if err == nil {
 			resp.Body.Close()

@@ -84,7 +84,7 @@ func (c *ServiceOAuthClient) StartOAuthFlow(
 	// Generate authorization URL
 	authURL := oauth2Config.AuthCodeURL(state, oauth2.AccessTypeOffline)
 
-	log.LogInfoWithFields("oauth_client", "Starting OAuth flow", map[string]interface{}{
+	log.LogInfoWithFields("oauth_client", "Starting OAuth flow", map[string]any{
 		"service":  serviceName,
 		"user":     userEmail,
 		"authURL":  authURL,
@@ -134,7 +134,7 @@ func (c *ServiceOAuthClient) HandleCallback(
 	// Exchange code for token
 	token, err := oauth2Config.Exchange(ctx, code)
 	if err != nil {
-		log.LogErrorWithFields("oauth_client", "Failed to exchange code for token", map[string]interface{}{
+		log.LogErrorWithFields("oauth_client", "Failed to exchange code for token", map[string]any{
 			"service": serviceName,
 			"error":   err.Error(),
 		})
@@ -155,7 +155,7 @@ func (c *ServiceOAuthClient) HandleCallback(
 	}
 
 	if err := c.storage.SetUserToken(ctx, oauthState.UserEmail, serviceName, storedToken); err != nil {
-		log.LogErrorWithFields("oauth_client", "Failed to store OAuth token", map[string]interface{}{
+		log.LogErrorWithFields("oauth_client", "Failed to store OAuth token", map[string]any{
 			"service": serviceName,
 			"user":    oauthState.UserEmail,
 			"error":   err.Error(),
@@ -163,7 +163,7 @@ func (c *ServiceOAuthClient) HandleCallback(
 		return "", "", fmt.Errorf("failed to store token: %w", err)
 	}
 
-	log.LogInfoWithFields("oauth_client", "OAuth flow completed successfully", map[string]interface{}{
+	log.LogInfoWithFields("oauth_client", "OAuth flow completed successfully", map[string]any{
 		"service": serviceName,
 		"user":    oauthState.UserEmail,
 	})
@@ -224,7 +224,7 @@ func (c *ServiceOAuthClient) RefreshToken(
 	tokenSource := oauth2Config.TokenSource(ctx, oldToken)
 	newToken, err := tokenSource.Token()
 	if err != nil {
-		log.LogErrorWithFields("oauth_client", "Failed to refresh token", map[string]interface{}{
+		log.LogErrorWithFields("oauth_client", "Failed to refresh token", map[string]any{
 			"service": serviceName,
 			"user":    userEmail,
 			"error":   err.Error(),
@@ -244,7 +244,7 @@ func (c *ServiceOAuthClient) RefreshToken(
 		return fmt.Errorf("failed to store refreshed token: %w", err)
 	}
 
-	log.LogInfoWithFields("oauth_client", "Token refreshed successfully", map[string]interface{}{
+	log.LogInfoWithFields("oauth_client", "Token refreshed successfully", map[string]any{
 		"service": serviceName,
 		"user":    userEmail,
 		"expiry":  newToken.Expiry,
@@ -298,7 +298,7 @@ func ParseTokenResponse(body []byte) (*oauth2.Token, error) {
 	}
 
 	if resp.Scope != "" {
-		token = token.WithExtra(map[string]interface{}{
+		token = token.WithExtra(map[string]any{
 			"scope": strings.Split(resp.Scope, " "),
 		})
 	}

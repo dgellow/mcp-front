@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base64"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -132,7 +133,7 @@ func loggerMiddleware(prefix string) MiddlewareFunc {
 			next.ServeHTTP(wrapped, r)
 
 			// Log request with response details
-			fields := map[string]interface{}{
+			fields := map[string]any{
 				"method":      r.Method,
 				"path":        r.URL.Path,
 				"status":      wrapped.Status(),
@@ -174,7 +175,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 
 			// Check if user context is already set — OAuth succeeded, no need for further auth
 			if userEmail, ok := auth.GetUserFromContext(ctx); ok && userEmail != "" {
-				log.LogTraceWithFields("service_auth", "Skipping service auth, user already authenticated via OAuth", map[string]interface{}{
+				log.LogTraceWithFields("service_auth", "Skipping service auth, user already authenticated via OAuth", map[string]any{
 					"user": userEmail,
 				})
 				next.ServeHTTP(w, r)
@@ -196,16 +197,14 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 						continue
 					}
 
-					for _, allowedToken := range serviceAuth.Tokens {
-						if token == allowedToken {
-							// Auth succeeded
-							log.LogTraceWithFields("service_auth", "Bearer token service auth successful", map[string]interface{}{
-								"service_name": "service",
-							})
-							ctx := auth.WithServiceAuth(r.Context(), "service", string(serviceAuth.UserToken))
-							next.ServeHTTP(w, r.WithContext(ctx))
-							return
-						}
+					if slices.Contains(serviceAuth.Tokens, token) {
+						// Auth succeeded
+						log.LogTraceWithFields("service_auth", "Bearer token service auth successful", map[string]any{
+							"service_name": "service",
+						})
+						ctx := auth.WithServiceAuth(r.Context(), "service", string(serviceAuth.UserToken))
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
 					}
 				}
 				log.LogTraceWithFields("service_auth", "Bearer token service auth failed: invalid token", nil)
@@ -216,7 +215,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 				log.LogTraceWithFields("service_auth", "Attempting basic service auth", nil)
 				decoded, err := base64.StdEncoding.DecodeString(encoded)
 				if err != nil {
-					log.LogTraceWithFields("service_auth", "Basic service auth failed: invalid base64 encoding", map[string]interface{}{
+					log.LogTraceWithFields("service_auth", "Basic service auth failed: invalid base64 encoding", map[string]any{
 						"error": err.Error(),
 					})
 					w.Header().Set("WWW-Authenticate", `Basic realm="mcp-front"`)
@@ -244,7 +243,7 @@ func newServiceAuthMiddleware(serviceAuths []config.ServiceAuth) MiddlewareFunc 
 					if username == serviceAuth.Username {
 						if err := bcrypt.CompareHashAndPassword([]byte(string(serviceAuth.HashedPassword)), []byte(password)); err == nil {
 							// Auth succeeded
-							log.LogTraceWithFields("service_auth", "Basic service auth successful", map[string]interface{}{
+							log.LogTraceWithFields("service_auth", "Basic service auth successful", map[string]any{
 								"username": username,
 							})
 							ctx := auth.WithServiceAuth(r.Context(), serviceAuth.Username, string(serviceAuth.UserToken))

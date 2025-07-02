@@ -48,13 +48,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	if cfg.Proxy.Sessions != nil {
 		if cfg.Proxy.Sessions.Timeout > 0 {
 			sessionTimeout = cfg.Proxy.Sessions.Timeout
-			log.LogInfoWithFields("server", "Using configured session timeout", map[string]interface{}{
+			log.LogInfoWithFields("server", "Using configured session timeout", map[string]any{
 				"timeout": sessionTimeout,
 			})
 		}
 		if cfg.Proxy.Sessions.CleanupInterval > 0 {
 			cleanupInterval = cfg.Proxy.Sessions.CleanupInterval
-			log.LogInfoWithFields("server", "Using configured cleanup interval", map[string]interface{}{
+			log.LogInfoWithFields("server", "Using configured cleanup interval", map[string]any{
 				"interval": cleanupInterval,
 			})
 		}
@@ -98,7 +98,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Create storage based on configuration
 		var store storage.Storage
 		if oauthAuth.Storage == "firestore" {
-			log.LogInfoWithFields("oauth", "Using Firestore storage", map[string]interface{}{
+			log.LogInfoWithFields("oauth", "Using Firestore storage", map[string]any{
 				"project":    oauthAuth.GCPProject,
 				"database":   oauthAuth.FirestoreDatabase,
 				"collection": oauthAuth.FirestoreCollection,
@@ -120,7 +120,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			}
 			store = firestoreStorage
 		} else {
-			log.LogInfoWithFields("oauth", "Using in-memory storage", map[string]interface{}{})
+			log.LogInfoWithFields("oauth", "Using in-memory storage", map[string]any{})
 			store = storage.NewMemoryStorage()
 		}
 
@@ -152,7 +152,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			for _, adminEmail := range cfg.Proxy.Admin.AdminEmails {
 				// Upsert admin user
 				if err := store.UpsertUser(ctx, adminEmail); err != nil {
-					log.LogWarnWithFields("server", "Failed to initialize admin user", map[string]interface{}{
+					log.LogWarnWithFields("server", "Failed to initialize admin user", map[string]any{
 						"email": adminEmail,
 						"error": err.Error(),
 					})
@@ -160,7 +160,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 				}
 				// Set as admin
 				if err := store.SetUserAdmin(ctx, adminEmail, true); err != nil {
-					log.LogWarnWithFields("server", "Failed to set user as admin", map[string]interface{}{
+					log.LogWarnWithFields("server", "Failed to set user as admin", map[string]any{
 						"email": adminEmail,
 						"error": err.Error(),
 					})
@@ -215,7 +215,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// Build path like /notion/sse
 		ssePathPrefix := "/" + serverName + "/sse"
 
-		log.LogInfoWithFields("server", "Registering MCP server", map[string]interface{}{
+		log.LogInfoWithFields("server", "Registering MCP server", map[string]any{
 			"name":                serverName,
 			"sse_path":            ssePathPrefix,
 			"transport_type":      serverConfig.TransportType,
@@ -238,7 +238,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			// Create inline handler
 			handler = inline.NewHandler(serverName, inlineServer)
 
-			log.LogInfoWithFields("server", "Created inline MCP server", map[string]interface{}{
+			log.LogInfoWithFields("server", "Created inline MCP server", map[string]any{
 				"name":  serverName,
 				"tools": len(resolvedTools),
 			})
@@ -265,7 +265,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 						// Handle session registration
 						handleSessionRegistration(sessionCtx, session, handler, s.sessionManager)
 					} else {
-						log.LogErrorWithFields("server", "No session handler in context", map[string]interface{}{
+						log.LogErrorWithFields("server", "No session handler in context", map[string]any{
 							"sessionID": session.SessionID(),
 							"server":    currentServerName,
 						})
@@ -285,7 +285,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 						if handler.h.storage != nil {
 							if err := handler.h.storage.RevokeSession(sessionCtx, session.SessionID()); err != nil {
-								log.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]interface{}{
+								log.LogWarnWithFields("server", "Failed to revoke session from storage", map[string]any{
 									"error":     err.Error(),
 									"sessionID": session.SessionID(),
 									"user":      handler.userEmail,
@@ -293,7 +293,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 							}
 						}
 
-						log.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]interface{}{
+						log.LogInfoWithFields("server", "Session unregistered and cleaned up", map[string]any{
 							"sessionID": session.SessionID(),
 							"server":    currentServerName,
 							"user":      handler.userEmail,
@@ -337,14 +337,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		middlewares = append(middlewares, corsMiddleware(allowedOrigins))
 
 		if s.authServer != nil {
-			log.LogTraceWithFields("server", "Adding OAuth middleware", map[string]interface{}{
+			log.LogTraceWithFields("server", "Adding OAuth middleware", map[string]any{
 				"server_name": serverName,
 			})
 			middlewares = append(middlewares, s.authServer.ValidateTokenMiddleware())
 		}
 
 		if len(serverConfig.ServiceAuths) > 0 {
-			log.LogTraceWithFields("server", "Adding service auth middleware", map[string]interface{}{
+			log.LogTraceWithFields("server", "Adding service auth middleware", map[string]any{
 				"server_name": serverName,
 				"auth_count":  len(serverConfig.ServiceAuths),
 			})
@@ -361,7 +361,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Admin routes - only if admin is enabled
 	if cfg.Proxy.Admin != nil && cfg.Proxy.Admin.Enabled {
-		log.LogInfoWithFields("server", "Admin UI enabled", map[string]interface{}{
+		log.LogInfoWithFields("server", "Admin UI enabled", map[string]any{
 			"admin_emails": cfg.Proxy.Admin.AdminEmails,
 		})
 
@@ -462,13 +462,13 @@ func handleSessionRegistration(
 		SessionID:  session.SessionID(),
 	}
 
-	log.LogDebugWithFields("server", "Registering session", map[string]interface{}{
+	log.LogDebugWithFields("server", "Registering session", map[string]any{
 		"sessionID": session.SessionID(),
 		"server":    handler.h.serverName,
 		"user":      handler.userEmail,
 	})
 
-	log.LogTraceWithFields("server", "Session registration started", map[string]interface{}{
+	log.LogTraceWithFields("server", "Session registration started", map[string]any{
 		"sessionID":         session.SessionID(),
 		"server":            handler.h.serverName,
 		"user":              handler.userEmail,
@@ -481,7 +481,7 @@ func handleSessionRegistration(
 	if handler.config.RequiresUserToken && handler.userEmail != "" && handler.h.storage != nil {
 		storedToken, err := handler.h.storage.GetUserToken(sessionCtx, handler.userEmail, handler.h.serverName)
 		if err != nil {
-			log.LogDebugWithFields("server", "No user token found", map[string]interface{}{
+			log.LogDebugWithFields("server", "No user token found", map[string]any{
 				"server": handler.h.serverName,
 				"user":   handler.userEmail,
 			})
@@ -503,7 +503,7 @@ func handleSessionRegistration(
 		userToken,
 	)
 	if err != nil {
-		log.LogErrorWithFields("server", "Failed to create stdio session", map[string]interface{}{
+		log.LogErrorWithFields("server", "Failed to create stdio session", map[string]any{
 			"error":     err.Error(),
 			"sessionID": session.SessionID(),
 			"server":    handler.h.serverName,
@@ -524,7 +524,7 @@ func handleSessionRegistration(
 		handler.config.UserAuthentication,
 		session,
 	); err != nil {
-		log.LogErrorWithFields("server", "Failed to discover and register capabilities", map[string]interface{}{
+		log.LogErrorWithFields("server", "Failed to discover and register capabilities", map[string]any{
 			"error":     err.Error(),
 			"sessionID": session.SessionID(),
 			"server":    handler.h.serverName,
@@ -544,7 +544,7 @@ func handleSessionRegistration(
 				LastActive: time.Now(),
 			}
 			if err := handler.h.storage.TrackSession(sessionCtx, activeSession); err != nil {
-				log.LogWarnWithFields("server", "Failed to track session", map[string]interface{}{
+				log.LogWarnWithFields("server", "Failed to track session", map[string]any{
 					"error":     err.Error(),
 					"sessionID": session.SessionID(),
 					"user":      handler.userEmail,
@@ -553,7 +553,7 @@ func handleSessionRegistration(
 		}
 	}
 
-	log.LogInfoWithFields("server", "Session successfully created and connected", map[string]interface{}{
+	log.LogInfoWithFields("server", "Session successfully created and connected", map[string]any{
 		"sessionID": session.SessionID(),
 		"server":    handler.h.serverName,
 		"user":      handler.userEmail,

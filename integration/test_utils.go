@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -119,8 +120,8 @@ func (c *MCPSSEClient) ConnectToServer(serverName string) error {
 		tracef("ConnectToServer: SSE line: %s", line)
 
 		// Look for data lines
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
+		if after, ok := strings.CutPrefix(line, "data: "); ok {
+			data := after
 
 			// Check if it's an endpoint message (for inline servers)
 			if strings.Contains(data, `"type":"endpoint"`) {
@@ -172,7 +173,7 @@ func (c *MCPSSEClient) Close() {
 }
 
 // SendMCPRequest sends an MCP JSON-RPC request and returns the response
-func (c *MCPSSEClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
+func (c *MCPSSEClient) SendMCPRequest(method string, params any) (map[string]any, error) {
 	// Ensure we have a connection
 	if c.messageEndpoint == "" {
 		if err := c.Connect(); err != nil {
@@ -181,7 +182,7 @@ func (c *MCPSSEClient) SendMCPRequest(method string, params interface{}) (map[st
 	}
 
 	// Send MCP request to the message endpoint
-	request := map[string]interface{}{
+	request := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
 		"method":  method,
@@ -223,10 +224,10 @@ func (c *MCPSSEClient) SendMCPRequest(method string, params interface{}) (map[st
 		for c.sseScanner.Scan() {
 			line := c.sseScanner.Text()
 
-			if strings.HasPrefix(line, "data: ") {
-				data := strings.TrimPrefix(line, "data: ")
+			if after, ok := strings.CutPrefix(line, "data: "); ok {
+				data := after
 				// Try to parse as JSON
-				var msg map[string]interface{}
+				var msg map[string]any
 				if err := json.Unmarshal([]byte(data), &msg); err == nil {
 					// Check if this is our response (matching ID)
 					if id, ok := msg["id"]; ok && id == float64(1) {
@@ -243,7 +244,7 @@ func (c *MCPSSEClient) SendMCPRequest(method string, params interface{}) (map[st
 		return nil, fmt.Errorf("no response received from SSE stream")
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %v - %s", err, string(respBody))
 	}
@@ -355,7 +356,7 @@ func (c *MCPStreamableClient) readSSEMessages() {
 }
 
 // SendMCPRequest sends a JSON-RPC request via POST
-func (c *MCPStreamableClient) SendMCPRequest(method string, params interface{}) (map[string]interface{}, error) {
+func (c *MCPStreamableClient) SendMCPRequest(method string, params any) (map[string]any, error) {
 	c.mu.Lock()
 	serverName := c.serverName
 	c.mu.Unlock()
@@ -368,7 +369,7 @@ func (c *MCPStreamableClient) SendMCPRequest(method string, params interface{}) 
 	url := c.baseURL + "/" + serverName + "/sse"
 
 	// Construct JSON-RPC request
-	request := map[string]interface{}{
+	request := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      1,
 		"method":  method,
@@ -409,8 +410,8 @@ func (c *MCPStreamableClient) SendMCPRequest(method string, params interface{}) 
 }
 
 // handleJSONResponse processes a regular JSON response
-func (c *MCPStreamableClient) handleJSONResponse(body io.Reader) (map[string]interface{}, error) {
-	var response map[string]interface{}
+func (c *MCPStreamableClient) handleJSONResponse(body io.Reader) (map[string]any, error) {
+	var response map[string]any
 	if err := json.NewDecoder(body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("failed to decode JSON response: %v", err)
 	}
@@ -418,15 +419,15 @@ func (c *MCPStreamableClient) handleJSONResponse(body io.Reader) (map[string]int
 }
 
 // handleSSEResponse processes an SSE stream response from a POST
-func (c *MCPStreamableClient) handleSSEResponse(body io.Reader) (map[string]interface{}, error) {
+func (c *MCPStreamableClient) handleSSEResponse(body io.Reader) (map[string]any, error) {
 	scanner := bufio.NewScanner(body)
-	var lastResponse map[string]interface{}
+	var lastResponse map[string]any
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
-			var msg map[string]interface{}
+		if after, ok := strings.CutPrefix(line, "data: "); ok {
+			data := after
+			var msg map[string]any
 			if err := json.Unmarshal([]byte(data), &msg); err == nil {
 				// Keep the last response with an ID (not a notification)
 				if _, hasID := msg["id"]; hasID {
@@ -494,7 +495,7 @@ func NewMockGCPServer(port string) *MockGCPServer {
 		if code != "test-auth-code" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"error":             "invalid_grant",
 				"error_description": "Invalid authorization code",
 			})
@@ -502,7 +503,7 @@ func NewMockGCPServer(port string) *MockGCPServer {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "test-access-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -511,7 +512,7 @@ func NewMockGCPServer(port string) *MockGCPServer {
 
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"email": "test@test.com",
 			"hd":    "test.com",
 		})
@@ -661,7 +662,7 @@ func GetTestConfig() TestConfig {
 
 func waitForDB(t *testing.T) {
 	waitForSec := 5
-	for i := 0; i < waitForSec; i++ {
+	for range waitForSec {
 		// Check if container is running
 		psCmd := exec.Command("docker", "compose", "ps", "-q", "test-postgres")
 		if output, err := psCmd.Output(); err != nil || len(output) == 0 {
@@ -681,14 +682,14 @@ func waitForDB(t *testing.T) {
 }
 
 // trace logs a message if TRACE environment variable is set
-func trace(t *testing.T, format string, args ...interface{}) {
+func trace(t *testing.T, format string, args ...any) {
 	if os.Getenv("TRACE") == "1" {
 		t.Logf("TRACE: "+format, args...)
 	}
 }
 
 // tracef logs a formatted message to stdout if TRACE is set (for use outside tests)
-func tracef(format string, args ...interface{}) {
+func tracef(format string, args ...any) {
 	if os.Getenv("TRACE") == "1" {
 		fmt.Printf("TRACE: "+format+"\n", args...)
 	}
@@ -778,7 +779,7 @@ func stopMCPFront(cmd *exec.Cmd) {
 // waitForMCPFront waits for the mcp-front server to be ready
 func waitForMCPFront(t *testing.T) {
 	t.Helper()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		resp, err := http.Get("http://localhost:8080/health")
 		if err == nil && resp.StatusCode == 200 {
 			resp.Body.Close()
@@ -814,13 +815,7 @@ func cleanupContainers(t *testing.T, initialContainers []string) {
 	time.Sleep(2 * time.Second)
 	containers := getMCPContainers()
 	for _, container := range containers {
-		isInitial := false
-		for _, initial := range initialContainers {
-			if container == initial {
-				isInitial = true
-				break
-			}
-		}
+		isInitial := slices.Contains(initialContainers, container)
 		if !isInitial {
 			t.Logf("Force stopping container: %s...", container)
 			if err := exec.Command("docker", "stop", container).Run(); err != nil {

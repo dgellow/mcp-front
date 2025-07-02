@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -122,9 +123,7 @@ func (s *MemoryStorage) GetAllClients() map[string]fosite.Client {
 	defer s.clientsMutex.RUnlock()
 
 	clients := make(map[string]fosite.Client, len(s.MemoryStore.Clients)) // Copy to avoid races
-	for id, client := range s.MemoryStore.Clients {
-		clients[id] = client
-	}
+	maps.Copy(clients, s.MemoryStore.Clients)
 	return clients
 }
 
@@ -185,8 +184,8 @@ func (s *MemoryStorage) ListUserServices(ctx context.Context, userEmail string) 
 	var services []string
 	prefix := userEmail + ":"
 	for key := range s.userTokens {
-		if strings.HasPrefix(key, prefix) {
-			service := strings.TrimPrefix(key, prefix)
+		if after, ok := strings.CutPrefix(key, prefix); ok {
+			service := after
 			services = append(services, service)
 		}
 	}

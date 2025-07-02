@@ -223,7 +223,7 @@ type ProxyConfig struct {
 	BaseURL  string         `json:"baseURL"`
 	Addr     string         `json:"addr"`
 	Name     string         `json:"name"`
-	Auth     interface{}    `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
+	Auth     any            `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
 	Admin    *AdminConfig   `json:"admin,omitempty"`
 	Sessions *SessionConfig `json:"sessions,omitempty"`
 }

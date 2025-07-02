@@ -151,7 +151,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.LogInfoWithFields("main", "Starting mcp-front", map[string]interface{}{
+	log.LogInfoWithFields("main", "Starting mcp-front", map[string]any{
 		"version": BuildVersion,
 		"config":  *conf,
 	})

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -339,9 +340,7 @@ func (s *FirestoreStorage) GetAllClients() map[string]fosite.Client {
 
 	// Create a copy to avoid race conditions
 	clients := make(map[string]fosite.Client, len(s.MemoryStore.Clients))
-	for id, client := range s.MemoryStore.Clients {
-		clients[id] = client
-	}
+	maps.Copy(clients, s.MemoryStore.Clients)
 	return clients
 }
 
