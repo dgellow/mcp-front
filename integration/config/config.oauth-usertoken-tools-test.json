@@ -36,7 +36,8 @@
         "USER_TOKEN": {"$userToken": "{{token}}"}
       },
       "requiresUserToken": true,
-      "tokenSetup": {
+      "userAuthentication": {
+        "type": "manual",
         "displayName": "Test Service",
         "instructions": "Enter your test token",
         "helpUrl": "https://example.com/help"

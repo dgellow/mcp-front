@@ -32,7 +32,8 @@
     "notion": {
       "transportType": "stdio",
       "requiresUserToken": true,
-      "tokenSetup": {
+      "userAuthentication": {
+        "type": "manual",
         "displayName": "Notion Integration Token",
         "instructions": "Create an integration at https://www.notion.so/my-integrations and copy the token",
         "helpUrl": "https://developers.notion.com/docs/create-a-notion-integration"

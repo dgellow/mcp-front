@@ -24,7 +24,8 @@
       "transportType": "sse",
       "url": "https://notion-mcp.example.com",
       "requiresUserToken": true,
-      "tokenSetup": {
+      "userAuthentication": {
+        "type": "manual",
         "displayName": "Notion",
         "instructions": "Create a Notion integration token",
         "helpUrl": "https://developers.notion.com",
@@ -35,7 +36,8 @@
       "transportType": "sse",
       "url": "https://github-mcp.example.com",
       "requiresUserToken": true,
-      "tokenSetup": {
+      "userAuthentication": {
+        "type": "manual",
         "displayName": "GitHub",
         "instructions": "Create a GitHub personal access token",
         "helpUrl": "https://github.com/settings/tokens"
