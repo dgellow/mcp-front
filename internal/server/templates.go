@@ -25,12 +25,14 @@ type TokenPageData struct {
 
 // ServiceTokenData represents a single service in the token page
 type ServiceTokenData struct {
-	Name          string
-	DisplayName   string
-	Instructions  string
-	HelpURL       string
-	TokenFormat   string
-	HasToken      bool
-	RequiresToken bool
-	AuthType      string // "oauth", "bearer", or "none"
+	Name             string
+	DisplayName      string
+	Instructions     string
+	HelpURL          string
+	TokenFormat      string
+	HasToken         bool
+	RequiresToken    bool
+	AuthType         string // "oauth", "bearer", or "none"
+	SupportsOAuth    bool   // Whether this service supports OAuth authentication
+	IsOAuthConnected bool   // Whether the user has connected OAuth for this service
 }

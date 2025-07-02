@@ -272,9 +272,9 @@ func TestOAuthAuthConfig_UnmarshalJSON(t *testing.T) {
 	assert.Equal(t, []string{"example.com"}, config.AllowedDomains)
 	assert.Equal(t, []string{"https://claude.ai", "https://example.com"}, config.AllowedOrigins)
 	assert.Equal(t, "test-client-id", config.GoogleClientID)
-	assert.Equal(t, "test-secret-value", config.GoogleClientSecret)
-	assert.Equal(t, "this-is-a-very-long-jwt-secret-key", config.JWTSecret)
-	assert.Equal(t, "exactly-32-bytes-long-encryptkey", config.EncryptionKey)
+	assert.Equal(t, Secret("test-secret-value"), config.GoogleClientSecret)
+	assert.Equal(t, Secret("this-is-a-very-long-jwt-secret-key"), config.JWTSecret)
+	assert.Equal(t, Secret("exactly-32-bytes-long-encryptkey"), config.EncryptionKey)
 }
 
 func TestOAuthAuthConfig_ValidationErrors(t *testing.T) {

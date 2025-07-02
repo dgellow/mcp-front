@@ -86,17 +86,34 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 				if serverConfig.UserAuthentication.DisplayName != "" {
 					service.DisplayName = serverConfig.UserAuthentication.DisplayName
 				}
-				if serverConfig.UserAuthentication.Type == config.UserAuthTypeManual {
+
+				// Check if this service supports OAuth
+				if serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
+					service.SupportsOAuth = true
+					service.Instructions = fmt.Sprintf("Connect your %s account via OAuth", service.DisplayName)
+
+					// Check if OAuth is already connected
+					storedToken, err := h.tokenStore.GetUserToken(r.Context(), userEmail, name)
+					if err == nil && storedToken.Type == storage.TokenTypeOAuth {
+						service.IsOAuthConnected = true
+						service.HasToken = true
+					}
+				} else if serverConfig.UserAuthentication.Type == config.UserAuthTypeManual {
 					if serverConfig.UserAuthentication.Instructions != "" {
 						service.Instructions = serverConfig.UserAuthentication.Instructions
 					}
 					service.HelpURL = serverConfig.UserAuthentication.HelpURL
+
+					// Check if manual token exists
+					_, err := h.tokenStore.GetUserToken(r.Context(), userEmail, name)
+					service.HasToken = err == nil
 				}
 				service.TokenFormat = serverConfig.UserAuthentication.TokenFormat
+			} else {
+				// No UserAuthentication config means manual token
+				_, err := h.tokenStore.GetUserToken(r.Context(), userEmail, name)
+				service.HasToken = err == nil
 			}
-
-			_, err := h.tokenStore.GetUserToken(r.Context(), userEmail, name)
-			service.HasToken = err == nil
 		} else {
 			// Determine if it's OAuth authenticated or uses bearer tokens
 			if h.oauthEnabled {
