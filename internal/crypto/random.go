@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"golang.org/x/crypto/bcrypt"
 )
 

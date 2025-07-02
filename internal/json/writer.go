@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // ErrorResponse represents a standard JSON error response

@@ -13,7 +13,7 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"

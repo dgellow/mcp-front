@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // Server implements an MCP server from inline configuration

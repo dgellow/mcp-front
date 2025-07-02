@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/storage"
 )

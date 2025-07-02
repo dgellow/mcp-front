@@ -13,7 +13,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"

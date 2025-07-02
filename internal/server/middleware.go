@@ -9,7 +9,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"golang.org/x/crypto/bcrypt"

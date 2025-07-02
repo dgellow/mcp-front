@@ -7,7 +7,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // forwardSSEToBackend forwards an SSE request to the backend SSE server

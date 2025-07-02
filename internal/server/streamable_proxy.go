@@ -9,7 +9,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // forwardStreamablePostToBackend handles POST requests for streamable-http transport

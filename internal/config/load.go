@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // Load loads and processes the config with immediate env var resolution

@@ -10,7 +10,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/utils"
 	"golang.org/x/crypto/bcrypt"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // UnmarshalJSON implements custom unmarshaling for MCPClientConfig

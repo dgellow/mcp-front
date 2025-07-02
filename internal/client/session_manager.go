@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal/config"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"

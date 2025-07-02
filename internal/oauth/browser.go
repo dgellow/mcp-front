@@ -10,7 +10,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/cookie"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // SessionData represents the data stored in the encrypted session cookie

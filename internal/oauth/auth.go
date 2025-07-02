@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )

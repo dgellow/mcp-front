@@ -11,7 +11,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/inline"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"

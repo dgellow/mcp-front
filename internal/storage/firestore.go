@@ -8,7 +8,7 @@ import (
 
 	"cloud.google.com/go/firestore"
 	"github.com/dgellow/mcp-front/internal/crypto"
-	log "github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/storage"
 	"google.golang.org/api/iterator"

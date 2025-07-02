@@ -77,7 +77,7 @@ type ServiceAuth struct {
 	// User token to inject when requiresUserToken is true
 	UserToken json.RawMessage `json:"userToken,omitempty"`
 
-	// Computed fields (not in JSON)
+	// Computed fields
 	HashedPassword    string `json:"-"` // bcrypt hash for basic auth
 	ResolvedUserToken string `json:"-"` // resolved user token
 }
