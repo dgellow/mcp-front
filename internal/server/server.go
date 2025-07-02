@@ -10,15 +10,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // Run starts and runs the MCP proxy server
 func Run(cfg *config.Config) error {
-	internal.LogInfoWithFields("server", "Starting MCP proxy server", map[string]interface{}{
-		"addr":    cfg.Proxy.Addr,
-		"baseURL": cfg.Proxy.BaseURL,
+	log.LogInfoWithFields("server", "Starting MCP proxy server", map[string]interface{}{
+		"addr":       cfg.Proxy.Addr,
+		"baseURL":    cfg.Proxy.BaseURL,
+		"mcpServers": len(cfg.MCPServers),
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -40,8 +41,9 @@ func Run(cfg *config.Config) error {
 
 	// Start HTTP server
 	go func() {
-		internal.Logf("Starting SSE server")
-		internal.Logf("Server listening on %s", cfg.Proxy.Addr)
+		log.LogInfoWithFields("server", "HTTP server starting", map[string]interface{}{
+			"addr": cfg.Proxy.Addr,
+		})
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errChan <- fmt.Errorf("server error: %w", err)
 		}
@@ -51,30 +53,47 @@ func Run(cfg *config.Config) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
+	var shutdownReason string
 	select {
 	case sig := <-sigChan:
-		internal.Logf("Received signal: %v", sig)
+		shutdownReason = fmt.Sprintf("signal %v", sig)
+		log.LogInfoWithFields("server", "Received shutdown signal", map[string]interface{}{
+			"signal": sig.String(),
+		})
 	case err := <-errChan:
-		internal.Logf("Shutting down due to error: %v", err)
+		shutdownReason = fmt.Sprintf("error: %v", err)
+		log.LogErrorWithFields("server", "Shutting down due to error", map[string]interface{}{
+			"error": err.Error(),
+		})
 	case <-ctx.Done():
-		internal.Logf("Context cancelled, shutting down")
+		shutdownReason = "context cancelled"
+		log.LogInfoWithFields("server", "Context cancelled, shutting down", nil)
 	}
 
 	// Graceful shutdown
-	internal.Logf("Shutting down server...")
+	log.LogInfoWithFields("server", "Starting graceful shutdown", map[string]interface{}{
+		"reason":  shutdownReason,
+		"timeout": "30s",
+	})
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		internal.Logf("Server shutdown error: %v", err)
+		log.LogErrorWithFields("server", "HTTP server shutdown error", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return err
 	}
 
 	// Shutdown the handler (which includes session manager)
 	if err := handler.Shutdown(); err != nil {
-		internal.Logf("Handler shutdown error: %v", err)
+		log.LogErrorWithFields("server", "Handler shutdown error", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
-	internal.Logf("Server shutdown complete")
+	log.LogInfoWithFields("server", "Server shutdown complete", map[string]interface{}{
+		"reason": shutdownReason,
+	})
 	return nil
 }

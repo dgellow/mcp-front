@@ -3,20 +3,18 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-streamable-test",
-    "auth": {
-      "kind": "bearerToken",
-      "tokens": {
-        "test-streamable": [
-          "streamable-test-token"
-        ]
-      }
-    }
+    "name": "mcp-front-streamable-test"
   },
   "mcpServers": {
     "test-streamable": {
       "transportType": "streamable-http",
-      "url": "http://localhost:3002"
+      "url": "http://localhost:3002",
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["streamable-test-token"]
+        }
+      ]
     }
   }
 }

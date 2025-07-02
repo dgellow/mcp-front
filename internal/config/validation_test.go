@@ -20,23 +20,21 @@ func TestValidateFile(t *testing.T) {
 		wantWarnCount int
 	}{
 		{
-			name: "valid_bearer_token_config",
+			name: "valid_service_auth_config",
 			config: `{
 				"version": "v0.0.1-DEV_EDITION",
 				"proxy": {
 					"baseURL": "http://localhost:8080",
-					"addr": ":8080",
-					"auth": {
-						"kind": "bearerToken",
-						"tokens": {
-							"postgres": ["token1"]
-						}
-					}
+					"addr": ":8080"
 				},
 				"mcpServers": {
 					"postgres": {
 						"transportType": "stdio",
-						"command": "docker"
+						"command": "docker",
+						"serviceAuths": [{
+							"type": "bearer",
+							"tokens": ["token1"]
+						}]
 					}
 				}
 			}`,
@@ -201,11 +199,7 @@ func TestValidateFile(t *testing.T) {
 				"version": "v0.0.1-DEV_EDITION",
 				"proxy": {
 					"baseURL": "http://localhost:8080",
-					"addr": ":8080",
-					"auth": {
-						"kind": "bearerToken",
-						"tokens": {}
-					}
+					"addr": ":8080"
 				},
 				"mcpServers": {
 					"notion": {

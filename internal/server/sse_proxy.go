@@ -5,9 +5,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // forwardSSEToBackend forwards an SSE request to the backend SSE server
@@ -18,7 +18,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 	// Create the backend request
 	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, nil)
 	if err != nil {
-		internal.LogErrorWithFields("sse_proxy", "Failed to create backend request", map[string]any{
+		log.LogErrorWithFields("sse_proxy", "Failed to create backend request", map[string]any{
 			"error": err.Error(),
 			"url":   backendURL,
 		})
@@ -43,7 +43,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 	// Ensure we accept SSE
 	req.Header.Set("Accept", "text/event-stream")
 
-	internal.LogDebugWithFields("sse_proxy", "Forwarding SSE request to backend", map[string]any{
+	log.LogDebugWithFields("sse_proxy", "Forwarding SSE request to backend", map[string]any{
 		"backendURL": backendURL,
 		"method":     r.Method,
 		"headers":    config.Headers,
@@ -60,7 +60,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 
 	resp, err := client.Do(req)
 	if err != nil {
-		internal.LogErrorWithFields("sse_proxy", "Backend request failed", map[string]any{
+		log.LogErrorWithFields("sse_proxy", "Backend request failed", map[string]any{
 			"error": err.Error(),
 			"url":   backendURL,
 		})
@@ -72,7 +72,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 	// Check if we got an SSE response
 	contentType := resp.Header.Get("Content-Type")
 	if resp.StatusCode != http.StatusOK || contentType != "text/event-stream" {
-		internal.LogWarnWithFields("sse_proxy", "Backend did not return SSE response", map[string]any{
+		log.LogWarnWithFields("sse_proxy", "Backend did not return SSE response", map[string]any{
 			"status":      resp.StatusCode,
 			"contentType": contentType,
 			"url":         backendURL,
@@ -100,7 +100,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 	// Get flusher for SSE
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		internal.LogError("Response writer doesn't support flushing")
+		log.LogError("Response writer doesn't support flushing")
 		return
 	}
 
@@ -110,7 +110,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
 			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				internal.LogDebugWithFields("sse_proxy", "Client disconnected", map[string]any{
+				log.LogDebugWithFields("sse_proxy", "Client disconnected", map[string]any{
 					"error": writeErr.Error(),
 				})
 				return
@@ -119,7 +119,7 @@ func forwardSSEToBackend(ctx context.Context, w http.ResponseWriter, r *http.Req
 		}
 		if err != nil {
 			if err != io.EOF {
-				internal.LogErrorWithFields("sse_proxy", "Error reading from backend", map[string]any{
+				log.LogErrorWithFields("sse_proxy", "Error reading from backend", map[string]any{
 					"error": err.Error(),
 				})
 			}

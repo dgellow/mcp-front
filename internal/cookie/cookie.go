@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // Common cookie names used in mcp-front
@@ -15,14 +16,21 @@ const (
 
 // SetSession sets a session cookie with appropriate security settings
 func SetSession(w http.ResponseWriter, value string, maxAge time.Duration) {
+	secure := !internal.IsDevelopmentMode()
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookie,
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   !internal.IsDevelopmentMode(), // Only require HTTPS in production
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(maxAge.Seconds()),
+	})
+
+	log.LogTraceWithFields("cookie", "Session cookie set", map[string]interface{}{
+		"maxAge":   maxAge.String(),
+		"secure":   secure,
+		"sameSite": "Lax",
 	})
 }
 
@@ -52,6 +60,7 @@ func Clear(w http.ResponseWriter, name string) {
 // ClearSession removes the session cookie
 func ClearSession(w http.ResponseWriter) {
 	Clear(w, SessionCookie)
+	log.LogTraceWithFields("cookie", "Session cookie cleared", nil)
 }
 
 // ClearCSRF removes the CSRF cookie

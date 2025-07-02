@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // Load loads and processes the config with immediate env var resolution
@@ -42,18 +42,6 @@ func Load(path string) (*Config, error) {
 
 	if err := ValidateConfig(&config); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
-	}
-
-	// Process auth tokens for bearer token mode
-	if auth, ok := config.Proxy.Auth.(*BearerTokenAuthConfig); ok {
-		for serverName, tokens := range auth.Tokens {
-			if server, ok := config.MCPServers[serverName]; ok {
-				if server.Options == nil {
-					server.Options = &Options{}
-				}
-				server.Options.AuthTokens = tokens
-			}
-		}
 	}
 
 	return &config, nil
@@ -140,13 +128,13 @@ func ValidateConfig(config *Config) error {
 			return fmt.Errorf("proxy.sessions.cleanupInterval cannot be negative")
 		}
 		if config.Proxy.Sessions.Timeout > 0 && config.Proxy.Sessions.CleanupInterval > config.Proxy.Sessions.Timeout {
-			internal.LogWarn("Session cleanup interval is greater than session timeout")
+			log.LogWarn("Session cleanup interval is greater than session timeout")
 		}
 		if config.Proxy.Sessions.MaxPerUser < 0 {
 			return fmt.Errorf("proxy.sessions.maxPerUser cannot be negative")
 		}
 		if config.Proxy.Sessions.MaxPerUser == 0 {
-			internal.LogWarn("Session maxPerUser is 0 (unlimited) - this may allow resource exhaustion")
+			log.LogWarn("Session maxPerUser is 0 (unlimited) - this may allow resource exhaustion")
 		}
 	}
 

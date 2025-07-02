@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/log"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -50,7 +50,7 @@ func newAuthService(config Config) (*authService, error) {
 		Endpoint: endpoint,
 	}
 
-	internal.Logf("Google OAuth config - ClientID: %s, RedirectURL: %s", config.GoogleClientID, config.GoogleRedirectURI)
+	log.Logf("Google OAuth config - ClientID: %s, RedirectURL: %s", config.GoogleClientID, config.GoogleRedirectURI)
 
 	return &authService{
 		googleOAuth:    googleConfig,

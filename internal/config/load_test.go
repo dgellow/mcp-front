@@ -34,47 +34,21 @@ func TestValidateConfig_UserTokensRequireOAuth(t *testing.T) {
 			expectError: "server notion requires user tokens but OAuth is not configured",
 		},
 		{
-			name: "user_tokens_with_bearer_auth",
-			config: &Config{
-				Proxy: ProxyConfig{
-					BaseURL: "https://test.example.com",
-					Addr:    ":8080",
-					Auth: &BearerTokenAuthConfig{
-						Kind: AuthKindBearerToken,
-						Tokens: map[string][]string{
-							"notion": {"token123"},
-						},
-					},
-				},
-				MCPServers: map[string]*MCPClientConfig{
-					"notion": {
-						TransportType:     MCPClientTypeSSE,
-						URL:               "https://notion.example.com",
-						RequiresUserToken: true,
-						TokenSetup: &TokenSetupConfig{
-							DisplayName: "Notion",
-						},
-					},
-				},
-			},
-			expectError: "server notion requires user tokens but OAuth is not configured",
-		},
-		{
 			name: "user_tokens_with_oauth",
 			config: &Config{
 				Proxy: ProxyConfig{
 					BaseURL: "https://test.example.com",
 					Addr:    ":8080",
 					Auth: &OAuthAuthConfig{
-						Kind:               AuthKindOAuth,
-						Issuer:             "https://test.example.com",
-						GoogleClientID:     "client-id",
-						GoogleClientSecret: "secret",
+						Kind:               "oauth",
+						Issuer:             "https://auth.example.com",
+						GoogleClientID:     "test-client",
+						GoogleClientSecret: "test-secret",
 						GoogleRedirectURI:  "https://test.example.com/callback",
-						JWTSecret:          "12345678901234567890123456789012",
+						JWTSecret:          "test-jwt-secret-must-be-32-bytes-long",
 						EncryptionKey:      "test-encryption-key-32-bytes-ok!",
 						AllowedDomains:     []string{"example.com"},
-						Storage:            "memory",
+						AllowedOrigins:     []string{"https://test.example.com"},
 					},
 				},
 				MCPServers: map[string]*MCPClientConfig{
@@ -119,8 +93,16 @@ func TestValidateConfig_SessionConfig(t *testing.T) {
 				Proxy: ProxyConfig{
 					BaseURL: "https://test.example.com",
 					Addr:    ":8080",
-					Auth: &BearerTokenAuthConfig{
-						Kind: AuthKindBearerToken,
+					Auth: &OAuthAuthConfig{
+						Kind:               "oauth",
+						Issuer:             "https://auth.example.com",
+						GoogleClientID:     "test-client",
+						GoogleClientSecret: "test-secret",
+						GoogleRedirectURI:  "https://test.example.com/callback",
+						JWTSecret:          "test-jwt-secret-must-be-32-bytes-long",
+						EncryptionKey:      "test-encryption-key-32-bytes-ok!",
+						AllowedDomains:     []string{"example.com"},
+						AllowedOrigins:     []string{"https://test.example.com"},
 					},
 					Sessions: &SessionConfig{
 						Timeout:         10 * time.Minute,
@@ -139,8 +121,16 @@ func TestValidateConfig_SessionConfig(t *testing.T) {
 				Proxy: ProxyConfig{
 					BaseURL: "https://test.example.com",
 					Addr:    ":8080",
-					Auth: &BearerTokenAuthConfig{
-						Kind: AuthKindBearerToken,
+					Auth: &OAuthAuthConfig{
+						Kind:               "oauth",
+						Issuer:             "https://auth.example.com",
+						GoogleClientID:     "test-client",
+						GoogleClientSecret: "test-secret",
+						GoogleRedirectURI:  "https://test.example.com/callback",
+						JWTSecret:          "test-jwt-secret-must-be-32-bytes-long",
+						EncryptionKey:      "test-encryption-key-32-bytes-ok!",
+						AllowedDomains:     []string{"example.com"},
+						AllowedOrigins:     []string{"https://test.example.com"},
 					},
 					Sessions: &SessionConfig{
 						Timeout:         -1 * time.Minute,
@@ -157,8 +147,16 @@ func TestValidateConfig_SessionConfig(t *testing.T) {
 				Proxy: ProxyConfig{
 					BaseURL: "https://test.example.com",
 					Addr:    ":8080",
-					Auth: &BearerTokenAuthConfig{
-						Kind: AuthKindBearerToken,
+					Auth: &OAuthAuthConfig{
+						Kind:               "oauth",
+						Issuer:             "https://auth.example.com",
+						GoogleClientID:     "test-client",
+						GoogleClientSecret: "test-secret",
+						GoogleRedirectURI:  "https://test.example.com/callback",
+						JWTSecret:          "test-jwt-secret-must-be-32-bytes-long",
+						EncryptionKey:      "test-encryption-key-32-bytes-ok!",
+						AllowedDomains:     []string{"example.com"},
+						AllowedOrigins:     []string{"https://test.example.com"},
 					},
 					Sessions: &SessionConfig{
 						Timeout:         10 * time.Minute,
@@ -175,8 +173,16 @@ func TestValidateConfig_SessionConfig(t *testing.T) {
 				Proxy: ProxyConfig{
 					BaseURL: "https://test.example.com",
 					Addr:    ":8080",
-					Auth: &BearerTokenAuthConfig{
-						Kind: AuthKindBearerToken,
+					Auth: &OAuthAuthConfig{
+						Kind:               "oauth",
+						Issuer:             "https://auth.example.com",
+						GoogleClientID:     "test-client",
+						GoogleClientSecret: "test-secret",
+						GoogleRedirectURI:  "https://test.example.com/callback",
+						JWTSecret:          "test-jwt-secret-must-be-32-bytes-long",
+						EncryptionKey:      "test-encryption-key-32-bytes-ok!",
+						AllowedDomains:     []string{"example.com"},
+						AllowedOrigins:     []string{"https://test.example.com"},
 					},
 					Sessions: &SessionConfig{
 						Timeout:         0,

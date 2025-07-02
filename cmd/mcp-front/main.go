@@ -4,21 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/server"
 )
 
 var BuildVersion = "dev"
-
-func init() {
-	log.SetFlags(0)
-	log.SetOutput(os.Stderr)
-	log.SetPrefix("")
-}
 
 func generateDefaultConfig(path string) error {
 	defaultConfig := map[string]any{
@@ -128,7 +121,7 @@ func main() {
 	}
 	if *configInit != "" {
 		if err := generateDefaultConfig(*configInit); err != nil {
-			internal.LogError("Failed to generate config: %v", err)
+			log.LogError("Failed to generate config: %v", err)
 			os.Exit(1)
 		}
 		fmt.Printf("Generated default config at: %s\n", *configInit)
@@ -154,12 +147,18 @@ func main() {
 
 	cfg, err := config.Load(*conf)
 	if err != nil {
-		internal.LogError("Failed to load config: %v", err)
+		log.LogError("Failed to load config: %v", err)
 		os.Exit(1)
 	}
+
+	log.LogInfoWithFields("main", "Starting mcp-front", map[string]interface{}{
+		"version": BuildVersion,
+		"config":  *conf,
+	})
+
 	err = server.Run(cfg)
 	if err != nil {
-		internal.LogError("Failed to start server: %v", err)
+		log.LogError("Failed to start server: %v", err)
 		os.Exit(1)
 	}
 }

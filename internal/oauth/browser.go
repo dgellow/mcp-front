@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/cookie"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
+	"github.com/dgellow/mcp-front/internal/log"
 )
 
 // SessionData represents the data stored in the encrypted session cookie
@@ -37,7 +37,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			decrypted, err := s.sessionEncryptor.Decrypt(sessionValue)
 			if err != nil {
 				// Invalid cookie, redirect to OAuth
-				internal.LogDebug("Invalid session cookie: %v", err)
+				log.LogDebug("Invalid session cookie: %v", err)
 				cookie.ClearSession(w) // Clear bad cookie
 				state := s.generateBrowserState(r.URL.String())
 				googleURL := s.authService.googleAuthURL(state)
@@ -57,7 +57,7 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			// Check expiration
 			if time.Now().After(sessionData.Expires) {
 				// Expired session
-				internal.LogDebug("Session expired for user %s", sessionData.Email)
+				log.LogDebug("Session expired for user %s", sessionData.Email)
 				cookie.ClearSession(w)
 				// Redirect directly to Google OAuth
 				state := s.generateBrowserState(r.URL.String())

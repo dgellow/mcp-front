@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/sse"
 )
 
@@ -72,7 +72,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := sse.WriteMessage(w, flusher, endpoint); err != nil {
-		internal.LogError("Failed to write endpoint message: %v", err)
+		log.LogError("Failed to write endpoint message: %v", err)
 		return
 	}
 
@@ -81,7 +81,7 @@ func (h *Handler) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Send as relative path - client will construct full URL based on where it connected
 	messageEndpointPath := fmt.Sprintf("/%s/message?sessionId=%s", h.name, sessionID)
 	if err := sse.WriteMessage(w, flusher, messageEndpointPath); err != nil {
-		internal.LogError("Failed to write message endpoint path: %v", err)
+		log.LogError("Failed to write message endpoint path: %v", err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *Handler) handleInitialize(w http.ResponseWriter, req *jsonrpc.Request) 
 	}
 
 	if err := jsonrpc.WriteResult(w, req.ID, result); err != nil {
-		internal.LogError("Failed to write initialize response: %v", err)
+		log.LogError("Failed to write initialize response: %v", err)
 	}
 }
 
@@ -168,7 +168,7 @@ func (h *Handler) handleToolsList(w http.ResponseWriter, req *jsonrpc.Request) {
 	}
 
 	if err := jsonrpc.WriteResult(w, req.ID, result); err != nil {
-		internal.LogError("Failed to write tools/list response: %v", err)
+		log.LogError("Failed to write tools/list response: %v", err)
 	}
 }
 
@@ -202,7 +202,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *jsonrpc.Request) {
 	}
 
 	if err := jsonrpc.WriteResult(w, req.ID, response); err != nil {
-		internal.LogError("Failed to write tools/call response: %v", err)
+		log.LogError("Failed to write tools/call response: %v", err)
 	}
 }
 

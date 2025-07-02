@@ -22,8 +22,7 @@ const (
 type AuthKind string
 
 const (
-	AuthKindOAuth       AuthKind = "oauth"
-	AuthKindBearerToken AuthKind = "bearerToken"
+	AuthKindOAuth AuthKind = "oauth"
 )
 
 // ToolFilterMode for tool filtering
@@ -56,10 +55,31 @@ type TokenSetupConfig struct {
 	CompiledRegex *regexp.Regexp `json:"-"`
 }
 
-// BearerTokenAuthConfig represents bearer token authentication
-type BearerTokenAuthConfig struct {
-	Kind   AuthKind            `json:"kind"`
-	Tokens map[string][]string `json:"tokens"` // server name -> tokens
+// ServiceAuthType represents the type of service authentication
+type ServiceAuthType string
+
+const (
+	ServiceAuthTypeBearer ServiceAuthType = "bearer"
+	ServiceAuthTypeBasic  ServiceAuthType = "basic"
+)
+
+// ServiceAuth represents authentication method for service-to-service communication
+type ServiceAuth struct {
+	Type ServiceAuthType `json:"type"`
+
+	// For basic auth
+	Username string          `json:"username,omitempty"`
+	Password json.RawMessage `json:"password,omitempty"`
+
+	// For bearer auth
+	Tokens []string `json:"tokens,omitempty"`
+
+	// User token to inject when requiresUserToken is true
+	UserToken json.RawMessage `json:"userToken,omitempty"`
+
+	// Computed fields
+	HashedPassword    string `json:"-"` // bcrypt hash for basic auth
+	ResolvedUserToken string `json:"-"` // resolved user token
 }
 
 // MCPClientConfig represents the configuration for an MCP client after parsing.
@@ -107,6 +127,9 @@ type MCPClientConfig struct {
 	// User token requirements
 	RequiresUserToken bool              `json:"requiresUserToken,omitempty"`
 	TokenSetup        *TokenSetupConfig `json:"tokenSetup,omitempty"`
+
+	// Service-to-service authentication
+	ServiceAuths []ServiceAuth `json:"serviceAuths,omitempty"`
 
 	// Inline MCP server configuration
 	InlineConfig json.RawMessage `json:"inline,omitempty"`

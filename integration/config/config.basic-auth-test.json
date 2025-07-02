@@ -3,7 +3,7 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-test"
+    "name": "mcp-front-basic-auth-test"
   },
   "mcpServers": {
     "postgres": {
@@ -17,13 +17,16 @@
         "mcp/postgres",
         "postgresql://testuser:testpass@localhost:15432/testdb"
       ],
-      "options": {
-        "logEnabled": true
-      },
       "serviceAuths": [
         {
-          "type": "bearer",
-          "tokens": ["test-token", "alt-test-token"]
+          "type": "basic",
+          "username": "admin",
+          "password": {"$env": "ADMIN_PASSWORD"}
+        },
+        {
+          "type": "basic",
+          "username": "user",
+          "password": {"$env": "USER_PASSWORD"}
         }
       ]
     }

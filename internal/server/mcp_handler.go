@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -62,8 +63,13 @@ func NewMCPHandler(
 func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user from context if OAuth middleware set it
+	// Get user from context - could be OAuth email or basic auth username
 	userEmail, _ := oauth.GetUserFromContext(ctx)
+	if userEmail == "" {
+		// Check for basic auth username
+		username, _ := auth.GetUser(ctx)
+		userEmail = username
+	}
 
 	// Get user token if available for applying to config
 	// Don't block connection if missing - will check at tool invocation
@@ -80,7 +86,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if serverConfig.TransportType == config.MCPClientTypeStreamable {
 		if r.Method == http.MethodPost {
-			internal.LogInfoWithFields("mcp", "Handling streamable POST request", map[string]any{
+			log.LogInfoWithFields("mcp", "Handling streamable POST request", map[string]any{
 				"path":          r.URL.Path,
 				"server":        h.serverName,
 				"user":          userEmail,
@@ -89,7 +95,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			})
 			h.handleStreamablePost(ctx, w, r, userEmail, serverConfig)
 		} else if r.Method == http.MethodGet {
-			internal.LogInfoWithFields("mcp", "Handling streamable GET request", map[string]any{
+			log.LogInfoWithFields("mcp", "Handling streamable GET request", map[string]any{
 				"path":       r.URL.Path,
 				"server":     h.serverName,
 				"user":       userEmail,
@@ -102,7 +108,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if h.isMessageRequest(r) {
-			internal.LogInfoWithFields("mcp", "Handling message request", map[string]any{
+			log.LogInfoWithFields("mcp", "Handling message request", map[string]any{
 				"path":          r.URL.Path,
 				"server":        h.serverName,
 				"isStdio":       isStdioServer(serverConfig),
@@ -113,7 +119,7 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			})
 			h.handleMessageRequest(ctx, w, r, userEmail, serverConfig)
 		} else {
-			internal.LogInfoWithFields("mcp", "Handling SSE request", map[string]any{
+			log.LogInfoWithFields("mcp", "Handling SSE request", map[string]any{
 				"path":       r.URL.Path,
 				"server":     h.serverName,
 				"isStdio":    isStdioServer(serverConfig),
@@ -138,7 +144,7 @@ func (h *MCPHandler) trackUserAccess(ctx context.Context, userEmail string) {
 	if userEmail != "" {
 		if h.storage != nil {
 			if err := h.storage.UpsertUser(ctx, userEmail); err != nil {
-				internal.LogWarnWithFields("mcp", "Failed to track user", map[string]any{
+				log.LogWarnWithFields("mcp", "Failed to track user", map[string]any{
 					"error": err.Error(),
 					"user":  userEmail,
 				})
@@ -159,7 +165,7 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 
 	// For stdio servers, use the shared SSE server
 	if h.sharedSSEServer == nil {
-		internal.LogErrorWithFields("mcp", "No shared SSE server configured for stdio server", map[string]any{
+		log.LogErrorWithFields("mcp", "No shared SSE server configured for stdio server", map[string]any{
 			"server": h.serverName,
 		})
 		jsonwriter.WriteInternalServerError(w, "server misconfiguration")
@@ -179,7 +185,7 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 	// Store the handler in context so hooks can access it
 	ctx = context.WithValue(ctx, sessionHandlerKey{}, sessionHandler)
 	r = r.WithContext(ctx)
-	internal.LogInfoWithFields("mcp", "Serving SSE request for stdio server", map[string]any{
+	log.LogInfoWithFields("mcp", "Serving SSE request for stdio server", map[string]any{
 		"server": h.serverName,
 		"user":   userEmail,
 		"path":   r.URL.Path,
@@ -206,7 +212,7 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 			SessionID:  sessionID,
 		}
 
-		internal.LogDebugWithFields("mcp", "Looking up stdio session", map[string]any{
+		log.LogDebugWithFields("mcp", "Looking up stdio session", map[string]any{
 			"sessionID": sessionID,
 			"server":    h.serverName,
 			"user":      userEmail,
@@ -214,7 +220,7 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 
 		_, ok := h.sessionManager.GetSession(key)
 		if !ok {
-			internal.LogWarnWithFields("mcp", "Session not found - returning 404 with JSON-RPC error per MCP spec", map[string]any{
+			log.LogWarnWithFields("mcp", "Session not found - returning 404 with JSON-RPC error per MCP spec", map[string]any{
 				"sessionID": sessionID,
 				"server":    h.serverName,
 				"user":      userEmail,
@@ -225,14 +231,14 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 			return
 		}
 		if h.sharedSSEServer == nil {
-			internal.LogErrorWithFields("mcp", "No shared SSE server configured", map[string]any{
+			log.LogErrorWithFields("mcp", "No shared SSE server configured", map[string]any{
 				"sessionID": sessionID,
 			})
 			jsonrpc.WriteError(w, nil, jsonrpc.InternalError, "server misconfiguration")
 			return
 		}
 
-		internal.LogDebugWithFields("mcp", "Forwarding message request to shared SSE server", map[string]any{
+		log.LogDebugWithFields("mcp", "Forwarding message request to shared SSE server", map[string]any{
 			"sessionID": sessionID,
 			"server":    h.serverName,
 			"user":      userEmail,
@@ -247,7 +253,7 @@ func (h *MCPHandler) handleMessageRequest(ctx context.Context, w http.ResponseWr
 
 // handleNonStdioSSERequest handles SSE requests for non-stdio (native SSE) servers
 func (h *MCPHandler) handleNonStdioSSERequest(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
-	internal.LogInfoWithFields("mcp", "Proxying SSE request to backend", map[string]any{
+	log.LogInfoWithFields("mcp", "Proxying SSE request to backend", map[string]any{
 		"service": h.serverName,
 		"user":    userEmail,
 		"backend": config.URL,
@@ -263,6 +269,28 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		return "", fmt.Errorf("authentication required")
 	}
 
+	log.LogTraceWithFields("mcp_handler", "Attempting to resolve user token", map[string]interface{}{
+		"server_name": h.serverName,
+		"user":        userEmail,
+	})
+
+	// Check for service auth first - services provide their own user tokens
+	if serviceAuth, ok := auth.GetServiceAuth(ctx); ok {
+		if serviceAuth.UserToken != "" {
+			log.LogTraceWithFields("mcp_handler", "Found user token in service auth context", map[string]interface{}{
+				"server_name": h.serverName,
+				"user":        userEmail,
+			})
+			return serviceAuth.UserToken, nil
+		}
+	}
+
+	log.LogTraceWithFields("mcp_handler", "No user token in service auth context, falling back to storage lookup", map[string]interface{}{
+		"server_name": h.serverName,
+		"user":        userEmail,
+	})
+
+	// Fall back to OAuth user token lookup in storage
 	if h.storage == nil {
 		return "", fmt.Errorf("storage not configured")
 	}
@@ -275,7 +303,7 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	// Validate token format if configured
 	if h.serverConfig.TokenSetup != nil && h.serverConfig.TokenSetup.CompiledRegex != nil {
 		if !h.serverConfig.TokenSetup.CompiledRegex.MatchString(token) {
-			internal.LogWarnWithFields("mcp", "User token doesn't match expected format", map[string]any{
+			log.LogWarnWithFields("mcp", "User token doesn't match expected format", map[string]any{
 				"user":    userEmail,
 				"service": h.serverName,
 			})
@@ -293,7 +321,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		internal.LogErrorWithFields("mcp", "Failed to read request body", map[string]any{
+		log.LogErrorWithFields("mcp", "Failed to read request body", map[string]any{
 			"error":  err.Error(),
 			"server": h.serverName,
 		})
@@ -303,7 +331,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 
 	req, err := http.NewRequestWithContext(ctx, r.Method, backendURL, bytes.NewReader(body))
 	if err != nil {
-		internal.LogErrorWithFields("mcp", "Failed to create backend request", map[string]any{
+		log.LogErrorWithFields("mcp", "Failed to create backend request", map[string]any{
 			"error":  err.Error(),
 			"server": h.serverName,
 			"url":    backendURL,
@@ -323,7 +351,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 		req.Header.Set(k, v)
 	}
 
-	internal.LogDebugWithFields("mcp", "Forwarding message to backend", map[string]any{
+	log.LogDebugWithFields("mcp", "Forwarding message to backend", map[string]any{
 		"server":     h.serverName,
 		"backendURL": backendURL,
 		"method":     r.Method,
@@ -335,7 +363,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		internal.LogErrorWithFields("mcp", "Backend request failed", map[string]any{
+		log.LogErrorWithFields("mcp", "Backend request failed", map[string]any{
 			"error":  err.Error(),
 			"server": h.serverName,
 			"url":    backendURL,
@@ -352,7 +380,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 	}
 
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		internal.LogErrorWithFields("mcp", "Failed to copy response body", map[string]any{
+		log.LogErrorWithFields("mcp", "Failed to copy response body", map[string]any{
 			"error":  err.Error(),
 			"server": h.serverName,
 		})
@@ -363,7 +391,7 @@ func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.Respons
 func (h *MCPHandler) handleStreamablePost(ctx context.Context, w http.ResponseWriter, r *http.Request, userEmail string, config *config.MCPClientConfig) {
 	h.trackUserAccess(ctx, userEmail)
 
-	internal.LogInfoWithFields("mcp", "Proxying streamable POST request to backend", map[string]any{
+	log.LogInfoWithFields("mcp", "Proxying streamable POST request to backend", map[string]any{
 		"service": h.serverName,
 		"user":    userEmail,
 		"backend": config.URL,
@@ -382,7 +410,7 @@ func (h *MCPHandler) handleStreamableGet(ctx context.Context, w http.ResponseWri
 		return
 	}
 
-	internal.LogInfoWithFields("mcp", "Proxying streamable GET request to backend", map[string]any{
+	log.LogInfoWithFields("mcp", "Proxying streamable GET request to backend", map[string]any{
 		"service": h.serverName,
 		"user":    userEmail,
 		"backend": config.URL,

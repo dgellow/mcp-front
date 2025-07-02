@@ -6,10 +6,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
@@ -111,7 +111,7 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 	// Generate CSRF token
 	csrfToken, err := h.generateCSRFToken()
 	if err != nil {
-		internal.LogErrorWithFields("token", "Failed to generate CSRF token", map[string]interface{}{
+		log.LogErrorWithFields("token", "Failed to generate CSRF token", map[string]interface{}{
 			"error": err.Error(),
 			"user":  userEmail,
 		})
@@ -130,7 +130,7 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tokenPageTemplate.Execute(w, data); err != nil {
-		internal.LogErrorWithFields("token", "Failed to render token page", map[string]interface{}{
+		log.LogErrorWithFields("token", "Failed to render token page", map[string]interface{}{
 			"error": err.Error(),
 			"user":  userEmail,
 		})
@@ -222,7 +222,7 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.tokenStore.SetUserToken(r.Context(), userEmail, serviceName, token); err != nil {
-		internal.LogErrorWithFields("token", "Failed to store token", map[string]interface{}{
+		log.LogErrorWithFields("token", "Failed to store token", map[string]interface{}{
 			"error":   err.Error(),
 			"user":    userEmail,
 			"service": serviceName,
@@ -236,7 +236,7 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 		displayName = serviceConfig.TokenSetup.DisplayName
 	}
 
-	internal.LogInfoWithFields("token", "User configured token", map[string]interface{}{
+	log.LogInfoWithFields("token", "User configured token", map[string]interface{}{
 		"user":    userEmail,
 		"service": serviceName,
 		"action":  "set_token",
@@ -284,7 +284,7 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.tokenStore.DeleteUserToken(r.Context(), userEmail, serviceName); err != nil {
-		internal.LogErrorWithFields("token", "Failed to delete token", map[string]interface{}{
+		log.LogErrorWithFields("token", "Failed to delete token", map[string]interface{}{
 			"error":   err.Error(),
 			"user":    userEmail,
 			"service": serviceName,
@@ -298,7 +298,7 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 		displayName = serviceConfig.TokenSetup.DisplayName
 	}
 
-	internal.LogInfoWithFields("token", "User deleted token", map[string]interface{}{
+	log.LogInfoWithFields("token", "User deleted token", map[string]interface{}{
 		"user":    userEmail,
 		"service": serviceName,
 		"action":  "delete_token",

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/storage"
 )
@@ -85,8 +85,8 @@ func (s *MemoryStorage) CreateClient(clientID string, redirectURIs []string, sco
 	clientCount := len(s.MemoryStore.Clients)
 	s.clientsMutex.Unlock()
 
-	internal.Logf("Created client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
-	internal.Logf("Total clients in storage: %d", clientCount)
+	log.Logf("Created client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
+	log.Logf("Total clients in storage: %d", clientCount)
 	return client
 }
 
@@ -110,8 +110,8 @@ func (s *MemoryStorage) CreateConfidentialClient(clientID string, hashedSecret [
 	clientCount := len(s.MemoryStore.Clients)
 	s.clientsMutex.Unlock()
 
-	internal.Logf("Created confidential client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
-	internal.Logf("Total clients in storage: %d", clientCount)
+	log.Logf("Created confidential client %s, redirect_uris: %v, scopes: %v", clientID, redirectURIs, scopes)
+	log.Logf("Total clients in storage: %d", clientCount)
 	return client
 }
 

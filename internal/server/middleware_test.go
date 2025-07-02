@@ -1,11 +1,16 @@
 package server
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/dgellow/mcp-front/internal/auth"
+	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestCorsMiddleware(t *testing.T) {
@@ -157,6 +162,180 @@ func TestCorsMiddleware_MultipleOrigins(t *testing.T) {
 
 			assert.Equal(t, origin, rr.Header().Get("Access-Control-Allow-Origin"))
 			assert.Equal(t, "true", rr.Header().Get("Access-Control-Allow-Credentials"))
+		})
+	}
+}
+
+func TestServiceAuthMiddleware(t *testing.T) {
+	// Create a hashed password for basic auth tests
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	serviceAuths := []config.ServiceAuth{
+		{
+			Type:   config.ServiceAuthTypeBearer,
+			Tokens: []string{"valid-token-1", "valid-token-2"},
+		},
+		{
+			Type:           config.ServiceAuthTypeBasic,
+			Username:       "user",
+			HashedPassword: string(hashedPassword),
+		},
+	}
+
+	tests := []struct {
+		name           string
+		authHeader     string
+		expectStatus   int
+		expectUsername string // For context check
+	}{
+		{
+			name:         "valid bearer token",
+			authHeader:   "Bearer valid-token-1",
+			expectStatus: http.StatusOK,
+		},
+		{
+			name:         "another valid bearer token",
+			authHeader:   "Bearer valid-token-2",
+			expectStatus: http.StatusOK,
+		},
+		{
+			name:         "invalid bearer token",
+			authHeader:   "Bearer invalid-token",
+			expectStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "valid basic auth",
+			authHeader:   "Basic " + base64.StdEncoding.EncodeToString([]byte("user:password123")),
+			expectStatus: http.StatusOK,
+		},
+		{
+			name:         "invalid basic auth password",
+			authHeader:   "Basic " + base64.StdEncoding.EncodeToString([]byte("user:wrongpassword")),
+			expectStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "invalid basic auth user",
+			authHeader:   "Basic " + base64.StdEncoding.EncodeToString([]byte("wronguser:password123")),
+			expectStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "malformed basic auth header",
+			authHeader:   "Basic malformed",
+			expectStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "no auth header",
+			authHeader:   "",
+			expectStatus: http.StatusUnauthorized,
+		},
+		{
+			name:         "unsupported auth scheme",
+			authHeader:   "Unsupported scheme",
+			expectStatus: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a test handler
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			// Wrap with the service auth middleware
+			authHandler := newServiceAuthMiddleware(serviceAuths)(handler)
+
+			// Create request
+			req := httptest.NewRequest("GET", "/test", nil)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+
+			// Execute request
+			rr := httptest.NewRecorder()
+			authHandler.ServeHTTP(rr, req)
+
+			// Check status code
+			assert.Equal(t, tt.expectStatus, rr.Code)
+		})
+	}
+}
+
+func TestServiceAuthMiddleware_Context(t *testing.T) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	serviceAuths := []config.ServiceAuth{
+		{
+			Type:              config.ServiceAuthTypeBearer,
+			Tokens:            []string{"valid-token"},
+			ResolvedUserToken: "bearer-user-token",
+		},
+		{
+			Type:              config.ServiceAuthTypeBasic,
+			Username:          "user",
+			HashedPassword:    string(hashedPassword),
+			ResolvedUserToken: "basic-user-token",
+		},
+	}
+
+	tests := []struct {
+		name              string
+		authHeader        string
+		expectStatus      int
+		expectServiceAuth bool
+		expectAuthInfo    auth.ServiceAuthInfo
+	}{
+		{
+			name:              "bearer token sets context",
+			authHeader:        "Bearer valid-token",
+			expectStatus:      http.StatusOK,
+			expectServiceAuth: true,
+			expectAuthInfo: auth.ServiceAuthInfo{
+				ServiceName: "service",
+				UserToken:   "bearer-user-token",
+			},
+		},
+		{
+			name:              "basic auth sets context",
+			authHeader:        "Basic " + base64.StdEncoding.EncodeToString([]byte("user:password123")),
+			expectStatus:      http.StatusOK,
+			expectServiceAuth: true,
+			expectAuthInfo: auth.ServiceAuthInfo{
+				ServiceName: "user",
+				UserToken:   "basic-user-token",
+			},
+		},
+		{
+			name:              "invalid auth does not set context",
+			authHeader:        "Bearer invalid-token",
+			expectStatus:      http.StatusUnauthorized,
+			expectServiceAuth: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var actualAuthInfo auth.ServiceAuthInfo
+			var hasAuthInfo bool
+
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				actualAuthInfo, hasAuthInfo = auth.GetServiceAuth(r.Context())
+				w.WriteHeader(http.StatusOK)
+			})
+
+			authHandler := newServiceAuthMiddleware(serviceAuths)(handler)
+			req := httptest.NewRequest("GET", "/test", nil)
+			req.Header.Set("Authorization", tt.authHeader)
+			rr := httptest.NewRecorder()
+			authHandler.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.expectStatus, rr.Code)
+			assert.Equal(t, tt.expectServiceAuth, hasAuthInfo)
+			if tt.expectServiceAuth {
+				assert.Equal(t, tt.expectAuthInfo, actualAuthInfo)
+			}
 		})
 	}
 }

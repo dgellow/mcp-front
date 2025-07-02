@@ -13,6 +13,7 @@ import (
 	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/ory/fosite"
 	"github.com/ory/fosite/compose"
@@ -70,7 +71,7 @@ func NewServer(config Config, store storage.Storage) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session encryptor: %w", err)
 	}
-	internal.Logf("Session encryptor initialized for browser SSO")
+	log.Logf("Session encryptor initialized for browser SSO")
 
 	// Create auth service (business logic)
 	authService, err := newAuthService(config)
@@ -91,17 +92,17 @@ func NewServer(config Config, store storage.Storage) (*Server, error) {
 		if _, err := rand.Read(secret); err != nil {
 			return nil, fmt.Errorf("failed to generate JWT secret: %w", err)
 		}
-		internal.LogWarn("Generated random JWT secret. Set JWT_SECRET env var for persistent tokens across restarts")
+		log.LogWarn("Generated random JWT secret. Set JWT_SECRET env var for persistent tokens across restarts")
 	}
 
 	// Determine min parameter entropy based on environment
 	minEntropy := 8 // Production default - enforce secure state parameters (8+ chars)
-	internal.Logf("OAuth server initialization - MCP_FRONT_ENV=%s, isDevelopmentMode=%v", os.Getenv("MCP_FRONT_ENV"), internal.IsDevelopmentMode())
+	log.Logf("OAuth server initialization - MCP_FRONT_ENV=%s, isDevelopmentMode=%v", os.Getenv("MCP_FRONT_ENV"), internal.IsDevelopmentMode())
 	if internal.IsDevelopmentMode() {
 		minEntropy = 0 // Development mode - allow weak state parameters for buggy clients
-		internal.LogWarn("MCP_FRONT_ENV=development - weak OAuth state parameters allowed for testing")
+		log.LogWarn("MCP_FRONT_ENV=development - weak OAuth state parameters allowed for testing")
 	}
-	internal.Logf("OAuth MinParameterEntropy set to: %d", minEntropy)
+	log.Logf("OAuth MinParameterEntropy set to: %d", minEntropy)
 
 	// Create fosite configuration
 	fositeConfig := &compose.Config{
@@ -175,7 +176,7 @@ func (s *Server) WellKnownHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := jsonwriter.Write(w, metadata); err != nil {
-		internal.LogErrorWithFields("oauth", "Failed to encode metadata response", map[string]interface{}{
+		log.LogErrorWithFields("oauth", "Failed to encode metadata response", map[string]interface{}{
 			"error": err.Error(),
 		})
 	}
@@ -186,20 +187,20 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Debug log the incoming request
-	internal.Logf("Authorization request: %s", r.URL.RawQuery)
+	log.Logf("Authorization request: %s", r.URL.RawQuery)
 	clientID := r.URL.Query().Get("client_id")
 	scopes := r.URL.Query().Get("scope")
 	redirectURI := r.URL.Query().Get("redirect_uri")
 	stateParam := r.URL.Query().Get("state")
-	internal.Logf("Client ID: %s, Requested scopes: %s", clientID, scopes)
-	internal.Logf("Requested redirect_uri: %s", redirectURI)
-	internal.Logf("State parameter: '%s' (length: %d)", stateParam, len(stateParam))
+	log.Logf("Client ID: %s, Requested scopes: %s", clientID, scopes)
+	log.Logf("Requested redirect_uri: %s", redirectURI)
+	log.Logf("State parameter: '%s' (length: %d)", stateParam, len(stateParam))
 
 	// In development mode, generate a secure state parameter if missing
 	// This works around bugs in OAuth clients like MCP Inspector
 	if internal.IsDevelopmentMode() && len(stateParam) == 0 {
 		generatedState := crypto.GenerateSecureToken()
-		internal.LogWarn("Development mode: generating state parameter '%s' for buggy client", generatedState)
+		log.LogWarn("Development mode: generating state parameter '%s' for buggy client", generatedState)
 		q := r.URL.Query()
 		q.Set("state", generatedState)
 		r.URL.RawQuery = q.Encode()
@@ -212,9 +213,9 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Debug: Check what redirect URIs the client actually has
 	if client, err := s.storage.GetClient(ctx, clientID); err == nil {
-		internal.Logf("Client registered redirect URIs: %v", client.GetRedirectURIs())
+		log.Logf("Client registered redirect URIs: %v", client.GetRedirectURIs())
 	} else {
-		internal.LogError("Client not found: %v", err)
+		log.LogError("Client not found: %v", err)
 	}
 
 	// WORKAROUND: Claude.ai generates a single client ID per OAuth provider domain
@@ -227,7 +228,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 			strings.HasPrefix(redirectURI, "https://claude.ai/api/mcp/")) {
 
 		if _, err := s.storage.GetClient(ctx, clientID); err != nil {
-			internal.LogWarn("Auto-registering Claude.ai client %s", clientID)
+			log.LogWarn("Auto-registering Claude.ai client %s", clientID)
 
 			// Register Claude.ai's client with their parameters
 			redirectURIs := []string{redirectURI}
@@ -243,7 +244,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse and validate the authorization request
 	ar, err := s.provider.NewAuthorizeRequest(ctx, r)
 	if err != nil {
-		internal.LogError("Authorization request error: %v", err)
+		log.LogError("Authorization request error: %v", err)
 		s.provider.WriteAuthorizeError(w, ar, err)
 		return
 	}
@@ -254,7 +255,7 @@ func (s *Server) AuthorizeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to Google OAuth
 	googleURL := s.authService.googleAuthURL(state)
-	internal.Logf("Redirecting to Google OAuth URL: %s", googleURL)
+	log.Logf("Redirecting to Google OAuth URL: %s", googleURL)
 
 	http.Redirect(w, r, googleURL, http.StatusFound)
 }
@@ -268,13 +269,13 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		errDesc := r.URL.Query().Get("error_description")
-		internal.LogError("Google OAuth error: %s - %s", errMsg, errDesc)
+		log.LogError("Google OAuth error: %s - %s", errMsg, errDesc)
 		jsonwriter.WriteBadRequest(w, fmt.Sprintf("Authentication failed: %s", errMsg))
 		return
 	}
 
 	if state == "" || code == "" {
-		internal.LogError("Missing state or code in callback")
+		log.LogError("Missing state or code in callback")
 		jsonwriter.WriteBadRequest(w, "Invalid callback parameters")
 		return
 	}
@@ -290,7 +291,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		// Format: "browser:nonce:signature:returnURL"
 		parts := strings.SplitN(state, ":", 4)
 		if len(parts) != 4 {
-			internal.LogError("Invalid browser state format: %s", state)
+			log.LogError("Invalid browser state format: %s", state)
 			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
 			return
 		}
@@ -302,7 +303,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		// Validate HMAC signature
 		data := nonce + ":" + returnURL
 		if !crypto.ValidateSignedData(data, signature, []byte(s.config.EncryptionKey)) {
-			internal.LogError("Invalid CSRF signature in browser flow")
+			log.LogError("Invalid CSRF signature in browser flow")
 			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
 			return
 		}
@@ -311,7 +312,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		var found bool
 		ar, found = s.storage.GetAuthorizeRequest(state)
 		if !found {
-			internal.LogError("Invalid or expired state: %s", state)
+			log.LogError("Invalid or expired state: %s", state)
 			jsonwriter.WriteBadRequest(w, "Invalid or expired authorization request")
 			return
 		}
@@ -323,7 +324,7 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.authService.exchangeCodeForToken(ctx, code)
 	if err != nil {
-		internal.LogError("Google token exchange error: %v", err)
+		log.LogError("Google token exchange error: %v", err)
 		jsonwriter.WriteInternalServerError(w, "Failed to exchange authorization code")
 		return
 	}
@@ -331,23 +332,23 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// Validate user and get user info
 	userInfo, err := s.authService.validateUser(ctx, token)
 	if err != nil {
-		internal.LogError("User validation error: %v", err)
+		log.LogError("User validation error: %v", err)
 		jsonwriter.WriteForbidden(w, "Access denied: user validation failed")
 		return
 	}
-	internal.Logf("User validated successfully: %s", userInfo.Email)
+	log.Logf("User validated successfully: %s", userInfo.Email)
 
 	// Handle browser SSO flow
 	if isBrowserFlow {
 		// Set session cookie
 		if err := s.setBrowserSessionCookie(w, userInfo.Email); err != nil {
-			internal.LogError("Failed to set browser session cookie: %v", err)
+			log.LogError("Failed to set browser session cookie: %v", err)
 			jsonwriter.WriteInternalServerError(w, "Failed to create session")
 			return
 		}
 
 		// Redirect to the original URL
-		internal.Logf("Browser SSO successful for %s, redirecting to %s", userInfo.Email, returnURL)
+		log.Logf("Browser SSO successful for %s, redirecting to %s", userInfo.Email, returnURL)
 		http.Redirect(w, r, returnURL, http.StatusFound)
 		return
 	}
@@ -355,15 +356,15 @@ func (s *Server) GoogleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle OAuth client flow
 	// Create session with user info
 	session := NewSession(userInfo)
-	internal.Logf("Session created for user: %s", userInfo.Email)
+	log.Logf("Session created for user: %s", userInfo.Email)
 
-	internal.Logf("Creating authorize response for client: %s", ar.GetClient().GetID())
+	log.Logf("Creating authorize response for client: %s", ar.GetClient().GetID())
 	response, err := s.provider.NewAuthorizeResponse(ctx, ar, session)
 	if err != nil {
-		internal.LogError("Failed to create authorize response: %v (type: %T)", err, err)
+		log.LogError("Failed to create authorize response: %v (type: %T)", err, err)
 		// Log more details about the error
 		if fositeErr, ok := err.(*fosite.RFC6749Error); ok {
-			internal.LogError("Fosite error details - Code: %s, Description: %s, Debug: %s",
+			log.LogError("Fosite error details - Code: %s, Description: %s, Debug: %s",
 				fositeErr.ErrorField, fositeErr.DescriptionField, fositeErr.DebugField)
 		}
 		s.provider.WriteAuthorizeError(w, ar, err)
@@ -386,7 +387,7 @@ func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle token request - this retrieves the session from the authorization code
 	accessRequest, err := s.provider.NewAccessRequest(ctx, r, session)
 	if err != nil {
-		internal.LogError("Access request error: %v", err)
+		log.LogError("Access request error: %v", err)
 		s.provider.WriteAccessError(w, accessRequest, err)
 		return
 	}
@@ -398,7 +399,7 @@ func (s *Server) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	// Generate tokens
 	response, err := s.provider.NewAccessResponse(ctx, accessRequest)
 	if err != nil {
-		internal.LogError("Access response error: %v", err)
+		log.LogError("Access response error: %v", err)
 		s.provider.WriteAccessError(w, accessRequest, err)
 		return
 	}
@@ -429,7 +430,7 @@ func (s *Server) buildClientRegistrationResponse(client *fosite.DefaultClient, t
 
 // RegisterHandler handles dynamic client registration (RFC 7591)
 func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	internal.Logf("Register handler called: %s %s", r.Method, r.URL.Path)
+	log.Logf("Register handler called: %s %s", r.Method, r.URL.Path)
 
 	if r.Method != http.MethodPost {
 		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
@@ -446,7 +447,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse client request
 	redirectURIs, scopes, err := s.authService.parseClientRequest(metadata)
 	if err != nil {
-		internal.LogError("Client request parsing error: %v", err)
+		log.LogError("Client request parsing error: %v", err)
 		jsonwriter.WriteBadRequest(w, err.Error())
 		return
 	}
@@ -461,14 +462,14 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		// Generate and hash secret for confidential client
 		generatedSecret, err := crypto.GenerateClientSecret()
 		if err != nil {
-			internal.LogError("Failed to generate client secret: %v", err)
+			log.LogError("Failed to generate client secret: %v", err)
 			jsonwriter.WriteInternalServerError(w, "Internal server error")
 			return
 		}
 
 		hashedSecret, err := crypto.HashClientSecret(generatedSecret)
 		if err != nil {
-			internal.LogError("Failed to hash client secret: %v", err)
+			log.LogError("Failed to hash client secret: %v", err)
 			jsonwriter.WriteInternalServerError(w, "Internal server error")
 			return
 		}
@@ -485,7 +486,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	response := s.buildClientRegistrationResponse(client, tokenEndpointAuthMethod, plaintextSecret)
 
 	if err := jsonwriter.WriteResponse(w, http.StatusCreated, response); err != nil {
-		internal.LogErrorWithFields("oauth", "Failed to encode register response", map[string]interface{}{
+		log.LogErrorWithFields("oauth", "Failed to encode register response", map[string]interface{}{
 			"error": err.Error(),
 		})
 	}
@@ -512,7 +513,7 @@ func (s *Server) DebugClientsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := jsonwriter.Write(w, response); err != nil {
-		internal.LogErrorWithFields("oauth", "Failed to encode debug response", map[string]interface{}{
+		log.LogErrorWithFields("oauth", "Failed to encode debug response", map[string]interface{}{
 			"error": err.Error(),
 		})
 	}

@@ -3,15 +3,7 @@
   "proxy": {
     "baseURL": "http://localhost:8080",
     "addr": ":8080",
-    "name": "mcp-front-inline-test",
-    "auth": {
-      "kind": "bearerToken",
-      "tokens": {
-        "test-inline": [
-          "inline-test-token"
-        ]
-      }
-    }
+    "name": "mcp-front-inline-test"
   },
   "mcpServers": {
     "test-inline": {
@@ -95,7 +87,13 @@
             "timeout": "100ms"
           }
         ]
-      }
+      },
+      "serviceAuths": [
+        {
+          "type": "bearer",
+          "tokens": ["inline-test-token"]
+        }
+      ]
     }
   }
 }

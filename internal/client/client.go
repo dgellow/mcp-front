@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/log"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
@@ -81,7 +81,7 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 			envs = append(envs, fmt.Sprintf("%s=%s", k, v))
 		}
 
-		internal.LogInfoWithFields("client", "Starting stdio MCP process", map[string]interface{}{
+		log.LogInfoWithFields("client", "Starting stdio MCP process", map[string]interface{}{
 			"command": conf.Command,
 			"args":    conf.Args,
 			"env":     envs,
@@ -89,7 +89,7 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 
 		mcpClient, err := client.NewStdioMCPClient(conf.Command, envs, conf.Args...)
 		if err != nil {
-			internal.LogErrorWithFields("client", "Failed to start stdio MCP process", map[string]interface{}{
+			log.LogErrorWithFields("client", "Failed to start stdio MCP process", map[string]interface{}{
 				"command": conf.Command,
 				"args":    conf.Args,
 				"error":   err.Error(),
@@ -97,7 +97,7 @@ func DefaultTransportCreator(conf *config.MCPClientConfig) (MCPClientInterface, 
 			return nil, err
 		}
 
-		internal.LogInfoWithFields("client", "Successfully started stdio MCP process", map[string]interface{}{
+		log.LogInfoWithFields("client", "Successfully started stdio MCP process", map[string]interface{}{
 			"command": conf.Command,
 		})
 
@@ -146,7 +146,7 @@ PingLoop:
 	for {
 		select {
 		case <-ctx.Done():
-			internal.Logf("<%s> Context done, stopping ping", c.name)
+			log.Logf("<%s> Context done, stopping ping", c.name)
 			break PingLoop
 		case <-ticker.C:
 			_ = c.client.Ping(ctx)
@@ -181,7 +181,7 @@ func (c *Client) addToolsToServer(
 			filterFunc = func(toolName string) bool {
 				_, inList := filterSet[toolName]
 				if !inList {
-					internal.Logf("<%s> Ignoring tool %s as it is not in allow list", c.name, toolName)
+					log.Logf("<%s> Ignoring tool %s as it is not in allow list", c.name, toolName)
 				}
 				return inList
 			}
@@ -189,16 +189,16 @@ func (c *Client) addToolsToServer(
 			filterFunc = func(toolName string) bool {
 				_, inList := filterSet[toolName]
 				if inList {
-					internal.Logf("<%s> Ignoring tool %s as it is in block list", c.name, toolName)
+					log.Logf("<%s> Ignoring tool %s as it is in block list", c.name, toolName)
 				}
 				return !inList
 			}
 		default:
-			internal.Logf("<%s> Unknown tool filter mode: %s, skipping tool filter", c.name, mode)
+			log.Logf("<%s> Unknown tool filter mode: %s, skipping tool filter", c.name, mode)
 		}
 	}
 
-	internal.LogInfoWithFields("client", "Starting tool discovery", map[string]interface{}{
+	log.LogInfoWithFields("client", "Starting tool discovery", map[string]interface{}{
 		"server": c.name,
 	})
 
@@ -213,7 +213,7 @@ func (c *Client) addToolsToServer(
 			return fmt.Errorf("session does not support session-specific tools")
 		}
 		sessionTools = make(map[string]server.ServerTool)
-		internal.LogInfoWithFields("client", "Using session-specific tool registration", map[string]interface{}{
+		log.LogInfoWithFields("client", "Using session-specific tool registration", map[string]interface{}{
 			"server":    c.name,
 			"sessionID": session.SessionID(),
 		})
@@ -222,7 +222,7 @@ func (c *Client) addToolsToServer(
 	for {
 		tools, err := c.client.ListTools(ctx, toolsRequest)
 		if err != nil {
-			internal.LogErrorWithFields("client", "Failed to list tools", map[string]interface{}{
+			log.LogErrorWithFields("client", "Failed to list tools", map[string]interface{}{
 				"server": c.name,
 				"error":  err.Error(),
 			})
@@ -231,12 +231,12 @@ func (c *Client) addToolsToServer(
 		if len(tools.Tools) == 0 {
 			break
 		}
-		internal.Logf("<%s> Successfully listed %d tools", c.name, len(tools.Tools))
+		log.Logf("<%s> Successfully listed %d tools", c.name, len(tools.Tools))
 		totalTools += len(tools.Tools)
 
 		for _, tool := range tools.Tools {
 			if filterFunc(tool.Name) {
-				internal.LogDebugWithFields("client", "Adding tool", map[string]interface{}{
+				log.LogDebugWithFields("client", "Adding tool", map[string]interface{}{
 					"server":      c.name,
 					"tool":        tool.Name,
 					"description": tool.Description,
@@ -275,14 +275,14 @@ func (c *Client) addToolsToServer(
 
 	if len(sessionTools) > 0 {
 		sessionWithTools.SetSessionTools(sessionTools)
-		internal.LogInfoWithFields("client", "Registered session-specific tools", map[string]interface{}{
+		log.LogInfoWithFields("client", "Registered session-specific tools", map[string]interface{}{
 			"server":    c.name,
 			"sessionID": session.SessionID(),
 			"toolCount": len(sessionTools),
 		})
 	}
 
-	internal.LogInfoWithFields("client", "Tool discovery completed", map[string]interface{}{
+	log.LogInfoWithFields("client", "Tool discovery completed", map[string]interface{}{
 		"server":     c.name,
 		"totalTools": totalTools,
 	})
@@ -291,7 +291,7 @@ func (c *Client) addToolsToServer(
 }
 
 func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPServer) error {
-	internal.LogInfoWithFields("client", "Starting prompt discovery", map[string]interface{}{
+	log.LogInfoWithFields("client", "Starting prompt discovery", map[string]interface{}{
 		"server": c.name,
 	})
 
@@ -300,7 +300,7 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 	for {
 		prompts, err := c.client.ListPrompts(ctx, promptsRequest)
 		if err != nil {
-			internal.LogErrorWithFields("client", "Failed to list prompts", map[string]interface{}{
+			log.LogErrorWithFields("client", "Failed to list prompts", map[string]interface{}{
 				"server": c.name,
 				"error":  err.Error(),
 			})
@@ -309,10 +309,10 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 		if len(prompts.Prompts) == 0 {
 			break
 		}
-		internal.Logf("<%s> Successfully listed %d prompts", c.name, len(prompts.Prompts))
+		log.Logf("<%s> Successfully listed %d prompts", c.name, len(prompts.Prompts))
 		totalPrompts += len(prompts.Prompts)
 		for _, prompt := range prompts.Prompts {
-			internal.Logf("<%s> Adding prompt %s", c.name, prompt.Name)
+			log.Logf("<%s> Adding prompt %s", c.name, prompt.Name)
 			mcpServer.AddPrompt(prompt, c.client.GetPrompt)
 		}
 		if prompts.NextCursor == "" {
@@ -321,7 +321,7 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 		promptsRequest.Params.Cursor = prompts.NextCursor
 	}
 
-	internal.LogInfoWithFields("client", "Prompt discovery completed", map[string]interface{}{
+	log.LogInfoWithFields("client", "Prompt discovery completed", map[string]interface{}{
 		"server":       c.name,
 		"totalPrompts": totalPrompts,
 	})
@@ -330,7 +330,7 @@ func (c *Client) addPromptsToServer(ctx context.Context, mcpServer *server.MCPSe
 }
 
 func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCPServer) error {
-	internal.LogInfoWithFields("client", "Starting resource discovery", map[string]interface{}{
+	log.LogInfoWithFields("client", "Starting resource discovery", map[string]interface{}{
 		"server": c.name,
 	})
 
@@ -339,7 +339,7 @@ func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCP
 	for {
 		resources, err := c.client.ListResources(ctx, resourcesRequest)
 		if err != nil {
-			internal.LogErrorWithFields("client", "Failed to list resources", map[string]interface{}{
+			log.LogErrorWithFields("client", "Failed to list resources", map[string]interface{}{
 				"server": c.name,
 				"error":  err.Error(),
 			})
@@ -348,10 +348,10 @@ func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCP
 		if len(resources.Resources) == 0 {
 			break
 		}
-		internal.Logf("<%s> Successfully listed %d resources", c.name, len(resources.Resources))
+		log.Logf("<%s> Successfully listed %d resources", c.name, len(resources.Resources))
 		totalResources += len(resources.Resources)
 		for _, resource := range resources.Resources {
-			internal.Logf("<%s> Adding resource %s", c.name, resource.Name)
+			log.Logf("<%s> Adding resource %s", c.name, resource.Name)
 			mcpServer.AddResource(resource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 				readResource, e := c.client.ReadResource(ctx, request)
 				if e != nil {
@@ -367,7 +367,7 @@ func (c *Client) addResourcesToServer(ctx context.Context, mcpServer *server.MCP
 
 	}
 
-	internal.LogInfoWithFields("client", "Resource discovery completed", map[string]interface{}{
+	log.LogInfoWithFields("client", "Resource discovery completed", map[string]interface{}{
 		"server":         c.name,
 		"totalResources": totalResources,
 	})
@@ -385,9 +385,9 @@ func (c *Client) addResourceTemplatesToServer(ctx context.Context, mcpServer *se
 		if len(resourceTemplates.ResourceTemplates) == 0 {
 			break
 		}
-		internal.Logf("<%s> Successfully listed %d resource templates", c.name, len(resourceTemplates.ResourceTemplates))
+		log.Logf("<%s> Successfully listed %d resource templates", c.name, len(resourceTemplates.ResourceTemplates))
 		for _, resourceTemplate := range resourceTemplates.ResourceTemplates {
-			internal.Logf("<%s> Adding resource template %s", c.name, resourceTemplate.Name)
+			log.Logf("<%s> Adding resource template %s", c.name, resourceTemplate.Name)
 			mcpServer.AddResourceTemplate(resourceTemplate, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
 				readResource, e := c.client.ReadResource(ctx, request)
 				if e != nil {
@@ -416,7 +416,7 @@ func (c *Client) wrapToolHandler(
 ) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(toolCtx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// Log tool invocation
-		internal.LogInfoWithFields("client", "Tool invocation requested", map[string]interface{}{
+		log.LogInfoWithFields("client", "Tool invocation requested", map[string]interface{}{
 			"server": serverName,
 			"tool":   request.Params.Name,
 			"user":   userEmail,
@@ -427,7 +427,7 @@ func (c *Client) wrapToolHandler(
 			if userEmail == "" {
 				// This shouldn't happen with proper config validation
 				// (requiresUserToken requires OAuth to be configured)
-				internal.LogErrorWithFields("client", "User token required but no user email provided", map[string]interface{}{
+				log.LogErrorWithFields("client", "User token required but no user email provided", map[string]interface{}{
 					"service": serverName,
 					"tool":    request.Params.Name,
 				})
@@ -482,14 +482,14 @@ func (c *Client) wrapToolHandler(
 		result, err := originalHandler(toolCtx, request)
 
 		if err != nil {
-			internal.LogErrorWithFields("client", "Tool invocation failed", map[string]interface{}{
+			log.LogErrorWithFields("client", "Tool invocation failed", map[string]interface{}{
 				"server": serverName,
 				"tool":   request.Params.Name,
 				"user":   userEmail,
 				"error":  err.Error(),
 			})
 		} else {
-			internal.LogInfoWithFields("client", "Tool invocation completed", map[string]interface{}{
+			log.LogInfoWithFields("client", "Tool invocation completed", map[string]interface{}{
 				"server": serverName,
 				"tool":   request.Params.Name,
 				"user":   userEmail,
