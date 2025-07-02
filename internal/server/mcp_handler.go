@@ -295,16 +295,28 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		return "", fmt.Errorf("storage not configured")
 	}
 
-	token, err := h.storage.GetUserToken(ctx, userEmail, h.serverName)
+	storedToken, err := h.storage.GetUserToken(ctx, userEmail, h.serverName)
 	if err != nil {
 		return "", err
 	}
 
-	// Validate token format if configured
+	// Extract the actual token string based on type
+	var tokenString string
+	switch storedToken.Type {
+	case storage.TokenTypeManual:
+		tokenString = storedToken.Value
+	case storage.TokenTypeOAuth:
+		if storedToken.OAuthData != nil {
+			tokenString = storedToken.OAuthData.AccessToken
+		}
+	}
+
+	// Validate token format if configured (only for manual tokens)
 	if h.serverConfig.UserAuthentication != nil &&
 		h.serverConfig.UserAuthentication.Type == config.UserAuthTypeManual &&
-		h.serverConfig.UserAuthentication.ValidationRegex != nil {
-		if !h.serverConfig.UserAuthentication.ValidationRegex.MatchString(token) {
+		h.serverConfig.UserAuthentication.ValidationRegex != nil &&
+		storedToken.Type == storage.TokenTypeManual {
+		if !h.serverConfig.UserAuthentication.ValidationRegex.MatchString(tokenString) {
 			log.LogWarnWithFields("mcp", "User token doesn't match expected format", map[string]any{
 				"user":    userEmail,
 				"service": h.serverName,
@@ -312,7 +324,7 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		}
 	}
 
-	return token, nil
+	return tokenString, nil
 }
 
 func (h *MCPHandler) forwardMessageToBackend(ctx context.Context, w http.ResponseWriter, r *http.Request, config *config.MCPClientConfig) {

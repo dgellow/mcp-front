@@ -32,10 +32,13 @@ type mockStorage struct {
 }
 
 // Override only the methods we want to mock
-func (m *mockStorage) GetUserToken(ctx context.Context, userEmail, service string) (string, error) {
+func (m *mockStorage) GetUserToken(ctx context.Context, userEmail, service string) (*storage.StoredToken, error) {
 	if m.Mock.ExpectedCalls != nil {
 		args := m.Called(ctx, userEmail, service)
-		return args.String(0), args.Error(1)
+		if args.Get(0) == nil {
+			return nil, args.Error(1)
+		}
+		return args.Get(0).(*storage.StoredToken), args.Error(1)
 	}
 	return m.MemoryStorage.GetUserToken(ctx, userEmail, service)
 }

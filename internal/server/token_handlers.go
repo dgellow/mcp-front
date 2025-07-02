@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
@@ -226,7 +227,14 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	if err := h.tokenStore.SetUserToken(r.Context(), userEmail, serviceName, token); err != nil {
+	// Create StoredToken for manual entry
+	storedToken := &storage.StoredToken{
+		Type:      storage.TokenTypeManual,
+		Value:     token,
+		UpdatedAt: time.Now(),
+	}
+
+	if err := h.tokenStore.SetUserToken(r.Context(), userEmail, serviceName, storedToken); err != nil {
 		log.LogErrorWithFields("token", "Failed to store token", map[string]interface{}{
 			"error":   err.Error(),
 			"user":    userEmail,
