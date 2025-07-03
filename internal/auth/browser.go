@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -19,6 +18,12 @@ type SessionData struct {
 	Expires time.Time `json:"expires"`
 }
 
+// BrowserState represents the state parameter data for browser SSO
+type BrowserState struct {
+	Nonce     string `json:"nonce"`
+	ReturnURL string `json:"return_url"`
+}
+
 // SSOMiddleware creates middleware for browser-based SSO authentication
 func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -26,8 +31,12 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 			// Check for session cookie
 			sessionValue, err := cookie.GetSession(r)
 			if err != nil {
-				// No cookie, redirect directly to Google OAuth
+				// No cookie, redirect directly to OAuth
 				state := s.generateBrowserState(r.URL.String())
+				if state == "" {
+					jsonwriter.WriteInternalServerError(w, "Failed to generate authentication state")
+					return
+				}
 				googleURL := s.authService.GoogleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
@@ -56,11 +65,14 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 
 			// Check expiration
 			if time.Now().After(sessionData.Expires) {
-				// Expired session
 				log.LogDebug("Session expired for user %s", sessionData.Email)
 				cookie.ClearSession(w)
 				// Redirect directly to Google OAuth
 				state := s.generateBrowserState(r.URL.String())
+				if state == "" {
+					jsonwriter.WriteInternalServerError(w, "Failed to generate authentication state")
+					return
+				}
 				googleURL := s.authService.GoogleAuthURL(state)
 				http.Redirect(w, r, googleURL, http.StatusFound)
 				return
@@ -75,14 +87,16 @@ func (s *Server) SSOMiddleware() func(http.Handler) http.Handler {
 
 // generateBrowserState creates a secure state parameter for browser SSO
 func (s *Server) generateBrowserState(returnURL string) string {
-	// Generate random nonce
-	nonce := crypto.GenerateSecureToken()
+	state := BrowserState{
+		Nonce:     crypto.GenerateSecureToken(),
+		ReturnURL: returnURL,
+	}
 
-	// Create signed CSRF token: nonce + HMAC(nonce + returnURL)
-	// This ensures the token is tied to the specific return URL
-	data := nonce + ":" + returnURL
-	signature := crypto.SignData(data, []byte(s.config.EncryptionKey))
-
-	// Format: "browser:nonce:signature:returnURL"
-	return fmt.Sprintf("browser:%s:%s:%s", nonce, signature, returnURL)
+	token, err := s.browserStateToken.Sign(state)
+	if err != nil {
+		log.LogError("Failed to sign browser state: %v", err)
+		// Return empty string to trigger auth failure - middleware will handle it
+		return ""
+	}
+	return "browser:" + token
 }

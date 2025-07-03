@@ -20,15 +20,27 @@ import (
 
 // AuthHandlers wraps the auth.Server to provide HTTP handlers
 type AuthHandlers struct {
-	authServer *auth.Server
-	mcpServers map[string]*config.MCPClientConfig
+	authServer      *auth.Server
+	mcpServers      map[string]*config.MCPClientConfig
+	oauthStateToken *crypto.SignedToken
+}
+
+// OAuthState stores OAuth state during service authentication flow
+type OAuthState struct {
+	UserInfo     *auth.UserInfo `json:"user_info"`
+	ClientID     string         `json:"client_id"`
+	RedirectURI  string         `json:"redirect_uri"`
+	Scopes       []string       `json:"scopes"`
+	State        string         `json:"state"`
+	ResponseType string         `json:"response_type"`
 }
 
 // NewAuthHandlers creates new auth handlers
 func NewAuthHandlers(authServer *auth.Server, mcpServers map[string]*config.MCPClientConfig) *AuthHandlers {
 	return &AuthHandlers{
-		authServer: authServer,
-		mcpServers: mcpServers,
+		authServer:      authServer,
+		mcpServers:      mcpServers,
+		oauthStateToken: crypto.NewSignedToken([]byte(authServer.GetConfig().EncryptionKey), 10*time.Minute),
 	}
 }
 
@@ -99,11 +111,9 @@ func (h *AuthHandlers) AuthorizeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Store authorize request temporarily
 	state := ar.GetState()
 	h.authServer.GetStorage().StoreAuthorizeRequest(state, ar)
 
-	// Redirect to Google OAuth
 	authURL := h.authServer.GetAuthService().GoogleAuthURL(state)
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
@@ -128,33 +138,21 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Check if this is a browser SSO flow
 	var ar fosite.AuthorizeRequester
 	var isBrowserFlow bool
 	var returnURL string
 
 	if strings.HasPrefix(state, "browser:") {
-		// Browser SSO flow - validate signature and extract return URL
 		isBrowserFlow = true
-		// Format: "browser:nonce:signature:returnURL"
-		parts := strings.SplitN(state, ":", 4)
-		if len(parts) != 4 {
-			log.LogError("Invalid browser state format: %s", state)
-			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
-			return
-		}
-		// parts[0] = "browser", parts[1] = nonce, parts[2] = signature, parts[3] = return URL
-		nonce := parts[1]
-		signature := parts[2]
-		returnURL = parts[3]
+		stateToken := strings.TrimPrefix(state, "browser:")
 
-		// Validate HMAC signature
-		data := nonce + ":" + returnURL
-		if !crypto.ValidateSignedData(data, signature, []byte(string(h.authServer.GetConfig().EncryptionKey))) {
-			log.LogError("Invalid CSRF signature in browser flow")
+		var browserState auth.BrowserState
+		if err := h.oauthStateToken.Verify(stateToken, &browserState); err != nil {
+			log.LogError("Invalid browser state: %v", err)
 			jsonwriter.WriteBadRequest(w, "Invalid state parameter")
 			return
 		}
+		returnURL = browserState.ReturnURL
 	} else {
 		// OAuth client flow - retrieve stored authorize request
 		var found bool
@@ -243,36 +241,34 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 			"returnURL": returnURL,
 		})
 
-		// Check if the return URL contains a server parameter for OAuth chaining
-		parsedURL, err := url.Parse(returnURL)
-		if err == nil {
-			serverName := parsedURL.Query().Get("server")
-			if serverName != "" {
-				// Check if this server requires OAuth authentication
-				if serverConfig, exists := h.mcpServers[serverName]; exists {
-					if serverConfig.RequiresUserToken &&
-						serverConfig.UserAuthentication != nil &&
-						serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
-						encodedReturnURL := url.QueryEscape(returnURL)
-						oauthURL := fmt.Sprintf("/oauth/connect?service=%s&return=%s", serverName, encodedReturnURL)
-						log.LogInfoWithFields("auth", "Chaining to server OAuth", map[string]any{
-							"server": serverName,
-							"user":   userInfo.Email,
-						})
-						http.Redirect(w, r, oauthURL, http.StatusFound)
-						return
-					}
-				}
-			}
-		}
-
-		// Otherwise, redirect to return URL as normal
+		// Redirect to return URL
 		http.Redirect(w, r, returnURL, http.StatusFound)
 		return
 	}
 
-	// OAuth client flow - continue with authorization
-	// Create session with user info
+	// OAuth client flow - check if any services need OAuth
+	needsServiceAuth := false
+	for _, serverConfig := range h.mcpServers {
+		if serverConfig.RequiresUserToken &&
+			serverConfig.UserAuthentication != nil &&
+			serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
+			needsServiceAuth = true
+			break
+		}
+	}
+
+	if needsServiceAuth {
+		stateData, err := h.signOAuthState(ar, userInfo)
+		if err != nil {
+			log.LogError("Failed to sign OAuth state: %v", err)
+			h.authServer.GetProvider().WriteAuthorizeError(w, ar, fosite.ErrServerError.WithHint("Failed to prepare service authentication"))
+			return
+		}
+
+		http.Redirect(w, r, fmt.Sprintf("/oauth/services?state=%s", url.QueryEscape(stateData)), http.StatusFound)
+		return
+	}
+
 	session := &auth.Session{
 		DefaultSession: &fosite.DefaultSession{
 			ExpiresAt: map[fosite.TokenType]time.Time{
@@ -291,11 +287,12 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Write the response (redirects to client)
 	h.authServer.GetProvider().WriteAuthorizeResponse(w, ar, response)
 }
 
 // TokenHandler handles OAuth 2.0 token requests
+//
+// TODO: feels messy, need to see if we can simplify that whole logic
 func (h *AuthHandlers) TokenHandler(w http.ResponseWriter, r *http.Request) {
 	log.Logf("Token handler called: %s %s", r.Method, r.URL.Path)
 	ctx := r.Context()
@@ -325,7 +322,6 @@ func (h *AuthHandlers) TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write token response
 	h.authServer.GetProvider().WriteAccessResponse(w, accessRequest, response)
 }
 
@@ -397,14 +393,183 @@ func (h *AuthHandlers) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		log.Logf("Creating public client %s with no authentication", clientID)
 	}
 
-	// Build registration response
 	response := h.buildClientRegistrationResponse(client, tokenEndpointAuthMethod, plaintextSecret)
 
-	// Write response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.LogError("Failed to encode registration response: %v", err)
 		jsonwriter.WriteInternalServerError(w, "Failed to create client")
 	}
+}
+
+// signOAuthState signs OAuth state for secure storage
+func (h *AuthHandlers) signOAuthState(ar fosite.AuthorizeRequester, userInfo *auth.UserInfo) (string, error) {
+	state := OAuthState{
+		UserInfo:     userInfo,
+		ClientID:     ar.GetClient().GetID(),
+		RedirectURI:  ar.GetRedirectURI().String(),
+		Scopes:       ar.GetRequestedScopes(),
+		State:        ar.GetState(),
+		ResponseType: ar.GetResponseTypes()[0],
+	}
+
+	return h.oauthStateToken.Sign(state)
+}
+
+// verifyOAuthState verifies and validates OAuth state
+func (h *AuthHandlers) verifyOAuthState(signedState string) (*OAuthState, error) {
+	var state OAuthState
+	if err := h.oauthStateToken.Verify(signedState, &state); err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
+
+// ServiceSelectionHandler shows the interstitial page for selecting services to connect
+func (h *AuthHandlers) ServiceSelectionHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+		return
+	}
+
+	signedState := r.URL.Query().Get("state")
+	if signedState == "" {
+		jsonwriter.WriteBadRequest(w, "Missing state parameter")
+		return
+	}
+
+	oauthState, err := h.verifyOAuthState(signedState)
+	if err != nil {
+		log.LogError("Failed to verify OAuth state: %v", err)
+		jsonwriter.WriteBadRequest(w, "Invalid or expired session")
+		return
+	}
+
+	userEmail := oauthState.UserInfo.Email
+
+	// Prepare service list
+	var services []ServiceSelectionData
+	for name, serverConfig := range h.mcpServers {
+		if serverConfig.RequiresUserToken &&
+			serverConfig.UserAuthentication != nil &&
+			serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
+
+			// Check if user already has valid token
+			token, _ := h.authServer.GetStorage().GetUserToken(r.Context(), userEmail, name)
+			status := "not_connected"
+			if token != nil {
+				status = "connected"
+			}
+
+			displayName := name
+			if serverConfig.UserAuthentication.DisplayName != "" {
+				displayName = serverConfig.UserAuthentication.DisplayName
+			}
+
+			// Check for error from callback
+			if r.URL.Query().Get("error") != "" && r.URL.Query().Get("service") == name {
+				status = "error"
+			}
+
+			services = append(services, ServiceSelectionData{
+				Name:        name,
+				DisplayName: displayName,
+				Status:      status,
+				ErrorMsg:    r.URL.Query().Get("error_description"),
+			})
+		}
+	}
+
+	// Prepare template data
+	returnURL := fmt.Sprintf("/oauth/services?state=%s", url.QueryEscape(signedState))
+	pageData := ServicesPageData{
+		Services:  services,
+		State:     url.QueryEscape(signedState),
+		ReturnURL: url.QueryEscape(returnURL),
+	}
+
+	// Render template
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := servicesPageTemplate.Execute(w, pageData); err != nil {
+		log.LogError("Failed to render services page: %v", err)
+		jsonwriter.WriteInternalServerError(w, "Failed to render page")
+	}
+}
+
+// CompleteOAuthHandler completes the original OAuth flow after service selection
+func (h *AuthHandlers) CompleteOAuthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonwriter.WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+		return
+	}
+
+	signedState := r.URL.Query().Get("state")
+	if signedState == "" {
+		jsonwriter.WriteBadRequest(w, "Missing state parameter")
+		return
+	}
+
+	oauthState, err := h.verifyOAuthState(signedState)
+	if err != nil {
+		log.LogError("Failed to verify OAuth state: %v", err)
+		jsonwriter.WriteBadRequest(w, "Invalid or expired session")
+		return
+	}
+
+	// Recreate the authorize request
+	ctx := r.Context()
+	client, err := h.authServer.GetStorage().GetClient(ctx, oauthState.ClientID)
+	if err != nil {
+		log.LogError("Failed to get client: %v", err)
+		jsonwriter.WriteInternalServerError(w, "Client not found")
+		return
+	}
+
+	// Create a new authorize request with the stored parameters
+	ar := &fosite.AuthorizeRequest{
+		ResponseTypes:        fosite.Arguments{oauthState.ResponseType},
+		RedirectURI:          &url.URL{},
+		State:                oauthState.State,
+		HandledResponseTypes: fosite.Arguments{},
+		Request: fosite.Request{
+			ID:             crypto.GenerateSecureToken(),
+			RequestedAt:    time.Now(),
+			Client:         client,
+			RequestedScope: oauthState.Scopes,
+			GrantedScope:   oauthState.Scopes,
+			Session:        &auth.Session{DefaultSession: &fosite.DefaultSession{}},
+		},
+	}
+
+	redirectURI, err := url.Parse(oauthState.RedirectURI)
+	if err != nil {
+		log.LogError("Failed to parse redirect URI: %v", err)
+		jsonwriter.WriteInternalServerError(w, "Invalid redirect URI")
+		return
+	}
+	ar.RedirectURI = redirectURI
+
+	// Create session with user info
+	session := &auth.Session{
+		DefaultSession: &fosite.DefaultSession{
+			ExpiresAt: map[fosite.TokenType]time.Time{
+				fosite.AccessToken:  time.Now().Add(h.authServer.GetConfig().TokenTTL),
+				fosite.RefreshToken: time.Now().Add(h.authServer.GetConfig().TokenTTL * 2),
+			},
+		},
+		UserInfo: oauthState.UserInfo,
+	}
+	ar.SetSession(session)
+
+	// Accept the authorization request
+	response, err := h.authServer.GetProvider().NewAuthorizeResponse(ctx, ar, session)
+	if err != nil {
+		log.LogError("Authorize response error: %v", err)
+		h.authServer.GetProvider().WriteAuthorizeError(w, ar, err)
+		return
+	}
+
+	// Write the response (redirects to Claude)
+	h.authServer.GetProvider().WriteAuthorizeResponse(w, ar, response)
 }

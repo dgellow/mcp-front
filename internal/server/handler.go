@@ -199,16 +199,22 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 		// OAuth service endpoints
 		serviceOAuthClient := services.NewServiceOAuthClient(s.storage, cfg.Proxy.BaseURL)
-		oauthHandlers := NewServiceAuthHandlers(serviceOAuthClient, cfg.MCPServers, s.storage)
+		serviceAuthHandlers := NewServiceAuthHandlers(serviceOAuthClient, cfg.MCPServers, s.storage)
+
+		// OAuth interstitial page - requires Google authentication
+		mux.Handle("/oauth/services", chainMiddleware(http.HandlerFunc(authHandlers.ServiceSelectionHandler), tokenMiddlewares...))
+
+		// OAuth completion endpoint - requires Google authentication
+		mux.Handle("/oauth/complete", chainMiddleware(http.HandlerFunc(authHandlers.CompleteOAuthHandler), tokenMiddlewares...))
 
 		// OAuth connect endpoint - requires Google authentication
-		mux.Handle("/oauth/connect", chainMiddleware(http.HandlerFunc(oauthHandlers.ConnectHandler), tokenMiddlewares...))
+		mux.Handle("/oauth/connect", chainMiddleware(http.HandlerFunc(serviceAuthHandlers.ConnectHandler), tokenMiddlewares...))
 
 		// OAuth callback endpoints - must be publicly accessible for external OAuth providers
-		mux.HandleFunc("/oauth/callback/", oauthHandlers.CallbackHandler)
+		mux.HandleFunc("/oauth/callback/", serviceAuthHandlers.CallbackHandler)
 
 		// OAuth disconnect endpoint - requires Google authentication
-		mux.Handle("/oauth/disconnect", chainMiddleware(http.HandlerFunc(oauthHandlers.DisconnectHandler), tokenMiddlewares...))
+		mux.Handle("/oauth/disconnect", chainMiddleware(http.HandlerFunc(serviceAuthHandlers.DisconnectHandler), tokenMiddlewares...))
 	}
 
 	// Setup MCP server endpoints

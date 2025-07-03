@@ -33,11 +33,12 @@ func GetUserContextKey() contextKey {
 
 // Server wraps fosite.OAuth2Provider with clean architecture
 type Server struct {
-	provider         fosite.OAuth2Provider
-	storage          storage.Storage
-	authService      *authService
-	config           Config
-	sessionEncryptor crypto.Encryptor // Created once for browser SSO performance
+	provider          fosite.OAuth2Provider
+	storage           storage.Storage
+	authService       *authService
+	config            Config
+	sessionEncryptor  crypto.Encryptor
+	browserStateToken *crypto.SignedToken
 }
 
 // Config holds OAuth server configuration
@@ -132,11 +133,12 @@ func NewServer(config Config, store storage.Storage) (*Server, error) {
 	}
 
 	return &Server{
-		provider:         provider,
-		storage:          store,
-		authService:      authService,
-		config:           config,
-		sessionEncryptor: sessionEncryptor,
+		provider:          provider,
+		storage:           store,
+		authService:       authService,
+		config:            config,
+		sessionEncryptor:  sessionEncryptor,
+		browserStateToken: crypto.NewSignedToken(key, 10*time.Minute),
 	}, nil
 }
 
