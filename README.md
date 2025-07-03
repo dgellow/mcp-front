@@ -3,14 +3,23 @@
 ![Docker image with tag latest](https://img.shields.io/docker/image-size/dgellow/mcp-front/latest?style=flat&logo=docker&label=latest)
 ![Docker image with tag docker-client-latest](https://img.shields.io/docker/image-size/dgellow/mcp-front/docker-client-latest?style=flat&logo=docker&label=docker-client-latest)
 
+> [!WARNING]
 > **This project is a work in progress and should not be considered production ready.**
+> 
 > Though I'm fairly confident the overall architecture is sound, and I myself rely on the implementation — so it _should work :tm:_.
-> But it's definitely alpha software :)
+> But definitely alpha software.
+>
+> **Expect breaking changes! :)**
 >
 > Also, don't rely too much on the docs, they drift fairly quickly, I do not always keep them updated when doing changes or adding/removing features. They are mostly here to anchor me and help me stay focus on my initial vision.
 
-OAuth 2.1 proxy for [MCP (Model Context Protocol)](https://modelcontextprotocol.io/introduction) servers. Authenticate once with Google, access all your MCP tools in [Claude.ai](https://claude.ai).
+> [!TIP]
+> Looking for the easiest way to get an MCP server for your API? Check out [Stainless](https://www.stainless.com/mcp?utm=mcp-front-readme)✨. We offer best-in-class SDK and MCP generation. Build a complete MCP server and [publish it to Cloudflare and Docker Hub](https://www.stainless.com/docs/guides/generate-mcp-server-from-openapi?utm=mcp-front-readme) in a few minutes!
+>
+> <sub>Disclaimer: the author of mcp-front is an early Stainless employee</sub>
 
+
+OAuth 2.1 proxy for [MCP (Model Context Protocol)](https://modelcontextprotocol.io/introduction) servers. Authenticate once with Google, access all your MCP tools in [Claude.ai](https://claude.ai).
 
 <div align="center">
 
@@ -29,7 +38,7 @@ mcp-front is an authentication proxy that sits between Claude.ai and your MCP se
 
 ## Why use mcp-front?
 
-Without mcp-front, each MCP server needs its own authentication, which isn't trivial — or need to be public.
+Without mcp-front, each MCP server needs its own authentication, which isn't trivial — or needs to be public.
 
 With mcp-front:
 
@@ -209,4 +218,5 @@ export MCP_FRONT_ENV=development
 
 ## License
 
-Copyright 2025 Samuel "dgellow" El-Borai
+Copyright 2025 Samuel "dgellow" El-Borai.
+All rights reserved.
