@@ -8,15 +8,15 @@ import (
 	"time"
 )
 
-// SignedToken provides HMAC-signed JSON tokens with optional expiry
-type SignedToken struct {
+// TokenSigner provides HMAC-signed JSON tokens with optional expiry
+type TokenSigner struct {
 	signingKey []byte
 	ttl        time.Duration
 }
 
-// NewSignedToken creates a new signed token handler
-func NewSignedToken(signingKey []byte, ttl time.Duration) *SignedToken {
-	return &SignedToken{
+// NewTokenSigner creates a new token signer
+func NewTokenSigner(signingKey []byte, ttl time.Duration) TokenSigner {
+	return TokenSigner{
 		signingKey: signingKey,
 		ttl:        ttl,
 	}
@@ -29,7 +29,7 @@ type TokenData struct {
 }
 
 // Sign marshals data to JSON, signs it with HMAC, and returns a base64-encoded token
-func (st *SignedToken) Sign(v any) (string, error) {
+func (ts *TokenSigner) Sign(v any) (string, error) {
 	// Marshal user data
 	userData, err := json.Marshal(v)
 	if err != nil {
@@ -40,8 +40,8 @@ func (st *SignedToken) Sign(v any) (string, error) {
 	tokenData := TokenData{
 		Data: userData,
 	}
-	if st.ttl > 0 {
-		tokenData.ExpiresAt = time.Now().Add(st.ttl)
+	if ts.ttl > 0 {
+		tokenData.ExpiresAt = time.Now().Add(ts.ttl)
 	}
 
 	// Marshal complete token
@@ -51,7 +51,7 @@ func (st *SignedToken) Sign(v any) (string, error) {
 	}
 
 	// Create signature
-	signature := SignData(string(jsonData), st.signingKey)
+	signature := SignData(string(jsonData), ts.signingKey)
 
 	// Combine data and signature
 	combined := fmt.Sprintf("%s.%s", base64.URLEncoding.EncodeToString(jsonData), signature)
@@ -59,7 +59,7 @@ func (st *SignedToken) Sign(v any) (string, error) {
 }
 
 // Verify validates the signature, checks expiry, and unmarshals the data
-func (st *SignedToken) Verify(token string, v any) error {
+func (ts *TokenSigner) Verify(token string, v any) error {
 	// Split data and signature
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
@@ -74,7 +74,7 @@ func (st *SignedToken) Verify(token string, v any) error {
 
 	// Verify signature
 	signature := parts[1]
-	if !ValidateSignedData(string(jsonData), signature, st.signingKey) {
+	if !ValidateSignedData(string(jsonData), signature, ts.signingKey) {
 		return fmt.Errorf("invalid signature")
 	}
 

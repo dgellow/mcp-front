@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal/utils"
+	emailutil "github.com/dgellow/mcp-front/internal/email"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dgellow/mcp-front/internal/log"
@@ -140,10 +140,18 @@ func (o *OAuthAuthConfig) UnmarshalJSON(data []byte) error {
 	o.Kind = raw.Kind
 	o.AllowedDomains = raw.AllowedDomains
 	o.AllowedOrigins = raw.AllowedOrigins
-	o.TokenTTL = raw.TokenTTL
 	o.Storage = raw.Storage
 	o.FirestoreDatabase = raw.FirestoreDatabase
 	o.FirestoreCollection = raw.FirestoreCollection
+
+	// Parse TokenTTL duration
+	if raw.TokenTTL != "" {
+		tokenTTL, err := time.ParseDuration(raw.TokenTTL)
+		if err != nil {
+			return fmt.Errorf("parsing tokenTtl: %w", err)
+		}
+		o.TokenTTL = tokenTTL
+	}
 
 	// Parse string fields
 	if raw.Issuer != nil {
@@ -264,8 +272,8 @@ func (p *ProxyConfig) UnmarshalJSON(data []byte) error {
 	// Normalize admin emails for consistent comparison
 	if p.Admin != nil && len(p.Admin.AdminEmails) > 0 {
 		normalizedEmails := make([]string, len(p.Admin.AdminEmails))
-		for i, email := range p.Admin.AdminEmails {
-			normalizedEmails[i] = utils.NormalizeEmail(email)
+		for i, emailAddr := range p.Admin.AdminEmails {
+			normalizedEmails[i] = emailutil.Normalize(emailAddr)
 		}
 		p.Admin.AdminEmails = normalizedEmails
 	}

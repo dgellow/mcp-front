@@ -10,6 +10,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
 
@@ -37,7 +38,7 @@ func (h *ServiceAuthHandlers) ConnectHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Get authenticated user
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Authentication required")
 		return
@@ -205,7 +206,7 @@ func (h *ServiceAuthHandlers) DisconnectHandler(w http.ResponseWriter, r *http.R
 	}
 
 	// Get authenticated user
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Authentication required")
 		return

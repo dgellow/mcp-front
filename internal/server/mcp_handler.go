@@ -9,12 +9,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/jsonrpc"
 	"github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/servicecontext"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -40,6 +41,7 @@ type MCPHandler struct {
 	info            mcp.Implementation
 	sessionManager  SessionManager
 	sharedSSEServer *server.SSEServer // Shared SSE server for stdio servers
+	sharedMCPServer *server.MCPServer // Shared MCP server for stdio servers
 	getUserToken    UserTokenFunc     // Function to get formatted user tokens
 }
 
@@ -52,6 +54,7 @@ func NewMCPHandler(
 	info mcp.Implementation,
 	sessionManager SessionManager,
 	sharedSSEServer *server.SSEServer, // Shared SSE server for stdio servers
+	sharedMCPServer *server.MCPServer, // Shared MCP server for stdio servers
 	getUserToken UserTokenFunc,
 ) *MCPHandler {
 	return &MCPHandler{
@@ -62,6 +65,7 @@ func NewMCPHandler(
 		info:            info,
 		sessionManager:  sessionManager,
 		sharedSSEServer: sharedSSEServer,
+		sharedMCPServer: sharedMCPServer,
 		getUserToken:    getUserToken,
 	}
 }
@@ -70,10 +74,10 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get user from context - could be OAuth email or basic auth username
-	userEmail, _ := auth.GetUserFromContext(ctx)
+	userEmail, _ := oauth.GetUserFromContext(ctx)
 	if userEmail == "" {
 		// Check for basic auth username
-		username, _ := auth.GetUser(ctx)
+		username, _ := servicecontext.GetUser(ctx)
 		userEmail = username
 	}
 
@@ -183,14 +187,10 @@ func (h *MCPHandler) handleSSERequest(ctx context.Context, w http.ResponseWriter
 	// that will be called when sessions are registered/unregistered
 	// We need to set up our session-specific handlers
 	// Create a custom hook handler for this specific request
-	sessionHandler := &sessionRequestHandler{
-		h:         h,
-		userEmail: userEmail,
-		config:    config,
-	}
+	sessionHandler := NewSessionRequestHandler(h, userEmail, config, h.sharedMCPServer)
 
 	// Store the handler in context so hooks can access it
-	ctx = context.WithValue(ctx, sessionHandlerKey{}, sessionHandler)
+	ctx = context.WithValue(ctx, SessionHandlerKey{}, sessionHandler)
 	r = r.WithContext(ctx)
 	log.LogInfoWithFields("mcp", "Serving SSE request for stdio server", map[string]any{
 		"server": h.serverName,
@@ -282,7 +282,7 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	})
 
 	// Check for service auth first - services provide their own user tokens
-	if serviceAuth, ok := auth.GetServiceAuth(ctx); ok {
+	if serviceAuth, ok := servicecontext.GetAuthInfo(ctx); ok {
 		if serviceAuth.UserToken != "" {
 			log.LogTraceWithFields("mcp_handler", "Found user token in service auth context", map[string]any{
 				"server_name": h.serverName,

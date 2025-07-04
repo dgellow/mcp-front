@@ -56,6 +56,8 @@ mcp-front is a Go-based OAuth 2.1 proxy server for MCP (Model Context Protocol) 
 - **Define interfaces where they are used** - Not in the package that implements them
 - **Avoid circular imports** - Use interface segregation in separate packages when needed
 - **Dependency injection over getter methods** - Pass dependencies to constructors
+- **Functional core, imperative shell** - Prefer pure functions for business logic, keep side effects (I/O, state mutations) at the boundaries. Makes code more testable and reasoning easier.
+- **Upstream lifecycle control** - Manage goroutines, servers, and background processes from the application root. Library code should expose Start/Stop methods, not start things autonomously.
 
 ### 🎯 Core Development Principles (from Zig Zen)
 

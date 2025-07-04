@@ -8,25 +8,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal/auth"
+	"github.com/dgellow/mcp-front/internal/adminauth"
 	"github.com/dgellow/mcp-front/internal/client"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
 
 // AdminHandlers handles the admin UI
 type AdminHandlers struct {
 	storage        storage.Storage
-	config         *config.Config
+	config         config.Config
 	sessionManager *client.StdioSessionManager
 	encryptionKey  []byte // For HMAC-based CSRF tokens
 }
 
 // NewAdminHandlers creates a new admin handlers instance
-func NewAdminHandlers(storage storage.Storage, config *config.Config, sessionManager *client.StdioSessionManager, encryptionKey string) *AdminHandlers {
+func NewAdminHandlers(storage storage.Storage, config config.Config, sessionManager *client.StdioSessionManager, encryptionKey string) *AdminHandlers {
 	return &AdminHandlers{
 		storage:        storage,
 		config:         config,
@@ -100,14 +101,14 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
+	if !adminauth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
@@ -136,7 +137,7 @@ func (h *AdminHandlers) DashboardHandler(w http.ResponseWriter, r *http.Request)
 	for i, user := range rawUsers {
 		users[i] = UserInfoWithAdminType{
 			UserInfo:      user,
-			IsConfigAdmin: auth.IsConfigAdmin(user.Email, h.config.Proxy.Admin),
+			IsConfigAdmin: adminauth.IsConfigAdmin(user.Email, h.config.Proxy.Admin),
 		}
 	}
 
@@ -189,14 +190,14 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
+	if !adminauth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
@@ -322,7 +323,7 @@ func (h *AdminHandlers) UserActionHandler(w http.ResponseWriter, r *http.Request
 		if targetEmail == userEmail {
 			message = "Cannot demote yourself"
 			messageType = "error"
-		} else if auth.IsConfigAdmin(targetEmail, h.config.Proxy.Admin) {
+		} else if adminauth.IsConfigAdmin(targetEmail, h.config.Proxy.Admin) {
 			// Prevent demoting config admins
 			message = "Cannot demote config-defined admins"
 			messageType = "error"
@@ -359,14 +360,14 @@ func (h *AdminHandlers) SessionActionHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
+	if !adminauth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}
@@ -445,14 +446,14 @@ func (h *AdminHandlers) LoggingActionHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
 	}
 
 	// Double-check admin status
-	if !auth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
+	if !adminauth.IsAdmin(r.Context(), userEmail, h.config.Proxy.Admin, h.storage) {
 		jsonwriter.WriteForbidden(w, "Forbidden")
 		return
 	}

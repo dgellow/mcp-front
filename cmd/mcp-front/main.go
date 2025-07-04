@@ -1,14 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 
+	"github.com/dgellow/mcp-front/internal"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/log"
-	"github.com/dgellow/mcp-front/internal/server"
 )
 
 var BuildVersion = "dev"
@@ -156,7 +157,14 @@ func main() {
 		"config":  *conf,
 	})
 
-	err = server.Run(cfg)
+	ctx := context.Background()
+	mcpFront, err := internal.NewMCPFront(ctx, cfg)
+	if err != nil {
+		log.LogError("Failed to create MCP proxy: %v", err)
+		os.Exit(1)
+	}
+
+	err = mcpFront.Run()
 	if err != nil {
 		log.LogError("Failed to start server: %v", err)
 		os.Exit(1)

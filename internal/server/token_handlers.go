@@ -12,6 +12,7 @@ import (
 	"github.com/dgellow/mcp-front/internal/crypto"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/log"
+	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
 
@@ -61,7 +62,7 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
@@ -173,7 +174,7 @@ func (h *TokenHandlers) SetTokenHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return
@@ -289,7 +290,7 @@ func (h *TokenHandlers) DeleteTokenHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	userEmail, ok := auth.GetUserFromContext(r.Context())
+	userEmail, ok := oauth.GetUserFromContext(r.Context())
 	if !ok {
 		jsonwriter.WriteUnauthorized(w, "Unauthorized")
 		return

@@ -202,30 +202,30 @@ type AdminConfig struct {
 
 // OAuthAuthConfig represents OAuth 2.1 configuration with resolved values
 type OAuthAuthConfig struct {
-	Kind                AuthKind `json:"kind"`
-	Issuer              string   `json:"issuer"`
-	GCPProject          string   `json:"gcpProject"`
-	AllowedDomains      []string `json:"allowedDomains"` // For Google OAuth email validation
-	AllowedOrigins      []string `json:"allowedOrigins"` // For CORS validation
-	TokenTTL            string   `json:"tokenTtl"`
-	Storage             string   `json:"storage"`                       // "memory" or "firestore"
-	FirestoreDatabase   string   `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name
-	FirestoreCollection string   `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name
-	GoogleClientID      string   `json:"googleClientId"`
-	GoogleClientSecret  Secret   `json:"googleClientSecret"`
-	GoogleRedirectURI   string   `json:"googleRedirectUri"`
-	JWTSecret           Secret   `json:"jwtSecret"`
-	EncryptionKey       Secret   `json:"encryptionKey"`
+	Kind                AuthKind      `json:"kind"`
+	Issuer              string        `json:"issuer"`
+	GCPProject          string        `json:"gcpProject"`
+	AllowedDomains      []string      `json:"allowedDomains"` // For Google OAuth email validation
+	AllowedOrigins      []string      `json:"allowedOrigins"` // For CORS validation
+	TokenTTL            time.Duration `json:"tokenTtl"`
+	Storage             string        `json:"storage"`                       // "memory" or "firestore"
+	FirestoreDatabase   string        `json:"firestoreDatabase,omitempty"`   // Optional: Firestore database name
+	FirestoreCollection string        `json:"firestoreCollection,omitempty"` // Optional: Firestore collection name
+	GoogleClientID      string        `json:"googleClientId"`
+	GoogleClientSecret  Secret        `json:"googleClientSecret"`
+	GoogleRedirectURI   string        `json:"googleRedirectUri"`
+	JWTSecret           Secret        `json:"jwtSecret"`
+	EncryptionKey       Secret        `json:"encryptionKey"`
 }
 
 // ProxyConfig represents the proxy configuration with resolved values
 type ProxyConfig struct {
-	BaseURL  string         `json:"baseURL"`
-	Addr     string         `json:"addr"`
-	Name     string         `json:"name"`
-	Auth     any            `json:"-"` // OAuthAuthConfig or BearerTokenAuthConfig
-	Admin    *AdminConfig   `json:"admin,omitempty"`
-	Sessions *SessionConfig `json:"sessions,omitempty"`
+	BaseURL  string           `json:"baseURL"`
+	Addr     string           `json:"addr"`
+	Name     string           `json:"name"`
+	Auth     *OAuthAuthConfig `json:"auth,omitempty"` // Only OAuth is supported
+	Admin    *AdminConfig     `json:"admin,omitempty"`
+	Sessions *SessionConfig   `json:"sessions,omitempty"`
 }
 
 // Config represents the config structure with resolved values
