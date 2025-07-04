@@ -28,6 +28,9 @@ type SessionManager interface {
 	Shutdown()
 }
 
+// UserTokenFunc defines a function that retrieves a formatted user token for a service
+type UserTokenFunc func(ctx context.Context, userEmail, serviceName string, serviceConfig *config.MCPClientConfig) (string, error)
+
 // MCPHandler handles MCP requests with session management for stdio servers
 type MCPHandler struct {
 	serverName      string
@@ -37,6 +40,7 @@ type MCPHandler struct {
 	info            mcp.Implementation
 	sessionManager  SessionManager
 	sharedSSEServer *server.SSEServer // Shared SSE server for stdio servers
+	getUserToken    UserTokenFunc     // Function to get formatted user tokens
 }
 
 // NewMCPHandler creates a new MCP handler with session management
@@ -48,6 +52,7 @@ func NewMCPHandler(
 	info mcp.Implementation,
 	sessionManager SessionManager,
 	sharedSSEServer *server.SSEServer, // Shared SSE server for stdio servers
+	getUserToken UserTokenFunc,
 ) *MCPHandler {
 	return &MCPHandler{
 		serverName:      serverName,
@@ -57,6 +62,7 @@ func NewMCPHandler(
 		info:            info,
 		sessionManager:  sessionManager,
 		sharedSSEServer: sharedSSEServer,
+		getUserToken:    getUserToken,
 	}
 }
 
@@ -301,7 +307,12 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 		return "", err
 	}
 
-	// Extract the actual token string based on type
+	// Use injected function to get formatted token with refresh handling
+	if h.getUserToken != nil {
+		return h.getUserToken(ctx, userEmail, h.serverName, h.serverConfig)
+	}
+
+	// Fallback: extract raw token without refresh (for backwards compatibility)
 	var tokenString string
 	switch storedToken.Type {
 	case storage.TokenTypeManual:
@@ -309,19 +320,6 @@ func (h *MCPHandler) getUserTokenIfAvailable(ctx context.Context, userEmail stri
 	case storage.TokenTypeOAuth:
 		if storedToken.OAuthData != nil {
 			tokenString = storedToken.OAuthData.AccessToken
-		}
-	}
-
-	// Validate token format if configured (only for manual tokens)
-	if h.serverConfig.UserAuthentication != nil &&
-		h.serverConfig.UserAuthentication.Type == config.UserAuthTypeManual &&
-		h.serverConfig.UserAuthentication.ValidationRegex != nil &&
-		storedToken.Type == storage.TokenTypeManual {
-		if !h.serverConfig.UserAuthentication.ValidationRegex.MatchString(tokenString) {
-			log.LogWarnWithFields("mcp", "User token doesn't match expected format", map[string]any{
-				"user":    userEmail,
-				"service": h.serverName,
-			})
 		}
 	}
 

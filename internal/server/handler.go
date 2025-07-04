@@ -14,7 +14,6 @@ import (
 	"github.com/dgellow/mcp-front/internal/crypto"
 	"github.com/dgellow/mcp-front/internal/inline"
 	"github.com/dgellow/mcp-front/internal/log"
-	"github.com/dgellow/mcp-front/internal/services"
 	"github.com/dgellow/mcp-front/internal/storage"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -31,6 +30,8 @@ type Server struct {
 }
 
 // NewServer creates a new MCP proxy server handler
+//
+// TODO: this is becoming fairly complicated and should be refactored
 func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	baseURL, err := url.Parse(cfg.Proxy.BaseURL)
 	if err != nil {
@@ -85,7 +86,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		Version: "dev",
 	}
 
+	oauthMiddlewares := []MiddlewareFunc{
+		corsMiddleware(allowedOrigins),
+		loggerMiddleware("oauth"),
+		recoverMiddleware("mcp"),
+	}
+
 	// Initialize OAuth server if OAuth config is provided
+	var serviceOAuthClient *auth.ServiceOAuthClient
 	if oauthAuth, ok := cfg.Proxy.Auth.(*config.OAuthAuthConfig); ok && oauthAuth != nil {
 		log.LogDebug("initializing OAuth 2.1 server")
 
@@ -148,6 +156,9 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 		s.storage = store
 
+		// Create OAuth client for service authentication and token refresh
+		serviceOAuthClient = auth.NewServiceOAuthClient(s.storage, cfg.Proxy.BaseURL)
+
 		// Initialize admin users if admin is enabled
 		if cfg.Proxy.Admin != nil && cfg.Proxy.Admin.Enabled {
 			for _, adminEmail := range cfg.Proxy.Admin.AdminEmails {
@@ -170,13 +181,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 
 		// Register OAuth endpoints
-		oauthMiddlewares := []MiddlewareFunc{
-			corsMiddleware(allowedOrigins),
-			loggerMiddleware("oauth"),
-			recoverMiddleware("mcp"),
-		}
-
-		authHandlers := NewAuthHandlers(s.authServer, cfg.MCPServers)
+		authHandlers := NewAuthHandlers(s.authServer, cfg.MCPServers, serviceOAuthClient)
 		mux.Handle("/.well-known/oauth-authorization-server", chainMiddleware(http.HandlerFunc(authHandlers.WellKnownHandler), oauthMiddlewares...))
 		mux.Handle("/authorize", chainMiddleware(http.HandlerFunc(authHandlers.AuthorizeHandler), oauthMiddlewares...))
 		mux.Handle("/oauth/callback", chainMiddleware(http.HandlerFunc(authHandlers.GoogleCallbackHandler), oauthMiddlewares...))
@@ -184,22 +189,18 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		mux.Handle("/register", chainMiddleware(http.HandlerFunc(authHandlers.RegisterHandler), oauthMiddlewares...))
 
 		// Protected endpoints - require authentication
-		tokenHandlers := NewTokenHandlers(s.storage, cfg.MCPServers, s.authServer != nil)
 		tokenMiddlewares := []MiddlewareFunc{
 			corsMiddleware(allowedOrigins),
 			loggerMiddleware("tokens"),
 			s.authServer.SSOMiddleware(),
 			recoverMiddleware("mcp"),
 		}
+		tokenHandlers := NewTokenHandlers(s.storage, cfg.MCPServers, s.authServer != nil, serviceOAuthClient)
 
 		// Token management UI endpoints
 		mux.Handle("/my/tokens", chainMiddleware(http.HandlerFunc(tokenHandlers.ListTokensHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/set", chainMiddleware(http.HandlerFunc(tokenHandlers.SetTokenHandler), tokenMiddlewares...))
 		mux.Handle("/my/tokens/delete", chainMiddleware(http.HandlerFunc(tokenHandlers.DeleteTokenHandler), tokenMiddlewares...))
-
-		// OAuth service endpoints
-		serviceOAuthClient := services.NewServiceOAuthClient(s.storage, cfg.Proxy.BaseURL)
-		serviceAuthHandlers := NewServiceAuthHandlers(serviceOAuthClient, cfg.MCPServers, s.storage)
 
 		// OAuth interstitial page - requires Google authentication
 		mux.Handle("/oauth/services", chainMiddleware(http.HandlerFunc(authHandlers.ServiceSelectionHandler), tokenMiddlewares...))
@@ -207,14 +208,61 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		// OAuth completion endpoint - requires Google authentication
 		mux.Handle("/oauth/complete", chainMiddleware(http.HandlerFunc(authHandlers.CompleteOAuthHandler), tokenMiddlewares...))
 
-		// OAuth connect endpoint - requires Google authentication
-		mux.Handle("/oauth/connect", chainMiddleware(http.HandlerFunc(serviceAuthHandlers.ConnectHandler), tokenMiddlewares...))
-
-		// OAuth callback endpoints - must be publicly accessible for external OAuth providers
+		// Register service OAuth endpoints
+		serviceAuthHandlers := NewServiceAuthHandlers(serviceOAuthClient, cfg.MCPServers, s.storage)
 		mux.HandleFunc("/oauth/callback/", serviceAuthHandlers.CallbackHandler)
-
-		// OAuth disconnect endpoint - requires Google authentication
+		mux.Handle("/oauth/connect", chainMiddleware(http.HandlerFunc(serviceAuthHandlers.ConnectHandler), tokenMiddlewares...))
 		mux.Handle("/oauth/disconnect", chainMiddleware(http.HandlerFunc(serviceAuthHandlers.DisconnectHandler), tokenMiddlewares...))
+	}
+
+	// TODO: Consider extracting this large inline function to improve code organization
+	// Function to handle OAuth refresh and token formatting
+	getUserTokenFunc := func(ctx context.Context, userEmail, serviceName string, serviceConfig *config.MCPClientConfig) (string, error) {
+		storedToken, err := s.storage.GetUserToken(ctx, userEmail, serviceName)
+		if err != nil {
+			return "", err
+		}
+
+		switch storedToken.Type {
+		case storage.TokenTypeManual:
+			// Token is already in storedToken.Value, formatUserToken will handle it
+			break
+		case storage.TokenTypeOAuth:
+			if storedToken.OAuthData != nil {
+				if err := serviceOAuthClient.RefreshToken(ctx, userEmail, serviceName, serviceConfig); err != nil {
+					log.LogWarnWithFields("user_token", "Failed to refresh OAuth token", map[string]any{
+						"service": serviceName,
+						"user":    userEmail,
+						"error":   err.Error(),
+					})
+					// Continue with current token - the service will handle auth failure
+				} else {
+					// Re-fetch the updated token after refresh
+					refreshedToken, err := s.storage.GetUserToken(ctx, userEmail, serviceName)
+					if err != nil {
+						log.LogErrorWithFields("user_token", "Failed to fetch token after successful refresh", map[string]any{
+							"service": serviceName,
+							"user":    userEmail,
+							"error":   err.Error(),
+						})
+						// Continue with original token - the service will handle auth failure
+					} else {
+						storedToken = refreshedToken
+						var expiresAt time.Time
+						if refreshedToken.OAuthData != nil {
+							expiresAt = refreshedToken.OAuthData.ExpiresAt
+						}
+						log.LogInfoWithFields("user_token", "OAuth token refreshed and updated", map[string]any{
+							"service":   serviceName,
+							"user":      userEmail,
+							"expiresAt": expiresAt,
+						})
+					}
+				}
+			}
+		}
+
+		return formatUserToken(storedToken, serviceConfig.UserAuthentication), nil
 	}
 
 	// Setup MCP server endpoints
@@ -335,6 +383,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 				info,
 				s.sessionManager,
 				s.sseServers[serverName], // Pass the shared MCP server (nil for non-stdio)
+				getUserTokenFunc,         // Pass user token function
 			)
 		}
 

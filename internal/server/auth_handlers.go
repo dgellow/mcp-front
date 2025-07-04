@@ -20,13 +20,14 @@ import (
 
 // AuthHandlers wraps the auth.Server to provide HTTP handlers
 type AuthHandlers struct {
-	authServer      *auth.Server
-	mcpServers      map[string]*config.MCPClientConfig
-	oauthStateToken *crypto.SignedToken
+	authServer         *auth.Server
+	mcpServers         map[string]*config.MCPClientConfig
+	oauthStateToken    *crypto.SignedToken
+	serviceOAuthClient *auth.ServiceOAuthClient
 }
 
-// OAuthState stores OAuth state during service authentication flow
-type OAuthState struct {
+// UpstreamOAuthState stores OAuth state during upstream authentication flow (MCP host → mcp-front)
+type UpstreamOAuthState struct {
 	UserInfo     *auth.UserInfo `json:"user_info"`
 	ClientID     string         `json:"client_id"`
 	RedirectURI  string         `json:"redirect_uri"`
@@ -36,11 +37,12 @@ type OAuthState struct {
 }
 
 // NewAuthHandlers creates new auth handlers
-func NewAuthHandlers(authServer *auth.Server, mcpServers map[string]*config.MCPClientConfig) *AuthHandlers {
+func NewAuthHandlers(authServer *auth.Server, mcpServers map[string]*config.MCPClientConfig, serviceOAuthClient *auth.ServiceOAuthClient) *AuthHandlers {
 	return &AuthHandlers{
-		authServer:      authServer,
-		mcpServers:      mcpServers,
-		oauthStateToken: crypto.NewSignedToken([]byte(authServer.GetConfig().EncryptionKey), 10*time.Minute),
+		authServer:         authServer,
+		mcpServers:         mcpServers,
+		oauthStateToken:    crypto.NewSignedToken([]byte(authServer.GetConfig().EncryptionKey), 10*time.Minute),
+		serviceOAuthClient: serviceOAuthClient,
 	}
 }
 
@@ -258,7 +260,7 @@ func (h *AuthHandlers) GoogleCallbackHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	if needsServiceAuth {
-		stateData, err := h.signOAuthState(ar, userInfo)
+		stateData, err := h.signUpstreamOAuthState(ar, userInfo)
 		if err != nil {
 			log.LogError("Failed to sign OAuth state: %v", err)
 			h.authServer.GetProvider().WriteAuthorizeError(w, ar, fosite.ErrServerError.WithHint("Failed to prepare service authentication"))
@@ -403,9 +405,9 @@ func (h *AuthHandlers) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// signOAuthState signs OAuth state for secure storage
-func (h *AuthHandlers) signOAuthState(ar fosite.AuthorizeRequester, userInfo *auth.UserInfo) (string, error) {
-	state := OAuthState{
+// signUpstreamOAuthState signs upstream OAuth state for secure storage
+func (h *AuthHandlers) signUpstreamOAuthState(ar fosite.AuthorizeRequester, userInfo *auth.UserInfo) (string, error) {
+	state := UpstreamOAuthState{
 		UserInfo:     userInfo,
 		ClientID:     ar.GetClient().GetID(),
 		RedirectURI:  ar.GetRedirectURI().String(),
@@ -417,9 +419,9 @@ func (h *AuthHandlers) signOAuthState(ar fosite.AuthorizeRequester, userInfo *au
 	return h.oauthStateToken.Sign(state)
 }
 
-// verifyOAuthState verifies and validates OAuth state
-func (h *AuthHandlers) verifyOAuthState(signedState string) (*OAuthState, error) {
-	var state OAuthState
+// verifyUpstreamOAuthState verifies and validates upstream OAuth state
+func (h *AuthHandlers) verifyUpstreamOAuthState(signedState string) (*UpstreamOAuthState, error) {
+	var state UpstreamOAuthState
 	if err := h.oauthStateToken.Verify(signedState, &state); err != nil {
 		return nil, err
 	}
@@ -439,14 +441,17 @@ func (h *AuthHandlers) ServiceSelectionHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	oauthState, err := h.verifyOAuthState(signedState)
+	upstreamOAuthState, err := h.verifyUpstreamOAuthState(signedState)
 	if err != nil {
 		log.LogError("Failed to verify OAuth state: %v", err)
 		jsonwriter.WriteBadRequest(w, "Invalid or expired session")
 		return
 	}
 
-	userEmail := oauthState.UserInfo.Email
+	userEmail := upstreamOAuthState.UserInfo.Email
+
+	// Prepare template data
+	returnURL := fmt.Sprintf("/oauth/services?state=%s", url.QueryEscape(signedState))
 
 	// Prepare service list
 	var services []ServiceSelectionData
@@ -468,21 +473,35 @@ func (h *AuthHandlers) ServiceSelectionHandler(w http.ResponseWriter, r *http.Re
 			}
 
 			// Check for error from callback
+			errorMsg := ""
 			if r.URL.Query().Get("error") != "" && r.URL.Query().Get("service") == name {
 				status = "error"
+				// Use error_msg if available, fallback to error_description
+				errorMsg = r.URL.Query().Get("error_msg")
+				if errorMsg == "" {
+					errorMsg = r.URL.Query().Get("error_description")
+				}
+				if errorMsg == "" {
+					errorMsg = "OAuth connection failed"
+				}
+			}
+
+			// Generate OAuth connect URL if OAuth client is available
+			connectURL := ""
+			if h.serviceOAuthClient != nil {
+				connectURL = h.serviceOAuthClient.GetConnectURL(name, returnURL)
 			}
 
 			services = append(services, ServiceSelectionData{
 				Name:        name,
 				DisplayName: displayName,
 				Status:      status,
-				ErrorMsg:    r.URL.Query().Get("error_description"),
+				ErrorMsg:    errorMsg,
+				ConnectURL:  connectURL,
 			})
 		}
 	}
 
-	// Prepare template data
-	returnURL := fmt.Sprintf("/oauth/services?state=%s", url.QueryEscape(signedState))
 	pageData := ServicesPageData{
 		Services:  services,
 		State:     url.QueryEscape(signedState),
@@ -510,7 +529,7 @@ func (h *AuthHandlers) CompleteOAuthHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	oauthState, err := h.verifyOAuthState(signedState)
+	upstreamOAuthState, err := h.verifyUpstreamOAuthState(signedState)
 	if err != nil {
 		log.LogError("Failed to verify OAuth state: %v", err)
 		jsonwriter.WriteBadRequest(w, "Invalid or expired session")
@@ -519,7 +538,7 @@ func (h *AuthHandlers) CompleteOAuthHandler(w http.ResponseWriter, r *http.Reque
 
 	// Recreate the authorize request
 	ctx := r.Context()
-	client, err := h.authServer.GetStorage().GetClient(ctx, oauthState.ClientID)
+	client, err := h.authServer.GetStorage().GetClient(ctx, upstreamOAuthState.ClientID)
 	if err != nil {
 		log.LogError("Failed to get client: %v", err)
 		jsonwriter.WriteInternalServerError(w, "Client not found")
@@ -528,21 +547,21 @@ func (h *AuthHandlers) CompleteOAuthHandler(w http.ResponseWriter, r *http.Reque
 
 	// Create a new authorize request with the stored parameters
 	ar := &fosite.AuthorizeRequest{
-		ResponseTypes:        fosite.Arguments{oauthState.ResponseType},
+		ResponseTypes:        fosite.Arguments{upstreamOAuthState.ResponseType},
 		RedirectURI:          &url.URL{},
-		State:                oauthState.State,
+		State:                upstreamOAuthState.State,
 		HandledResponseTypes: fosite.Arguments{},
 		Request: fosite.Request{
 			ID:             crypto.GenerateSecureToken(),
 			RequestedAt:    time.Now(),
 			Client:         client,
-			RequestedScope: oauthState.Scopes,
-			GrantedScope:   oauthState.Scopes,
+			RequestedScope: upstreamOAuthState.Scopes,
+			GrantedScope:   upstreamOAuthState.Scopes,
 			Session:        &auth.Session{DefaultSession: &fosite.DefaultSession{}},
 		},
 	}
 
-	redirectURI, err := url.Parse(oauthState.RedirectURI)
+	redirectURI, err := url.Parse(upstreamOAuthState.RedirectURI)
 	if err != nil {
 		log.LogError("Failed to parse redirect URI: %v", err)
 		jsonwriter.WriteInternalServerError(w, "Invalid redirect URI")
@@ -558,7 +577,7 @@ func (h *AuthHandlers) CompleteOAuthHandler(w http.ResponseWriter, r *http.Reque
 				fosite.RefreshToken: time.Now().Add(h.authServer.GetConfig().TokenTTL * 2),
 			},
 		},
-		UserInfo: oauthState.UserInfo,
+		UserInfo: upstreamOAuthState.UserInfo,
 	}
 	ar.SetSession(session)
 

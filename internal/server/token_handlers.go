@@ -17,18 +17,20 @@ import (
 
 // TokenHandlers handles the web UI for token management
 type TokenHandlers struct {
-	tokenStore   storage.UserTokenStore
-	mcpServers   map[string]*config.MCPClientConfig
-	csrfTokens   sync.Map // Thread-safe CSRF token storage
-	oauthEnabled bool
+	tokenStore         storage.UserTokenStore
+	mcpServers         map[string]*config.MCPClientConfig
+	csrfTokens         sync.Map // Thread-safe CSRF token storage
+	oauthEnabled       bool
+	serviceOAuthClient *auth.ServiceOAuthClient
 }
 
 // NewTokenHandlers creates a new token handlers instance
-func NewTokenHandlers(tokenStore storage.UserTokenStore, mcpServers map[string]*config.MCPClientConfig, oauthEnabled bool) *TokenHandlers {
+func NewTokenHandlers(tokenStore storage.UserTokenStore, mcpServers map[string]*config.MCPClientConfig, oauthEnabled bool, serviceOAuthClient *auth.ServiceOAuthClient) *TokenHandlers {
 	return &TokenHandlers{
-		tokenStore:   tokenStore,
-		mcpServers:   mcpServers,
-		oauthEnabled: oauthEnabled,
+		tokenStore:         tokenStore,
+		mcpServers:         mcpServers,
+		oauthEnabled:       oauthEnabled,
+		serviceOAuthClient: serviceOAuthClient,
 	}
 }
 
@@ -91,6 +93,11 @@ func (h *TokenHandlers) ListTokensHandler(w http.ResponseWriter, r *http.Request
 				if serverConfig.UserAuthentication.Type == config.UserAuthTypeOAuth {
 					service.SupportsOAuth = true
 					service.Instructions = fmt.Sprintf("Connect your %s account via OAuth", service.DisplayName)
+
+					// Generate OAuth connect URL if OAuth client is available
+					if h.serviceOAuthClient != nil {
+						service.ConnectURL = h.serviceOAuthClient.GetConnectURL(name, "/my/tokens")
+					}
 
 					// Check if OAuth is already connected
 					storedToken, err := h.tokenStore.GetUserToken(r.Context(), userEmail, name)

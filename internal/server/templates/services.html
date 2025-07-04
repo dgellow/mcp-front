@@ -79,11 +79,13 @@
             color: white;
             font-size: 16px;
             padding: 12px 24px;
+            margin: 0 8px;
         }
         
         .btn-primary:hover {
             background: #0052cc;
         }
+        
         
         .connected {
             color: #22863a;
@@ -118,16 +120,20 @@
                         <span class="service-name">{{.DisplayName}}</span>
                         {{if .ErrorMsg}}<div class="error">{{.ErrorMsg}}</div>{{end}}
                     </div>
-                    <a href="/oauth/connect?service={{.Name}}&return={{$.ReturnURL}}" class="btn btn-connect">Try Again</a>
+                    <a href="{{.ConnectURL}}" class="btn btn-connect">Try Again</a>
                 {{else}}
                     <span class="service-name">{{.DisplayName}}</span>
-                    <a href="/oauth/connect?service={{.Name}}&return={{$.ReturnURL}}" class="btn btn-connect">Connect</a>
+                    <a href="{{.ConnectURL}}" class="btn btn-connect">Connect</a>
                 {{end}}
             </div>
             {{end}}
         </div>
         
         <div class="actions">
+            <p style="margin-bottom: 16px; color: #586069; font-size: 14px;">
+                You can connect to additional services later by visiting your 
+                <a href="/my/tokens" target="_blank" style="color: #0366d6;">token management page</a>.
+            </p>
             <a href="/oauth/complete?state={{.State}}" class="btn btn-primary">Continue</a>
         </div>
     </div>

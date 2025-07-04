@@ -1,4 +1,4 @@
-package services
+package auth
 
 import (
 	"context"
@@ -21,14 +21,13 @@ type ServiceOAuthClient struct {
 	storage    storage.UserTokenStore
 	baseURL    string
 	httpClient *http.Client
-	stateCache map[string]*OAuthState // In production, use distributed cache
+	stateCache map[string]*ServiceOAuthState // In production, use distributed cache
 }
 
-// OAuthState stores OAuth flow state
-type OAuthState struct {
+// ServiceOAuthState stores OAuth flow state for external service authentication (mcp-front → external service)
+type ServiceOAuthState struct {
 	Service   string
 	UserEmail string
-	ReturnURL string
 	CreatedAt time.Time
 }
 
@@ -38,7 +37,7 @@ func NewServiceOAuthClient(storage storage.UserTokenStore, baseURL string) *Serv
 		storage:    storage,
 		baseURL:    baseURL,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
-		stateCache: make(map[string]*OAuthState),
+		stateCache: make(map[string]*ServiceOAuthState),
 	}
 }
 
@@ -48,7 +47,6 @@ func (c *ServiceOAuthClient) StartOAuthFlow(
 	userEmail string,
 	serviceName string,
 	serviceConfig *config.MCPClientConfig,
-	returnURL string,
 ) (string, error) {
 	if serviceConfig.UserAuthentication == nil ||
 		serviceConfig.UserAuthentication.Type != config.UserAuthTypeOAuth {
@@ -71,10 +69,9 @@ func (c *ServiceOAuthClient) StartOAuthFlow(
 
 	// Generate state parameter
 	state := crypto.GenerateSecureToken()
-	c.stateCache[state] = &OAuthState{
+	c.stateCache[state] = &ServiceOAuthState{
 		Service:   serviceName,
 		UserEmail: userEmail,
-		ReturnURL: returnURL,
 		CreatedAt: time.Now(),
 	}
 
@@ -84,7 +81,7 @@ func (c *ServiceOAuthClient) StartOAuthFlow(
 	// Generate authorization URL
 	authURL := oauth2Config.AuthCodeURL(state, oauth2.AccessTypeOffline)
 
-	log.LogInfoWithFields("oauth_client", "Starting OAuth flow", map[string]any{
+	log.LogInfoWithFields("service_oauth", "Starting OAuth flow", map[string]any{
 		"service":  serviceName,
 		"user":     userEmail,
 		"authURL":  authURL,
@@ -101,22 +98,22 @@ func (c *ServiceOAuthClient) HandleCallback(
 	code string,
 	state string,
 	serviceConfig *config.MCPClientConfig,
-) (userEmail string, returnURL string, err error) {
+) (userEmail string, err error) {
 	// Validate state
 	oauthState, exists := c.stateCache[state]
 	if !exists {
-		return "", "", fmt.Errorf("invalid state parameter")
+		return "", fmt.Errorf("invalid state parameter")
 	}
 	delete(c.stateCache, state) // One-time use
 
 	// Validate service matches
 	if oauthState.Service != serviceName {
-		return "", "", fmt.Errorf("service mismatch in OAuth callback")
+		return "", fmt.Errorf("service mismatch in OAuth callback")
 	}
 
 	auth := serviceConfig.UserAuthentication
 	if auth == nil || auth.Type != config.UserAuthTypeOAuth {
-		return "", "", fmt.Errorf("service %s does not support OAuth", serviceName)
+		return "", fmt.Errorf("service %s does not support OAuth", serviceName)
 	}
 
 	// Create OAuth2 config
@@ -134,11 +131,11 @@ func (c *ServiceOAuthClient) HandleCallback(
 	// Exchange code for token
 	token, err := oauth2Config.Exchange(ctx, code)
 	if err != nil {
-		log.LogErrorWithFields("oauth_client", "Failed to exchange code for token", map[string]any{
+		log.LogErrorWithFields("service_oauth", "Failed to exchange code for token", map[string]any{
 			"service": serviceName,
 			"error":   err.Error(),
 		})
-		return "", "", fmt.Errorf("failed to exchange code: %w", err)
+		return "", fmt.Errorf("failed to exchange code: %w", err)
 	}
 
 	// Store the token
@@ -155,20 +152,20 @@ func (c *ServiceOAuthClient) HandleCallback(
 	}
 
 	if err := c.storage.SetUserToken(ctx, oauthState.UserEmail, serviceName, storedToken); err != nil {
-		log.LogErrorWithFields("oauth_client", "Failed to store OAuth token", map[string]any{
+		log.LogErrorWithFields("service_oauth", "Failed to store OAuth token", map[string]any{
 			"service": serviceName,
 			"user":    oauthState.UserEmail,
 			"error":   err.Error(),
 		})
-		return "", "", fmt.Errorf("failed to store token: %w", err)
+		return "", fmt.Errorf("failed to store token: %w", err)
 	}
 
-	log.LogInfoWithFields("oauth_client", "OAuth flow completed successfully", map[string]any{
+	log.LogInfoWithFields("service_oauth", "OAuth flow completed successfully", map[string]any{
 		"service": serviceName,
 		"user":    oauthState.UserEmail,
 	})
 
-	return oauthState.UserEmail, oauthState.ReturnURL, nil
+	return oauthState.UserEmail, nil
 }
 
 // RefreshToken refreshes an OAuth token if needed
@@ -224,7 +221,7 @@ func (c *ServiceOAuthClient) RefreshToken(
 	tokenSource := oauth2Config.TokenSource(ctx, oldToken)
 	newToken, err := tokenSource.Token()
 	if err != nil {
-		log.LogErrorWithFields("oauth_client", "Failed to refresh token", map[string]any{
+		log.LogErrorWithFields("service_oauth", "Failed to refresh token", map[string]any{
 			"service": serviceName,
 			"user":    userEmail,
 			"error":   err.Error(),
@@ -244,7 +241,7 @@ func (c *ServiceOAuthClient) RefreshToken(
 		return fmt.Errorf("failed to store refreshed token: %w", err)
 	}
 
-	log.LogInfoWithFields("oauth_client", "Token refreshed successfully", map[string]any{
+	log.LogInfoWithFields("service_oauth", "Token refreshed successfully", map[string]any{
 		"service": serviceName,
 		"user":    userEmail,
 		"expiry":  newToken.Expiry,
@@ -253,8 +250,8 @@ func (c *ServiceOAuthClient) RefreshToken(
 	return nil
 }
 
-// GetServiceConnectURL generates the OAuth connect URL for a service
-func (c *ServiceOAuthClient) GetServiceConnectURL(serviceName string, returnPath string) string {
+// GetConnectURL generates the OAuth connect URL for a service
+func (c *ServiceOAuthClient) GetConnectURL(serviceName string, returnPath string) string {
 	params := url.Values{}
 	params.Set("service", serviceName)
 	if returnPath != "" {

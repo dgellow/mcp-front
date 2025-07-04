@@ -153,6 +153,7 @@ cmd/mcp-front/   # Main application entry point
 3. Don't create new auth patterns - use existing OAuth or bearer token auth
 4. Don't modify git configuration
 5. Don't create README files proactively
+6. **Variable shadowing package names** - `config.MCPClientConfig is not a type` means a variable named `config` is shadowing the package. Always check for variables that shadow imported package names
 
 ### When Working on Features
 

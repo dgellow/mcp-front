@@ -241,10 +241,9 @@
                 </div>
                 {{else}}
                 <div class="oauth-status">
-                    <form method="GET" action="/oauth/connect" style="display: inline;">
-                        <input type="hidden" name="service" value="{{.Name}}">
-                        <button type="submit" class="oauth">Connect with {{.DisplayName}}</button>
-                    </form>
+                    <a href="{{.ConnectURL}}" style="display: inline;">
+                        <button type="button" class="oauth">Connect with {{.DisplayName}}</button>
+                    </a>
                 </div>
                 {{end}}
             {{else}}

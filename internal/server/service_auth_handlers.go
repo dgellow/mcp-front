@@ -3,25 +3,25 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
 	jsonwriter "github.com/dgellow/mcp-front/internal/json"
 	"github.com/dgellow/mcp-front/internal/log"
-	"github.com/dgellow/mcp-front/internal/services"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
 
 // ServiceAuthHandlers handles OAuth flows for external services
 type ServiceAuthHandlers struct {
-	oauthClient *services.ServiceOAuthClient
+	oauthClient *auth.ServiceOAuthClient
 	mcpServers  map[string]*config.MCPClientConfig
 	storage     storage.Storage
 }
 
 // NewServiceAuthHandlers creates new service auth handlers
-func NewServiceAuthHandlers(oauthClient *services.ServiceOAuthClient, mcpServers map[string]*config.MCPClientConfig, storage storage.Storage) *ServiceAuthHandlers {
+func NewServiceAuthHandlers(oauthClient *auth.ServiceOAuthClient, mcpServers map[string]*config.MCPClientConfig, storage storage.Storage) *ServiceAuthHandlers {
 	return &ServiceAuthHandlers{
 		oauthClient: oauthClient,
 		mcpServers:  mcpServers,
@@ -50,12 +50,6 @@ func (h *ServiceAuthHandlers) ConnectHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Get return URL
-	returnURL := r.URL.Query().Get("return")
-	if returnURL == "" {
-		returnURL = "/my/tokens"
-	}
-
 	// Validate service exists and supports OAuth
 	serviceConfig, exists := h.mcpServers[serviceName]
 	if !exists {
@@ -70,13 +64,12 @@ func (h *ServiceAuthHandlers) ConnectHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Start OAuth flow
+	// Start OAuth flow - service OAuth always returns to interstitial page
 	authURL, err := h.oauthClient.StartOAuthFlow(
 		r.Context(),
 		userEmail,
 		serviceName,
 		serviceConfig,
-		returnURL,
 	)
 	if err != nil {
 		log.LogErrorWithFields("oauth_handlers", "Failed to start OAuth flow", map[string]any{
@@ -125,11 +118,20 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 			"description": errorDesc,
 		})
 
-		message := fmt.Sprintf("OAuth authorization failed: %s", errorParam)
+		// Service OAuth errors always redirect back to interstitial page
+		// This maintains user context in the upstream OAuth flow
+		errorMsg := fmt.Sprintf("OAuth authorization failed: %s", errorParam)
 		if errorDesc != "" {
-			message = fmt.Sprintf("%s - %s", message, errorDesc)
+			errorMsg = fmt.Sprintf("%s - %s", errorMsg, errorDesc)
 		}
-		redirectWithMessage(w, r, message, "error")
+
+		// Redirect to interstitial page with error
+		errorURL := fmt.Sprintf("/oauth/services?error=%s&service=%s&error_msg=%s",
+			url.QueryEscape(errorParam),
+			url.QueryEscape(serviceName),
+			url.QueryEscape(errorMsg),
+		)
+		http.Redirect(w, r, errorURL, http.StatusFound)
 		return
 	}
 
@@ -146,7 +148,7 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	// Handle callback
-	userEmail, returnURL, err := h.oauthClient.HandleCallback(
+	userEmail, err := h.oauthClient.HandleCallback(
 		r.Context(),
 		serviceName,
 		code,
@@ -164,7 +166,14 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 		if strings.Contains(err.Error(), "invalid state") {
 			message = "OAuth session expired. Please try again"
 		}
-		redirectWithMessage(w, r, message, "error")
+
+		// Service OAuth callback errors always redirect back to interstitial page
+		// This maintains user context in the upstream OAuth flow
+		errorURL := fmt.Sprintf("/oauth/services?error=callback_failed&service=%s&error_msg=%s",
+			url.QueryEscape(serviceName),
+			url.QueryEscape(message),
+		)
+		http.Redirect(w, r, errorURL, http.StatusFound)
 		return
 	}
 
@@ -180,9 +189,9 @@ func (h *ServiceAuthHandlers) CallbackHandler(w http.ResponseWriter, r *http.Req
 		displayName = serviceConfig.UserAuthentication.DisplayName
 	}
 
-	// Redirect with success message
-	successURL := fmt.Sprintf("%s?message=%s&type=success",
-		returnURL,
+	// Service OAuth success always redirects back to interstitial page
+	// This maintains user context in the upstream OAuth flow
+	successURL := fmt.Sprintf("/oauth/services?message=%s&type=success",
 		strings.ReplaceAll(fmt.Sprintf("Successfully connected to %s", displayName), " ", "+"),
 	)
 	http.Redirect(w, r, successURL, http.StatusFound)
