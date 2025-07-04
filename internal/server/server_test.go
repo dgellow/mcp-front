@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgellow/mcp-front/internal/oauth"
+	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/storage"
 )
 
@@ -48,7 +48,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestOAuthEndpointsCORS(t *testing.T) {
-	oauthConfig := oauth.Config{
+	authConfig := auth.Config{
 		Issuer:             "https://test.example.com",
 		TokenTTL:           time.Hour,
 		AllowedDomains:     []string{"example.com"},
@@ -61,7 +61,7 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 	}
 
 	store := storage.NewMemoryStorage()
-	server, err := oauth.NewServer(oauthConfig, store)
+	authServer, err := auth.NewServer(authConfig, store)
 	if err != nil {
 		t.Fatalf("Failed to create OAuth server: %v", err)
 	}
@@ -105,9 +105,11 @@ func TestOAuthEndpointsCORS(t *testing.T) {
 
 			switch endpoint.path {
 			case "/.well-known/oauth-authorization-server":
-				handler = corsHandler(http.HandlerFunc(server.WellKnownHandler))
+				authHandlers := NewAuthHandlers(authServer, nil, nil)
+				handler = corsHandler(http.HandlerFunc(authHandlers.WellKnownHandler))
 			case "/register":
-				handler = corsHandler(http.HandlerFunc(server.RegisterHandler))
+				authHandlers := NewAuthHandlers(authServer, nil, nil)
+				handler = corsHandler(http.HandlerFunc(authHandlers.RegisterHandler))
 			default:
 				t.Fatalf("Unknown endpoint: %s", endpoint.path)
 			}

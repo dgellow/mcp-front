@@ -185,7 +185,8 @@ Use the `options` field for additional configuration:
         "X-API-Key": { "$env": "DB_API_KEY" }
       },
       "requiresUserToken": true,
-      "tokenSetup": {
+      "userAuthentication": {
+        "type": "manual",
         "displayName": "Database Token",
         "instructions": "Get your token from the admin panel",
         "helpUrl": "https://db.company.com/tokens"

@@ -8,6 +8,7 @@ import (
 
 	"github.com/dgellow/mcp-front/internal/auth"
 	"github.com/dgellow/mcp-front/internal/config"
+	"github.com/dgellow/mcp-front/internal/servicecontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -179,7 +180,7 @@ func TestServiceAuthMiddleware(t *testing.T) {
 		{
 			Type:           config.ServiceAuthTypeBasic,
 			Username:       "user",
-			HashedPassword: string(hashedPassword),
+			HashedPassword: config.Secret(hashedPassword),
 		},
 	}
 
@@ -268,15 +269,15 @@ func TestServiceAuthMiddleware_Context(t *testing.T) {
 
 	serviceAuths := []config.ServiceAuth{
 		{
-			Type:              config.ServiceAuthTypeBearer,
-			Tokens:            []string{"valid-token"},
-			ResolvedUserToken: "bearer-user-token",
+			Type:      config.ServiceAuthTypeBearer,
+			Tokens:    []string{"valid-token"},
+			UserToken: config.Secret("bearer-user-token"),
 		},
 		{
-			Type:              config.ServiceAuthTypeBasic,
-			Username:          "user",
-			HashedPassword:    string(hashedPassword),
-			ResolvedUserToken: "basic-user-token",
+			Type:           config.ServiceAuthTypeBasic,
+			Username:       "user",
+			HashedPassword: config.Secret(hashedPassword),
+			UserToken:      config.Secret("basic-user-token"),
 		},
 	}
 
@@ -285,14 +286,14 @@ func TestServiceAuthMiddleware_Context(t *testing.T) {
 		authHeader        string
 		expectStatus      int
 		expectServiceAuth bool
-		expectAuthInfo    auth.ServiceAuthInfo
+		expectAuthInfo    servicecontext.Info
 	}{
 		{
 			name:              "bearer token sets context",
 			authHeader:        "Bearer valid-token",
 			expectStatus:      http.StatusOK,
 			expectServiceAuth: true,
-			expectAuthInfo: auth.ServiceAuthInfo{
+			expectAuthInfo: servicecontext.Info{
 				ServiceName: "service",
 				UserToken:   "bearer-user-token",
 			},
@@ -302,7 +303,7 @@ func TestServiceAuthMiddleware_Context(t *testing.T) {
 			authHeader:        "Basic " + base64.StdEncoding.EncodeToString([]byte("user:password123")),
 			expectStatus:      http.StatusOK,
 			expectServiceAuth: true,
-			expectAuthInfo: auth.ServiceAuthInfo{
+			expectAuthInfo: servicecontext.Info{
 				ServiceName: "user",
 				UserToken:   "basic-user-token",
 			},
@@ -317,11 +318,11 @@ func TestServiceAuthMiddleware_Context(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var actualAuthInfo auth.ServiceAuthInfo
+			var actualAuthInfo servicecontext.Info
 			var hasAuthInfo bool
 
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				actualAuthInfo, hasAuthInfo = auth.GetServiceAuth(r.Context())
+				actualAuthInfo, hasAuthInfo = servicecontext.GetAuthInfo(r.Context())
 				w.WriteHeader(http.StatusOK)
 			})
 

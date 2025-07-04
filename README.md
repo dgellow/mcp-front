@@ -159,7 +159,8 @@ Some MCP servers are better to use with each users having their own integration 
   "notion": {
     "transportType": "stdio",
     "requiresUserToken": true,
-    "tokenSetup": {
+    "userAuthentication": {
+      "type": "manual",
       "displayName": "Notion Integration Token",
       "instructions": "Create an integration and copy the token",
       "helpUrl": "https://www.notion.so/my-integrations"

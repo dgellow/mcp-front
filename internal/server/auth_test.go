@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgellow/mcp-front/internal/auth"
+	"github.com/dgellow/mcp-front/internal/browserauth"
 	"github.com/dgellow/mcp-front/internal/config"
 	"github.com/dgellow/mcp-front/internal/crypto"
-	"github.com/dgellow/mcp-front/internal/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,11 +34,11 @@ func TestAuthenticationBoundaries(t *testing.T) {
 					Auth: &config.OAuthAuthConfig{
 						Kind:               config.AuthKindOAuth,
 						GoogleClientID:     "test-client-id",
-						GoogleClientSecret: "test-client-secret",
+						GoogleClientSecret: config.Secret("test-client-secret"),
 						GoogleRedirectURI:  "https://test.example.com/callback",
-						JWTSecret:          strings.Repeat("a", 32),
-						EncryptionKey:      strings.Repeat("b", 32),
-						TokenTTL:           "1h",
+						JWTSecret:          config.Secret(strings.Repeat("a", 32)),
+						EncryptionKey:      config.Secret(strings.Repeat("b", 32)),
+						TokenTTL:           time.Hour,
 						Storage:            "memory",
 					},
 				},
@@ -54,11 +55,11 @@ func TestAuthenticationBoundaries(t *testing.T) {
 					Auth: &config.OAuthAuthConfig{
 						Kind:               config.AuthKindOAuth,
 						GoogleClientID:     "test-client-id",
-						GoogleClientSecret: "test-client-secret",
+						GoogleClientSecret: config.Secret("test-client-secret"),
 						GoogleRedirectURI:  "https://test.example.com/callback",
-						JWTSecret:          strings.Repeat("a", 32),
-						EncryptionKey:      strings.Repeat("b", 32),
-						TokenTTL:           "1h",
+						JWTSecret:          config.Secret(strings.Repeat("a", 32)),
+						EncryptionKey:      config.Secret(strings.Repeat("b", 32)),
+						TokenTTL:           time.Hour,
 						Storage:            "memory",
 					},
 				},
@@ -75,11 +76,11 @@ func TestAuthenticationBoundaries(t *testing.T) {
 					Auth: &config.OAuthAuthConfig{
 						Kind:               config.AuthKindOAuth,
 						GoogleClientID:     "test-client-id",
-						GoogleClientSecret: "test-client-secret",
+						GoogleClientSecret: config.Secret("test-client-secret"),
 						GoogleRedirectURI:  "https://test.example.com/callback",
-						JWTSecret:          strings.Repeat("a", 32),
-						EncryptionKey:      strings.Repeat("b", 32),
-						TokenTTL:           "1h",
+						JWTSecret:          config.Secret(strings.Repeat("a", 32)),
+						EncryptionKey:      config.Secret(strings.Repeat("b", 32)),
+						TokenTTL:           time.Hour,
 						Storage:            "memory",
 					},
 				},
@@ -130,7 +131,7 @@ func TestAuthenticationBoundaries(t *testing.T) {
 				// Create a valid session cookie using the encryptor
 				if oauthConfig, ok := tt.config.Proxy.Auth.(*config.OAuthAuthConfig); ok {
 					// Create session data
-					sessionData := oauth.SessionData{
+					sessionData := browserauth.SessionCookie{
 						Email:   "test@example.com",
 						Expires: time.Now().Add(24 * time.Hour),
 					}
@@ -192,11 +193,11 @@ func TestMCPAuthConfiguration(t *testing.T) {
 					Auth: &config.OAuthAuthConfig{
 						Kind:               config.AuthKindOAuth,
 						GoogleClientID:     "test-client-id",
-						GoogleClientSecret: "test-client-secret",
+						GoogleClientSecret: config.Secret("test-client-secret"),
 						GoogleRedirectURI:  "https://test.example.com/callback",
-						JWTSecret:          strings.Repeat("a", 32),
-						EncryptionKey:      strings.Repeat("b", 32),
-						TokenTTL:           "1h",
+						JWTSecret:          config.Secret(strings.Repeat("a", 32)),
+						EncryptionKey:      config.Secret(strings.Repeat("b", 32)),
+						TokenTTL:           time.Hour,
 						Storage:            "memory",
 					},
 				},
